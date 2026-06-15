@@ -8,6 +8,7 @@ on:
       - 'mkdocs.yml'
       - 'README.md'
       - 'CONTRIBUTING.md'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs
-        run: pip install mkdocs-material
+        run: pip install mkdocs-material==9.7.6
 
       - name: Sync root files to docs/
         run: |
