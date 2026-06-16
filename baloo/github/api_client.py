@@ -51,6 +51,9 @@ class PostedReviewResult:
 
 # Matches unified-diff hunk headers: @@ -old_start[,old_count] +new_start[,new_count] @@
 _HUNK_RE = re.compile(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_GITHUB_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+_GITHUB_GET_ATTEMPTS = 3
+_GITHUB_GET_BACKOFF_SECONDS = 0.25
 
 
 def _valid_diff_lines(diff: str) -> dict[str, set[int]]:
@@ -143,7 +146,7 @@ class GitHubAPIClient:
         self.installation_id = installation_id
         self.auth = auth or GitHubAuth()
         self.base_url = "https://api.github.com"
-        self._http = http_client or httpx.AsyncClient()
+        self._http = http_client or httpx.AsyncClient(timeout=_GITHUB_TIMEOUT)
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -163,6 +166,26 @@ class GitHubAPIClient:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
+    async def _get(self, url: str, **kwargs) -> httpx.Response:
+        """GET a GitHub endpoint, retrying transient transport failures."""
+        for attempt in range(1, _GITHUB_GET_ATTEMPTS + 1):
+            try:
+                return await self._http.get(url, **kwargs)
+            except httpx.TransportError as exc:
+                if attempt >= _GITHUB_GET_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "Transient GitHub API GET failure for %s (attempt %d/%d): %s: %s",
+                    url,
+                    attempt,
+                    _GITHUB_GET_ATTEMPTS,
+                    type(exc).__name__,
+                    exc,
+                )
+                await asyncio.sleep(_GITHUB_GET_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+
+        raise RuntimeError("unreachable")
+
     async def get_pr_context(self, repo_full_name: str, pr_number: int) -> PRContext:
         """
         Fetch PR context including files changed and diffs.
@@ -177,7 +200,7 @@ class GitHubAPIClient:
         headers = self._get_headers()
 
         pr_url = f"{self.base_url}/repos/{repo_full_name}/pulls/{pr_number}"
-        pr_response = await self._http.get(pr_url, headers=headers)
+        pr_response = await self._get(pr_url, headers=headers)
         pr_response.raise_for_status()
         pr_data = pr_response.json()
 
@@ -196,7 +219,7 @@ class GitHubAPIClient:
             for file in files_data
         ]
 
-        diff_response = await self._http.get(
+        diff_response = await self._get(
             pr_url,
             headers={**headers, "Accept": "application/vnd.github.v3.diff"},
         )
@@ -288,7 +311,7 @@ class GitHubAPIClient:
             return set(), {}, [], ""
 
         compare_url = f"{self.base_url}/repos/{repo_full_name}/compare/{base_sha}...{head_sha}"
-        response = await self._http.get(compare_url, headers=self._get_headers())
+        response = await self._get(compare_url, headers=self._get_headers())
         response.raise_for_status()
         compare_data = response.json()
 
@@ -589,7 +612,7 @@ class GitHubAPIClient:
             Dict with commit info including parents, message, and files changed
         """
         url = f"{self.base_url}/repos/{repo_full_name}/commits/{commit_sha}"
-        response = await self._http.get(url, headers=self._get_headers())
+        response = await self._get(url, headers=self._get_headers())
         response.raise_for_status()
         return response.json()
 
@@ -603,7 +626,7 @@ class GitHubAPIClient:
         or "identical" when they are the same commit.
         """
         url = f"{self.base_url}/repos/{repo_full_name}/compare/{commit_sha}...{branch}"
-        response = await self._http.get(url, headers=self._get_headers())
+        response = await self._get(url, headers=self._get_headers())
         if response.status_code != 200:
             logger.warning(
                 "compare API returned %d for %s...%s in %s; treating as non-ancestor",
@@ -688,7 +711,7 @@ class GitHubAPIClient:
             params["ref"] = ref
 
         try:
-            response = await self._http.get(url, headers=self._get_headers(), params=params)
+            response = await self._get(url, headers=self._get_headers(), params=params)
 
             if response.status_code == 404:
                 logger.debug(f"File not found: {repo_full_name}/{path}")
@@ -728,7 +751,7 @@ class GitHubAPIClient:
             params["ref"] = ref
 
         try:
-            response = await self._http.get(url, headers=self._get_headers(), params=params)
+            response = await self._get(url, headers=self._get_headers(), params=params)
 
             if response.status_code == 404:
                 return []
@@ -863,9 +886,7 @@ class GitHubAPIClient:
         headers = self._get_headers()
 
         while True:
-            response = await self._http.get(
-                url, headers=headers, params={"per_page": 100, "page": page}
-            )
+            response = await self._get(url, headers=headers, params={"per_page": 100, "page": page})
             if response.status_code == 404:
                 if page == 1:
                     response.raise_for_status()
