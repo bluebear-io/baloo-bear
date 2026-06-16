@@ -197,6 +197,14 @@ uv run ruff check baloo    # lint
 uv run black --check baloo # format check
 ```
 
+When changing Python dependencies, regenerate the hash-pinned production requirements before committing:
+
+```bash
+uv export --frozen --no-dev --no-emit-project --no-header --output-file requirements-prod.txt
+```
+
+CI checks this file against `uv export`, and the Docker image installs production dependencies from it.
+
 ### Local review (dry run)
 
 You can run the same review pipeline against your working tree before opening a PR. The script builds a synthetic pull request from a git diff (`base...head`), loads `AGENTS.md` / `CONTRIBUTING.md` from the head ref when present, and prints findings to stdout — nothing is posted to GitHub.

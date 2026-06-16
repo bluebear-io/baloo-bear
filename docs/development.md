@@ -48,6 +48,14 @@ uv run ruff check baloo tests
 uv run black --check baloo tests
 ```
 
+When you add or update Python dependencies, regenerate the hash-pinned production requirements before committing:
+
+```bash
+uv export --frozen --no-dev --no-emit-project --no-header --output-file requirements-prod.txt
+```
+
+CI checks `requirements-prod.txt` against a fresh export, and the Docker image installs production dependencies from it.
+
 ## 5. Git Hooks
 
 The repository uses Husky and `gitleaks` for local pre-commit secret scanning.

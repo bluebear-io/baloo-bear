@@ -52,8 +52,9 @@ docker run -d \
 
 ## Image Details
 
-- Base image: `python:3.11-slim`
-- Includes Node.js and Claude Code CLI for agent execution
+- Base images: pinned `python:3.14.5-slim-bookworm` for the app runtime, plus pinned `node:20-bookworm-slim` copied in via multi-stage build for PI.
+- Installs production Python dependencies from `requirements-prod.txt` with `pip --require-hashes`.
+- Installs the PI CLI and Node dependencies with `npm ci` from `package-lock.json`.
 - Exposes port `8000`
 - Runs as a non-root user inside the container
 
