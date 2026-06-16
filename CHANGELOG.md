@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Review rule: flag the unbounded in-memory data-access anti-pattern (filtering/sorting/pagination/aggregation done in app code, and the bulk-fetch that feeds it — `size: 10000`, `scan`/`scroll`/`search_after`, fetch-then-process) as **CRITICAL**. Reviewers recommend pushing the work into the query/datastore.
+
 ### Changed
 
 - Reworked public documentation for open source use

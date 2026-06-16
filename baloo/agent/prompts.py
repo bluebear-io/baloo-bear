@@ -15,7 +15,7 @@ Your response will be parsed as JSON automatically.  Return an object with:
 """
 
 REVIEW_SEVERITY_GUIDELINES = """## Severity Guidelines
-- **CRITICAL**: Reserve for confirmed exploitable vulnerabilities or certain catastrophic data loss only
+- **CRITICAL**: Reserve for confirmed exploitable vulnerabilities, certain catastrophic data loss, or the unbounded in-memory data-access anti-pattern (see Data-access rule)
 - **HIGH**: Security concerns, serious bugs, silent failure patterns, or clear guidelines violations
 - **MEDIUM**: Quality, maintainability, or performance issues
 - **LOW**: Style or minor polish improvements
@@ -64,6 +64,14 @@ Flag only issues **introduced or made worse by this PR's changes**. Pre-existing
   Treat as HIGH unless tied to security, data corruption, or guaranteed wrong financial/identity outcomes.
 - **Performance (MEDIUM)**: Algorithm efficiency, N+1 queries, blocking ops
 - **Quality (MEDIUM/LOW)**: DRY, complexity, naming, tests
+
+## Data-access (CRITICAL): filtering, sorting, pagination, and aggregation MUST run in the query/datastore — NEVER in application memory
+Flag as **CRITICAL** any change that pulls a large or unbounded result set and then sorts/filters/paginates/aggregates it in code. The datastore (OpenSearch, SQL, etc.) must do that work in the query. This is a scalability/latency/cost landmine and overrides the usual "performance = MEDIUM" rule. Concrete signals (non-exhaustive):
+- An OpenSearch `size` set to a large/"fetch-all" literal (e.g. `size: 10000`), or any query written to return "all" documents/rows for in-code processing.
+- `helpers.scan`, `search_after`/`scroll` loops, or `while` loops issuing repeated queries to walk a whole result set.
+- Fetching rows/buckets then processing in app code: `.all()`/`fetchall()`/`hits` followed by Python/JS `sorted(...)`, comprehension/`.filter()` filtering, manual slicing for pagination (`results[offset:offset+limit]`), or summing/counting in a loop.
+- Per-item fan-out (`ThreadPoolExecutor` / `asyncio.gather` / `Promise.all` over ids) issuing one query per id instead of one aggregation or `IN`/`terms` query.
+Compliant alternative to recommend: push it into the query — `WHERE`/`ORDER BY`/`LIMIT`/`OFFSET` (SQL), or `size:0` + filter + aggregations in OpenSearch (`composite` + `after_key` for paging, `cardinality` for totals). Sorting must use indexed fields, not in-memory comparisons.
 
 ## Project Guidelines Compliance (HIGH)
 You MUST read `AGENTS.md` and `CONTRIBUTING.md` at the repo root before checking for violations.

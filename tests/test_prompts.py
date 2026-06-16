@@ -4,11 +4,22 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from baloo.agent.prompts import (
+    REVIEW_SYSTEM_PROMPT,
     _is_dependabot_pr,
     _is_security_patch,
     _is_simple_pr,
     build_pr_review_prompt,
 )
+
+
+def test_system_prompt_flags_in_memory_data_access_as_critical():
+    """The reviewer must treat in-memory filter/sort/aggregate + bulk-fetch as CRITICAL."""
+    assert "## Data-access (CRITICAL)" in REVIEW_SYSTEM_PROMPT
+    assert "NEVER in application memory" in REVIEW_SYSTEM_PROMPT
+    # Names the concrete fetch-all signal the rule exists to catch.
+    assert "size: 10000" in REVIEW_SYSTEM_PROMPT
+    # CRITICAL severity is explicitly extended to this anti-pattern.
+    assert "data-access" in REVIEW_SYSTEM_PROMPT.split("## Severity Guidelines")[1]
 
 
 def test_prompt_includes_discussion_digest():
