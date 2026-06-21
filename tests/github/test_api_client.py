@@ -368,6 +368,38 @@ class TestFetchPaginatedJson:
         with pytest.raises(httpx.HTTPStatusError):
             await client._fetch_paginated_json("https://api.github.com/some/endpoint")
 
+        mock_http.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_read_timeout(self, monkeypatch):
+        items = [{"id": 1}]
+        client, mock_http = _make_client()
+        sleep = AsyncMock()
+        monkeypatch.setattr("baloo.github.api_client.asyncio.sleep", sleep)
+        mock_http.get.side_effect = [
+            httpx.ReadTimeout("read timed out"),
+            _mock_response(items),
+        ]
+
+        result = await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        assert result == items
+        assert mock_http.get.call_count == 2
+        sleep.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_after_read_timeout_retries(self, monkeypatch):
+        client, mock_http = _make_client()
+        sleep = AsyncMock()
+        monkeypatch.setattr("baloo.github.api_client.asyncio.sleep", sleep)
+        mock_http.get.side_effect = httpx.ReadTimeout("read timed out")
+
+        with pytest.raises(httpx.ReadTimeout):
+            await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        assert mock_http.get.call_count == 3
+        assert sleep.await_count == 2
+
 
 class TestGetChangedScopeBetweenCommits:
     @pytest.mark.asyncio
