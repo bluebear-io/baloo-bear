@@ -2,7 +2,7 @@
 
 from baloo.config.settings import get_settings
 from baloo.fidelity.models import FidelityResult
-from baloo.github.models import ReviewComment
+from baloo.github.models import GeneralFinding, ReviewComment
 from baloo.processor.severity_router import ReviewSeverity, count_by_severity
 
 
@@ -13,6 +13,7 @@ class DecisionEngine:
     def make_decision(
         comments: list[ReviewComment],
         fidelity_result: FidelityResult | None = None,
+        general_findings: list[GeneralFinding] | None = None,
     ) -> tuple[bool, bool]:
         """
         Determine review decision based on findings and fidelity score.
@@ -20,14 +21,18 @@ class DecisionEngine:
         Args:
             comments: List of review comments
             fidelity_result: Optional fidelity analysis result
+            general_findings: Optional list of general (non-inline) findings
 
         Returns:
             Tuple of (approve, request_changes)
         """
         settings = get_settings()
 
-        # Count by severity using shared utility
+        # Count by severity using shared utility; also fold in general findings
         counts = count_by_severity(comments)
+        for gf in general_findings or []:
+            sev = gf.severity.value if hasattr(gf.severity, "value") else gf.severity
+            counts[sev] = counts.get(sev, 0) + 1
         critical_count = counts.get(ReviewSeverity.CRITICAL.value, 0)
         high_count = counts.get(ReviewSeverity.HIGH.value, 0)
 

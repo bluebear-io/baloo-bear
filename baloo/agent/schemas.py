@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from baloo.github.models import FindingCategory, ReviewComment, ReviewSeverity
+from baloo.github.models import FindingCategory, GeneralFinding, ReviewComment, ReviewSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,21 @@ class ReviewSummary(BaseModel):
     positive_observations: Any = Field(default_factory=list)
 
 
+class GeneralReviewFinding(BaseModel):
+    """A finding with no specific file/line location (e.g. missing tests, doc gaps).
+
+    Tolerant of agent returning unexpected types for fields.
+    """
+
+    model_config = {"extra": "ignore", "coerce_numbers_to_str": True}
+
+    severity: str = "MEDIUM"
+    category: str = "Quality"
+    title: str = "Observation"
+    description: str = ""
+    recommendation: str | None = None
+
+
 class ReviewOutput(BaseModel):
     """Top-level structured output from the review agent.
 
@@ -104,6 +119,7 @@ class ReviewOutput(BaseModel):
     """
 
     findings: list[ReviewFinding] = Field(default_factory=list)
+    general_findings: list[GeneralReviewFinding] = Field(default_factory=list)
     summary: ReviewSummary = Field(default_factory=ReviewSummary)
 
     @classmethod
@@ -193,15 +209,16 @@ def review_output_schema() -> dict:
     return {"type": "json_schema", "schema": ReviewOutput.model_json_schema()}
 
 
-def findings_to_comments(data: dict) -> list[ReviewComment]:
-    """
-    Convert a raw structured output dict into ReviewComment objects.
+def parse_review_output(
+    data: dict,
+) -> tuple[list[ReviewComment], list[GeneralFinding]]:
+    """Convert a raw structured output dict into inline comments and general findings.
 
     Args:
         data: Dict matching the ReviewOutput schema.
 
     Returns:
-        List of ReviewComment objects.
+        Tuple of (inline ReviewComment list, general GeneralFinding list).
     """
     output = ReviewOutput.model_validate(data)
 
@@ -256,4 +273,24 @@ def findings_to_comments(data: dict) -> list[ReviewComment]:
             )
         )
 
+    general: list[GeneralFinding] = []
+    for gf in output.general_findings:
+        enforced_severity = enforce_severity(gf)  # type: ignore[arg-type]
+        body_parts = [f"**{gf.title}**", "", gf.description]
+        if gf.recommendation:
+            body_parts.extend(["", "**Recommendation:**", gf.recommendation])
+        general.append(
+            GeneralFinding(
+                body="\n".join(body_parts),
+                severity=_normalize_severity(enforced_severity),
+                category=_normalize_category(gf.category),
+            )
+        )
+
+    return comments, general
+
+
+# ponytail: backwards-compat alias; prefer parse_review_output
+def findings_to_comments(data: dict) -> list[ReviewComment]:
+    comments, _ = parse_review_output(data)
     return comments

@@ -1475,9 +1475,12 @@ async def process_pr_review(
 
             fresh_comments = verified_new_findings
             decision_comments = fresh_comments + [comment for _, comment in follow_up_comments]
+            general_findings = review_result.general_findings
 
             approve, request_changes = DecisionEngine.make_decision(
-                decision_comments, fidelity_result=fidelity_result
+                decision_comments,
+                fidelity_result=fidelity_result,
+                general_findings=general_findings,
             )
             awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
 
@@ -1486,7 +1489,9 @@ async def process_pr_review(
 
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
-            summary_text = CommentFormatter.format_summary(decision_comments, agent_metadata)
+            summary_text = CommentFormatter.format_summary(
+                decision_comments, agent_metadata, general_findings=general_findings
+            )
             summary_text = f"{summary_text}\n\n{decision_summary}"
 
             if skipped_responded:
