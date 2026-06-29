@@ -1,8 +1,8 @@
 """Pydantic models for documentation drift analysis."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DocumentationCatalogRule(BaseModel):
@@ -55,3 +55,25 @@ class DocumentationDriftResult(BaseModel):
     not_needed: list[DocumentationDriftFinding] = Field(default_factory=list)
     catalog_gaps: list[str] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_finding_lists(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        for field, verdict in (
+            ("required_updates", "required"),
+            ("optional_updates", "optional"),
+            ("not_needed", "not_needed"),
+        ):
+            items = data.get(field, [])
+            if isinstance(items, list):
+                data[field] = [
+                    (
+                        {"doc_path": item, "verdict": verdict, "rationale": ""}
+                        if isinstance(item, str)
+                        else item
+                    )
+                    for item in items
+                ]
+        return data
