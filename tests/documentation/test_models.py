@@ -27,6 +27,38 @@ def test_valid_catalog_rule():
     assert catalog.rules[0].read_only is False
 
 
+def test_coerce_string_findings_not_needed():
+    result = DocumentationDriftResult.model_validate({"not_needed": ["docs/foo.md", "docs/bar.md"]})
+    assert len(result.not_needed) == 2
+    assert result.not_needed[0].doc_path == "docs/foo.md"
+    assert result.not_needed[0].verdict == "not_needed"
+    assert result.not_needed[1].doc_path == "docs/bar.md"
+
+
+def test_coerce_string_findings_required_updates():
+    result = DocumentationDriftResult.model_validate({"required_updates": ["docs/api.md"]})
+    assert result.required_updates[0].verdict == "required"
+    assert result.required_updates[0].doc_path == "docs/api.md"
+
+
+def test_coerce_string_findings_optional_updates():
+    result = DocumentationDriftResult.model_validate({"optional_updates": ["docs/guide.md"]})
+    assert result.optional_updates[0].verdict == "optional"
+
+
+def test_coerce_string_findings_passthrough_dicts():
+    result = DocumentationDriftResult.model_validate(
+        {
+            "not_needed": [
+                {"doc_path": "docs/foo.md", "verdict": "not_needed", "rationale": "unchanged"},
+                "docs/bar.md",
+            ]
+        }
+    )
+    assert result.not_needed[0].rationale == "unchanged"
+    assert result.not_needed[1].rationale == ""
+
+
 def test_default_empty_analysis_result():
     result = DocumentationDriftResult()
 
