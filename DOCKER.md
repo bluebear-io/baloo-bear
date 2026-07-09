@@ -33,6 +33,7 @@ The default compose file starts:
 - `postgres` as an internal Docker service named `db`
 
 Database-backed features are disabled by default. Enable them in `.env` if you want persistence or the dashboard.
+Set `POSTGRES_PASSWORD` in `.env` before running Compose. The example value is for local development only.
 
 The default stack does not publish PostgreSQL to the host. Baloo connects to it internally at `db:5432`, which avoids conflicts with an existing local PostgreSQL instance. If you need host access for debugging, add a temporary port mapping in your local compose override.
 
@@ -51,8 +52,9 @@ docker run -d \
 
 ## Image Details
 
-- Base image: `python:3.11-slim`
-- Includes Node.js and Claude Code CLI for agent execution
+- Base images: pinned `python:3.14.5-slim-bookworm` for the app runtime, plus pinned `node:20-bookworm-slim` copied in via multi-stage build for PI.
+- Installs production Python dependencies from `requirements-prod.txt` with `pip --require-hashes`.
+- Installs the PI CLI and Node dependencies with `npm ci` from `package-lock.json`.
 - Exposes port `8000`
 - Runs as a non-root user inside the container
 

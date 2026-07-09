@@ -11,9 +11,19 @@ from datetime import datetime, timezone
 
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
+from baloo.agent.repo_provision import provision_repo
 from baloo.config.settings import settings
 from baloo.db.service import DuplicateReviewError, ReviewCompleteDTO, ReviewService
 from baloo.db.tenant import apply_tenant_filter
+from baloo.documentation.analyzer import analyze_documentation_drift
+from baloo.documentation.catalog import load_documentation_catalog
+from baloo.documentation.models import DocumentationDriftResult
+from baloo.documentation.report import (
+    format_documentation_drift_report,
+    has_actionable_documentation_drift,
+    has_documentation_drift_comment,
+)
+from baloo.documentation.work_items import build_documentation_work_item
 from baloo.fidelity.fidelity_analyzer import analyze_fidelity
 from baloo.fidelity.fidelity_report import (
     ERROR_FIDELITY_SENTINEL,
@@ -69,6 +79,12 @@ thread_agent_semaphore = None
 # Registry of active review tasks to allow cancellation of redundant reviews
 # Map of (repo_full_name, pr_number) -> asyncio.Task
 active_reviews: dict[tuple[str, int], asyncio.Task] = {}
+
+_REVIEW_SIDE_AGENT_METADATA_KEYS = (
+    "fp_verification",
+    "thread_reverification",
+    "sync_scope_decider",
+)
 
 
 def get_review_semaphore() -> asyncio.Semaphore:
@@ -207,17 +223,72 @@ def _has_existing_static_fidelity_report(
     )
 
 
-def _total_review_cost_usd(review_metadata: dict, fidelity_metadata: dict) -> float:
+def _total_review_cost_usd(
+    review_metadata: dict,
+    fidelity_metadata: dict,
+    documentation_metadata: dict | None = None,
+) -> float:
     """Aggregate all model-call cost components associated with a review."""
-    fp_metadata = review_metadata.get("fp_verification") or {}
-    if not isinstance(fp_metadata, dict):
-        fp_metadata = {}
+    if documentation_metadata is None:
+        documentation_metadata = {}
 
     return (
         (review_metadata.get("cost_usd") or 0.0)
         + (fidelity_metadata.get("cost_usd") or 0.0)
-        + (fp_metadata.get("cost_usd") or 0.0)
+        + (documentation_metadata.get("cost_usd") or 0.0)
+        + sum(
+            (metadata.get("cost_usd") or 0.0)
+            for metadata in _review_side_agent_metadata(review_metadata)
+        )
     )
+
+
+def _total_review_tokens(
+    token_key: str,
+    review_metadata: dict,
+    fidelity_metadata: dict,
+    documentation_metadata: dict | None = None,
+) -> int:
+    """Aggregate token counters for all model calls associated with a review."""
+    if documentation_metadata is None:
+        documentation_metadata = {}
+
+    return int(
+        (review_metadata.get(token_key) or 0)
+        + (fidelity_metadata.get(token_key) or 0)
+        + (documentation_metadata.get(token_key) or 0)
+        + sum(
+            (metadata.get(token_key) or 0)
+            for metadata in _review_side_agent_metadata(review_metadata)
+        )
+    )
+
+
+def _review_side_agent_metadata(review_metadata: dict) -> list[dict]:
+    """Return nested per-review side-agent metadata blocks."""
+    nested = []
+    for key in _REVIEW_SIDE_AGENT_METADATA_KEYS:
+        metadata = review_metadata.get(key) or {}
+        if isinstance(metadata, dict):
+            nested.append(metadata)
+    return nested
+
+
+def _fp_stats_metadata(stats) -> dict:
+    """Normalize FP verifier stats into the same metadata shape as PI agents."""
+    return {
+        "input_tokens": stats.input_tokens,
+        "output_tokens": stats.output_tokens,
+        "cache_read_tokens": stats.cache_read_tokens,
+        "cache_write_tokens": stats.cache_write_tokens,
+        "thinking_tokens": stats.thinking_tokens,
+        "cost_usd": stats.total_cost_usd,
+        "duration_seconds": stats.duration_seconds,
+        "total": stats.total_verified,
+        "kept": stats.kept,
+        "rejected": stats.rejected,
+        "errors": stats.errors,
+    }
 
 
 def _threads_from_issue_comments(
@@ -285,6 +356,7 @@ async def _decide_synchronize_review_mode(
     pr_context: PRContext,
     changed_files_changed: list,
     scoped_diff: str,
+    usage_metadata: dict | None = None,
 ) -> tuple[str, str]:
     """Ask PI whether synchronize should use scoped or full PR context."""
     options = get_agent_options()
@@ -292,6 +364,7 @@ async def _decide_synchronize_review_mode(
     options.max_turns = 1
     options.no_tools = True
     options.thinking_level = "minimal"
+    options.name = "SyncScopeDecider"
     decider = PIAgentBase(options)
 
     changed_files_list = "\n".join(
@@ -315,7 +388,9 @@ Full PR diff (truncated):
 {pr_context.diff[:12000]}
 """
     try:
-        structured, _ = await decider.run_query(prompt)
+        structured, metadata = await decider.run_query(prompt)
+        if usage_metadata is not None:
+            usage_metadata.update(metadata)
         if isinstance(structured, dict):
             mode = str(structured.get("mode", "")).strip().lower()
             reason = str(structured.get("reason", "")).strip()
@@ -328,6 +403,8 @@ Full PR diff (truncated):
                 pr_context.pr_number,
             )
     except Exception as exc:
+        if usage_metadata is not None:
+            usage_metadata.update(getattr(exc, "metadata", {}) or {})
         logger.warning("Scope decider failed, defaulting full_pr: %s", exc)
 
     return "full_pr", "Scope decision unavailable; defaulting to full PR"
@@ -404,6 +481,7 @@ async def _reverify_awaiting_threads(
     pr_context: PRContext,
     api_client,
     db_review_id: int | None = None,
+    usage_metadata: dict | None = None,
 ) -> int:
     """Re-verify awaiting Baloo threads against the new diff.
 
@@ -429,6 +507,8 @@ async def _reverify_awaiting_threads(
 
     verifier = FPVerifier()
     fp_result = await verifier.verify(comments, pr_context)
+    if usage_metadata is not None:
+        usage_metadata.update(_fp_stats_metadata(fp_result.stats))
 
     # fp_result.rejected = findings the verifier says are no longer present
     rejected_paths_lines = {(r.comment.path, r.comment.line) for r in fp_result.rejected}
@@ -686,6 +766,8 @@ async def _run_fidelity_analysis(
     repo_full_name: str,
     pr_context,
     linear_result: LinearFetchResult | None = None,
+    repo_path: str | None = None,
+    db_review_id: int | None = None,
 ) -> tuple[str, FidelityResult | None]:
     """
     Run fidelity analysis comparing PR changes to ticket + plan specification.
@@ -753,18 +835,158 @@ async def _run_fidelity_analysis(
             "yes" if spec.ticket else "no",
             "yes" if spec.plan else "no",
         )
-        result = await analyze_fidelity(
-            spec=spec,
-            pr_title=pr_context.title,
-            diff=pr_context.diff,
-            ticket_id=ticket_id,
-        )
+
+        # Build a fidelity-tagged execution logger on a DEDICATED DB session:
+        # fidelity runs concurrently with the main review under asyncio.gather,
+        # and an AsyncSession is not safe for concurrent use by two tasks. The
+        # owner must commit before close — ReviewLogger only flush()es — or every
+        # fidelity log row is rolled back.
+        fidelity_logger = None
+        fidelity_session = None
+        if db_review_id is not None and settings.database_enabled:
+            from baloo.agent.logger import ReviewLogger
+            from baloo.db.engine import get_session_factory
+
+            fidelity_session = get_session_factory(settings.database_url)()
+            fidelity_logger = ReviewLogger(
+                review_id=db_review_id,
+                session=fidelity_session,
+                installation_id=settings.installation_id,
+                agent_label="fidelity",
+            )
+        try:
+            result = await analyze_fidelity(
+                spec=spec,
+                pr_title=pr_context.title,
+                diff=pr_context.diff,
+                ticket_id=ticket_id,
+                repo_path=repo_path,
+                review_logger=fidelity_logger,
+            )
+        finally:
+            if fidelity_session is not None:
+                try:
+                    await fidelity_session.commit()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Failed to commit fidelity log session: %s", exc)
+                try:
+                    await fidelity_session.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
         return format_fidelity_report(result=result, ticket_id=ticket_id), result
 
     except Exception as e:
         logger.error(f"Fidelity analysis error: {e}", exc_info=True)
         return "", None
+
+
+async def _run_documentation_drift_analysis(
+    github_client: GitHubAPIClient,
+    repo_full_name: str,
+    pr_context: PRContext,
+    repo_path: str | None = None,
+    db_review_id: int | None = None,
+) -> tuple[str, DocumentationDriftResult | None]:
+    """Run PR-time documentation drift analysis as an isolated side report."""
+    try:
+        if not settings.documentation_drift_enabled:
+            return "", None
+
+        catalog = load_documentation_catalog(
+            repo_path,
+            settings.documentation_drift_catalog_path,
+        )
+        if catalog is None:
+            logger.info(
+                "Documentation drift: no catalog found for %s#%s",
+                repo_full_name,
+                pr_context.pr_number,
+            )
+            return "", None
+
+        work_item = build_documentation_work_item(pr_context=pr_context, catalog=catalog)
+        if not work_item.needs_analysis:
+            logger.info(
+                "Documentation drift: no relevant documentation analysis needed for %s#%s",
+                repo_full_name,
+                pr_context.pr_number,
+            )
+            return "", None
+
+        documentation_logger = None
+        documentation_session = None
+        if db_review_id is not None and settings.database_enabled:
+            from baloo.agent.logger import ReviewLogger
+            from baloo.db.engine import get_session_factory
+
+            documentation_session = get_session_factory(settings.database_url)()
+            documentation_logger = ReviewLogger(
+                review_id=db_review_id,
+                session=documentation_session,
+                installation_id=settings.installation_id,
+                agent_label="documentation",
+            )
+
+        try:
+            result = await analyze_documentation_drift(
+                pr_context=pr_context,
+                work_item=work_item,
+                catalog_path=settings.documentation_drift_catalog_path,
+                repo_path=repo_path,
+                model=settings.documentation_drift_model,
+                review_logger=documentation_logger,
+            )
+        finally:
+            if documentation_session is not None:
+                try:
+                    await documentation_session.commit()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Failed to commit documentation log session: %s", exc)
+                try:
+                    await documentation_session.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if result is None:
+            return "", None
+
+        return format_documentation_drift_report(result), result
+    except Exception as exc:
+        logger.warning("Documentation drift analysis error: %s", exc, exc_info=True)
+        return "", None
+
+
+def _existing_documentation_drift_comment(
+    issue_comments: list[DiscussionComment],
+) -> DiscussionComment | None:
+    """Return the existing Baloo documentation drift issue comment, if any."""
+    for comment in issue_comments:
+        if comment.is_baloo and has_documentation_drift_comment(comment.body):
+            return comment
+    return None
+
+
+async def _post_or_update_documentation_drift_report(
+    github_client: GitHubAPIClient,
+    repo_full_name: str,
+    pr_number: int,
+    issue_comments: list[DiscussionComment],
+    result: DocumentationDriftResult,
+) -> str:
+    """Upsert the single PR-level documentation drift report comment."""
+    existing = _existing_documentation_drift_comment(issue_comments)
+    report_body = format_documentation_drift_report(result)
+
+    if existing is not None:
+        await github_client.edit_comment(repo_full_name, existing.id, report_body)
+        return "updated"
+
+    if has_actionable_documentation_drift(result):
+        await github_client.post_comment(repo_full_name, pr_number, report_body)
+        return "posted"
+
+    return "skipped"
 
 
 async def _process_thread_reply(
@@ -1007,6 +1229,7 @@ async def process_pr_review(
 
             changed_files_scope: set[str] | None = None
             changed_line_scope: dict[str, set[int]] = {}
+            sync_scope_metadata: dict = {}
             review_mode = "full_pr"
             review_mode_reason = "Non-synchronize trigger"
             review_context = pr_context
@@ -1026,6 +1249,7 @@ async def process_pr_review(
                         pr_context=pr_context,
                         changed_files_changed=changed_files_changed,
                         scoped_diff=scoped_diff,
+                        usage_metadata=sync_scope_metadata,
                     )
                     logger.info(
                         "Synchronize review mode for %s#%s: %s (%s)",
@@ -1088,19 +1312,74 @@ async def process_pr_review(
 
             agent = BalooAgent()
 
-            if settings.fidelity_enabled:
-                (fidelity_report_text, fidelity_result), agent_result = await asyncio.gather(
+            async with provision_repo(
+                installation_id,
+                repo_full_name,
+                pr_context.head_sha,
+                review_id=db_review_id,
+            ) as checkout:
+                repo_path = checkout.path if checkout.available else None
+                if repo_path:
+                    agent.options.cwd = repo_path
+                    logger.info(
+                        "Agent file tools using provisioned worktree for %s#%s: %s",
+                        repo_full_name,
+                        pr_number,
+                        repo_path,
+                    )
+                else:
+                    # No checkout: the PI subprocess inherits baloo's own cwd
+                    # (/app in the container), so every PR-file read/grep/find
+                    # fails and the review is effectively diff-only. Surface why
+                    # — the master switch being off is otherwise totally silent.
+                    logger.warning(
+                        "No PR checkout for %s#%s (repo_cache_enabled=%s) — agent "
+                        "file tools will run against baloo's own cwd, not the PR; "
+                        "reviewing diff-only",
+                        repo_full_name,
+                        pr_number,
+                        settings.repo_cache_enabled,
+                    )
+
+                async def _skip_fidelity() -> tuple[str, FidelityResult | None]:
+                    return "", None
+
+                async def _skip_documentation() -> tuple[str, DocumentationDriftResult | None]:
+                    return "", None
+
+                fidelity_task = (
                     _run_fidelity_analysis(
                         github_client,
                         repo_full_name,
                         pr_context,
                         linear_result=linear_fetch_result,
-                    ),
+                        repo_path=repo_path,
+                        db_review_id=db_review_id,
+                    )
+                    if settings.fidelity_enabled
+                    else _skip_fidelity()
+                )
+                documentation_task = (
+                    _run_documentation_drift_analysis(
+                        github_client,
+                        repo_full_name,
+                        pr_context,
+                        repo_path=repo_path,
+                        db_review_id=db_review_id,
+                    )
+                    if settings.documentation_drift_enabled
+                    else _skip_documentation()
+                )
+
+                (
+                    (fidelity_report_text, fidelity_result),
+                    (documentation_report_text, documentation_result),
+                    agent_result,
+                ) = await asyncio.gather(
+                    fidelity_task,
+                    documentation_task,
                     agent.review_pr(review_context, review_id=db_review_id),
                 )
-            else:
-                fidelity_report_text, fidelity_result = "", None
-                agent_result = await agent.review_pr(review_context, review_id=db_review_id)
             agent_metadata = agent_result.metadata
             review_result = agent_result
 
@@ -1209,14 +1488,7 @@ async def process_pr_review(
                 nonlocal agent_metadata
                 merged_metadata = {
                     **review_result.metadata,
-                    "fp_verification": {
-                        "total": fp_result.stats.total_verified,
-                        "kept": fp_result.stats.kept,
-                        "rejected": fp_result.stats.rejected,
-                        "errors": fp_result.stats.errors,
-                        "cost_usd": fp_result.stats.total_cost_usd,
-                        "duration_seconds": fp_result.stats.duration_seconds,
-                    },
+                    "fp_verification": _fp_stats_metadata(fp_result.stats),
                 }
                 agent_metadata = merged_metadata
                 logger.info(
@@ -1227,12 +1499,24 @@ async def process_pr_review(
                 )
                 return fp_result.verified
 
+            thread_reverification_metadata: dict = {}
             verified_new_findings, auto_resolved_count = await asyncio.gather(
                 _fp_verify_new_findings(new_findings_comments),
                 _reverify_awaiting_threads(
-                    awaiting_not_refiled, pr_context, github_client, db_review_id=db_review_id
+                    awaiting_not_refiled,
+                    pr_context,
+                    github_client,
+                    db_review_id=db_review_id,
+                    usage_metadata=thread_reverification_metadata,
                 ),
             )
+            side_agent_metadata = {}
+            if sync_scope_metadata:
+                side_agent_metadata["sync_scope_decider"] = sync_scope_metadata
+            if thread_reverification_metadata:
+                side_agent_metadata["thread_reverification"] = thread_reverification_metadata
+            if side_agent_metadata:
+                agent_metadata = {**agent_metadata, **side_agent_metadata}
 
             fresh_comments = verified_new_findings
             decision_comments = fresh_comments + [comment for _, comment in follow_up_comments]
@@ -1442,6 +1726,14 @@ async def process_pr_review(
                         completion_msg += (
                             f"\n\nPosted {posted_review_result.posted} inline comment(s)."
                         )
+                        if posted_review_result.dropped:
+                            completion_msg += f"\n\n⚠️ {len(posted_review_result.dropped)} finding(s) could not be placed inline (line not in diff):\n"
+                            for d in posted_review_result.dropped:
+                                c = d.comment
+                                completion_msg += (
+                                    f"\n**[{c.severity.value}] {c.category.value}** "
+                                    f"`{c.path}:{c.line}`\n\n{c.body}\n"
+                                )
                 elif not request_changes and approve:
                     completion_msg = (
                         f"✅ Baloo review completed in {review_duration}s. No issues found!"
@@ -1482,6 +1774,28 @@ async def process_pr_review(
                 except Exception as fidelity_err:
                     logger.warning(f"Failed to post fidelity report: {fidelity_err}")
 
+            if documentation_result:
+                try:
+                    documentation_report_status = await _post_or_update_documentation_drift_report(
+                        github_client,
+                        repo_full_name,
+                        pr_number,
+                        pr_context.issue_comments,
+                        documentation_result,
+                    )
+                    if documentation_report_text:
+                        logger.info(
+                            "Documentation drift report %s for %s#%s",
+                            documentation_report_status,
+                            repo_full_name,
+                            pr_number,
+                        )
+                except Exception as documentation_err:
+                    logger.warning(
+                        "Failed to post documentation drift report: %s",
+                        documentation_err,
+                    )
+
             logger.info(
                 f"Review completed for {repo_full_name}#{pr_number}: "
                 f"{len(routed['review'])} blocking, {len(routed['checks'])} non-blocking"
@@ -1491,15 +1805,28 @@ async def process_pr_review(
             if settings.database_enabled and db_review_id:
                 review_metadata = review_result.metadata
                 fidelity_metadata = fidelity_result.metadata if fidelity_result else {}
+                documentation_metadata = (
+                    documentation_result.metadata if documentation_result else {}
+                )
 
                 # Aggregate costs and tokens
-                total_input_tokens = (review_metadata.get("input_tokens") or 0) + (
-                    fidelity_metadata.get("input_tokens") or 0
+                total_input_tokens = _total_review_tokens(
+                    "input_tokens",
+                    review_metadata,
+                    fidelity_metadata,
+                    documentation_metadata,
                 )
-                total_output_tokens = (review_metadata.get("output_tokens") or 0) + (
-                    fidelity_metadata.get("output_tokens") or 0
+                total_output_tokens = _total_review_tokens(
+                    "output_tokens",
+                    review_metadata,
+                    fidelity_metadata,
+                    documentation_metadata,
                 )
-                total_cost_usd = _total_review_cost_usd(review_metadata, fidelity_metadata)
+                total_cost_usd = _total_review_cost_usd(
+                    review_metadata,
+                    fidelity_metadata,
+                    documentation_metadata,
+                )
 
                 # Detect agent soft-failures: agent caught an error
                 # internally and returned 0 findings

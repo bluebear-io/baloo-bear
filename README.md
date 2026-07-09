@@ -1,9 +1,8 @@
-<p align="center">
-  <strong>AI-powered code reviews for every pull request</strong>
-</p>
+# Baloo: self-hosted AI code review for GitHub pull requests
 
 <p align="center">
   <a href="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
@@ -11,7 +10,11 @@
 
 ---
 
-Baloo is a **GitHub App** that automatically reviews pull requests using LLMs. It installs on your repos, reads every PR diff, and posts actionable review comments — catching bugs, security issues, and guideline violations before humans look at the code.
+Baloo is an open source **GitHub App for AI pull request review**. It installs on your repositories, reads PR diffs and relevant project context, and posts actionable review comments that catch bugs, security issues, missing error handling, and repository guideline violations before humans review the code.
+
+Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model API keys for Claude or Gemini.
+
+Website: [BlueBear Security](https://www.bluebear.io)
 
 ## Why Baloo?
 
@@ -20,6 +23,15 @@ Baloo is a **GitHub App** that automatically reviews pull requests using LLMs. I
 - **Posts like a teammate** — inline comments on specific lines, severity labels, approval/request-changes decisions
 - **Runs on every push** — new commits get reviewed automatically, with discussion thread tracking across iterations
 - **Self-hosted & private** — your code never leaves your infrastructure; bring your own API keys
+
+## Use Cases
+
+- **AI code review for GitHub pull requests** — review opened, reopened, synchronized, and ready-for-review PRs
+- **Security review assistance** — flag injection risks, unsafe auth patterns, secret handling mistakes, and missing validation
+- **Repository guideline enforcement** — apply project-specific rules from `AGENTS.md` and `CONTRIBUTING.md`
+- **Dependency update review** — use Dependabot-aware prompts for dependency PRs
+- **Plan fidelity checks** — compare an implementation against plan documents before approval
+- **Local review before opening a PR** — run the same review pipeline against a local git diff
 
 ## What It Looks Like
 
@@ -41,24 +53,35 @@ Inline comments appear on the exact lines:
 
 ## Features
 
-| Feature | Description |
-|---|---|
-| **Agentic review** | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
-| **Multi-model** | Supports Claude (Sonnet, Haiku, Opus) and Gemini (Flash, Pro) with automatic fallback |
-| **Severity routing** | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered |
-| **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations |
-| **Discussion tracking** | Follows up on existing threads, skips duplicates, detects addressed feedback |
-| **Fidelity analysis** | Optionally compares PR against design plan documents |
-| **FP reduction** | Optional second LLM pass to verify findings and drop false positives |
-| **Dashboard** | Optional PostgreSQL-backed review history UI with cost tracking |
-| **Dependabot-aware** | Specialized review logic for dependency update PRs |
-| **Local dry-run** | Run [`scripts/local_review.py`](scripts/local_review.py) against a local git diff — no GitHub webhook or posted comments |
+| Feature                   | Description                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
+| **Multi-model**           | Supports Claude (Sonnet, Haiku, Opus) and Gemini (Flash, Pro) with automatic fallback                                             |
+| **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered                                                  |
+| **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
+| **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |
+| **Fidelity analysis**     | Optionally compares PR against design plan documents                                                                              |
+| **Documentation drift**   | Optionally asks authors to update mapped docs when implementation changes make them stale                                         |
+| **FP reduction**          | Optional second LLM pass to verify findings and drop false positives                                                              |
+| **Dashboard**             | Optional PostgreSQL-backed review history UI with cost tracking                                                                   |
+| **Dependabot-aware**      | Specialized review logic for dependency update PRs                                                                                |
+| **Local dry-run**         | Run [`scripts/local_review.py`](scripts/local_review.py) against a local git diff — no GitHub webhook or posted comments          |
+
+## Baloo Compared
+
+| Need                             | Baloo's fit                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Hosted AI reviewer alternative   | Self-host Baloo as your own GitHub App and choose the model credentials                                  |
+| Static analysis complement       | Baloo reviews intent, behavior, edge cases, and repo-specific conventions that linters may not express   |
+| GitHub Copilot review complement | Baloo runs automatically as an app on every PR update and can route findings to reviews or Checks        |
+| Security review workflow         | Baloo combines LLM review with severity routing, false-positive verification, and GitHub-native comments |
 
 ## Quick Start
 
 ### 1. Create a GitHub App
 
 Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub App**:
+
 - **Webhook URL**: Your public HTTPS endpoint (e.g. `https://baloo.example.com/webhook`)
 - **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write)
 - **Events**: Pull request
@@ -117,6 +140,7 @@ baloo/
 ├── config/      # Environment-based settings
 ├── db/          # PostgreSQL models + migrations (optional)
 ├── dashboard/   # Review history UI (optional)
+├── documentation/ # Documentation drift analysis (optional)
 ├── fidelity/    # Plan-vs-implementation analysis (optional)
 ├── github/      # Webhooks, API client, auth, Checks API
 └── processor/   # Findings filter, severity routing, decisions, FP verification
@@ -126,21 +150,24 @@ baloo/
 
 All settings are environment variables. Key ones:
 
-| Variable | Default | Description |
-|---|---|---|
-| `GITHUB_APP_ID` | — | Numeric GitHub App ID |
-| `GITHUB_PRIVATE_KEY` | — | Path to `.pem` file or inline PEM |
-| `GITHUB_WEBHOOK_SECRET` | — | Webhook signature secret |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key |
-| `GEMINI_API_KEY` | — | Google Gemini API key (for fallback/multi-model) |
-| `AGENT_MODEL` | `sonnet` | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus` |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback on primary failure |
-| `REVIEW_AUTO_APPROVE` | `true` | Auto-approve PRs with no blocking findings |
-| `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post |
-| `FP_VERIFICATION_ENABLED` | `false` | Enable LLM false-positive verification |
-| `DATABASE_ENABLED` | `false` | Enable PostgreSQL review history |
-| `DASHBOARD_ENABLED` | `false` | Enable review dashboard UI |
-| `FIDELITY_ENABLED` | `true` | Compare PRs against plan docs |
+| Variable                      | Default                   | Description                                                                              |
+| ----------------------------- | ------------------------- | ---------------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`               | —                         | Numeric GitHub App ID                                                                    |
+| `GITHUB_PRIVATE_KEY`          | —                         | Path to `.pem` file or inline PEM                                                        |
+| `GITHUB_WEBHOOK_SECRET`       | —                         | Webhook signature secret                                                                 |
+| `ANTHROPIC_API_KEY`           | —                         | Anthropic API key                                                                        |
+| `GEMINI_API_KEY`              | —                         | Google Gemini API key (for fallback/multi-model)                                         |
+| `AGENT_MODEL`                 | `sonnet`                  | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus`                       |
+| `AGENT_FALLBACK_MODEL`        | `google/gemini-2.5-flash` | Fallback on primary failure                                                              |
+| `REVIEW_AUTO_APPROVE`         | `true`                    | Auto-approve PRs with no blocking findings                                               |
+| `REVIEW_MIN_SEVERITY`         | `MEDIUM`                  | Minimum severity to post                                                                 |
+| `FP_VERIFICATION_ENABLED`     | `true`                    | Enable LLM false-positive verification                                                   |
+| `DATABASE_ENABLED`            | `false`                   | Enable PostgreSQL review history                                                         |
+| `DASHBOARD_ENABLED`           | `true`                    | Enable review dashboard UI (needs `DATABASE_ENABLED` + credentials)                      |
+| `REPO_CACHE_ENABLED`          | `true`                    | Check out the PR repo so the agent reads real code, not just the diff                    |
+| `REPO_SANDBOX_MODE`           | `bwrap`                   | Sandbox the agent subprocess to the review worktree (falls back to `off` if unavailable) |
+| `FIDELITY_ENABLED`            | `true`                    | Compare PRs against plan docs                                                            |
+| `DOCUMENTATION_DRIFT_ENABLED` | `false`                   | Enable PR-time documentation drift checks                                                |
 
 Full reference: [docs/configuration.md](docs/configuration.md)
 
@@ -149,9 +176,11 @@ Full reference: [docs/configuration.md](docs/configuration.md)
 📖 **[Full documentation](docs/README.md)** — Feature guides, configuration reference, and more
 
 Feature guides:
+
 - [Review Agent](docs/features/review-agent.md) — How the agentic review works
 - [Guidelines Enforcement](docs/features/guidelines.md) — Repo convention checking
 - [Fidelity Analysis](docs/features/fidelity.md) — Plan-vs-implementation scoring
+- [Documentation Drift](docs/features/documentation-drift.md) — PR-time stale docs detection
 - [Models](docs/features/models.md) — Supported models and fallback
 - [Severity Routing](docs/features/severity-routing.md) — How findings reach developers
 - [Discussion Tracking](docs/features/discussions.md) — Thread follow-ups across iterations
@@ -167,6 +196,14 @@ uv run pytest              # test
 uv run ruff check baloo    # lint
 uv run black --check baloo # format check
 ```
+
+When changing Python dependencies, regenerate the hash-pinned production requirements before committing:
+
+```bash
+uv export --frozen --no-dev --no-emit-project --no-header --output-file requirements-prod.txt
+```
+
+CI checks this file against `uv export`, and the Docker image installs production dependencies from it.
 
 ### Local review (dry run)
 
@@ -184,6 +221,28 @@ uv run python scripts/local_review.py --git-workdir /path/to/other-repo --base o
 ```
 
 See [docs/development.md](docs/development.md) for the full contributor guide.
+
+## FAQ
+
+### Is Baloo self-hosted?
+
+Yes. Baloo runs as your own service and GitHub App. You control deployment, repository installation scope, database persistence, and model credentials.
+
+### Does Baloo send code to a hosted Baloo service?
+
+No. Baloo does not require a Baloo-hosted backend. The running service reads repository content through your GitHub App installation and sends review context to the LLM provider you configure.
+
+### Which models does Baloo support?
+
+Baloo supports Claude models through Anthropic and Gemini models through Google, including fallback model configuration. See [docs/features/models.md](docs/features/models.md).
+
+### Is Baloo a replacement for CodeQL, Semgrep, Ruff, or other static analysis tools?
+
+No. Baloo is a review agent that complements static analysis. Keep deterministic scanners for known patterns and use Baloo for reasoning-heavy findings, project conventions, and PR-level review context.
+
+### Can I try Baloo without posting comments to GitHub?
+
+Yes. Use [`scripts/local_review.py`](scripts/local_review.py) to run a dry review against a local git diff.
 
 ## Support
 

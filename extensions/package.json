@@ -6,11 +6,11 @@
   "dependencies": {
     "@ast-grep/lang-go": "^0.0.6",
     "@ast-grep/lang-python": "^0.0.6",
-    "@ast-grep/napi": "^0.42.0",
-    "typebox": "^1.0.0"
+    "@ast-grep/napi": "^0.44.1",
+    "typebox": "^1.2.11"
   },
   "devDependencies": {
-    "@types/node": "^25.6.2",
+    "@types/node": "^26.1.1",
     "typescript": "^6.0.3"
   }
 }

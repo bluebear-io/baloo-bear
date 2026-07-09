@@ -79,10 +79,13 @@ All Baloo settings are environment variables. Set them in `.env`, pass them via 
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_ENABLED` | `true` | Enable PostgreSQL persistence |
+| `DATABASE_ENABLED` | `false` | Enable PostgreSQL persistence |
 | `DATABASE_URL` | — | PostgreSQL connection URL. Auto-set in docker-compose |
+| `POSTGRES_USER` | `baloo` | Local Docker Compose PostgreSQL user |
+| `POSTGRES_PASSWORD` | — | Local Docker Compose PostgreSQL password. Set explicitly before running Compose |
+| `POSTGRES_DB` | `baloo` | Local Docker Compose PostgreSQL database name |
 | `INSTALLATION_ID` | — | GitHub installation ID for this broker. If set, broker only processes webhooks for this installation and scopes all DB queries to this tenant. Unset = serve all installations |
-| `DASHBOARD_ENABLED` | `true` | Enable review history dashboard |
+| `DASHBOARD_ENABLED` | `true` | Enable review history dashboard (still requires `DATABASE_ENABLED=true` and credentials to be useful) |
 | `DASHBOARD_USERNAME` | — | Dashboard basic auth username |
 | `DASHBOARD_PASSWORD` | — | Dashboard basic auth password |
 | `LOG_RETENTION_DAYS` | `30` | Days to retain execution logs (0 to disable cleanup) |
@@ -108,6 +111,23 @@ All Baloo settings are environment variables. Set them in `.env`, pass them via 
 | Variable | Default | Description |
 |---|---|---|
 | `AST_TOOLS_ENABLED` | `true` | Enable AST analysis tools (outline, grep, symbols) for the review agent |
+
+## Repo Provisioning
+
+| Variable | Default | Description |
+|---|---|---|
+| `REPO_CACHE_ENABLED` | `true` | Check out the PR repo at its head SHA so the agent's file tools read real code. Off = diff-only review. |
+| `REPO_CACHE_ROOT` | `/tmp/baloo-repo-cache` | Ephemeral root for cached bare clones + per-review worktrees (lost on redeploy). |
+| `REPO_CACHE_MAX_DISK_GB` | `10` | Total cache disk cap (GB). Least-recently-used caches are evicted above this. |
+| `REPO_SANDBOX_MODE` | `bwrap` | Filesystem sandbox for the agent subprocess (`bwrap` binds only the review worktree read-only; `off` disables). Requires bubblewrap + unprivileged user namespaces; falls back to `off` automatically when unavailable. |
+
+## Documentation Drift
+
+| Variable | Default | Description |
+|---|---|---|
+| `DOCUMENTATION_DRIFT_ENABLED` | `false` | Enable PR-time documentation drift analysis. |
+| `DOCUMENTATION_DRIFT_CATALOG_PATH` | `.baloo/documentation-catalog.json` | Repo-relative path to the docs catalog used to map changed code areas to docs. |
+| `DOCUMENTATION_DRIFT_MODEL` | `sonnet` | Model used for the documentation drift side agent. |
 
 ## Multi-Broker Deployment
 

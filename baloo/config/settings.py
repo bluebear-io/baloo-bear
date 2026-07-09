@@ -171,6 +171,40 @@ class Settings(BaseSettings):
         description="Enable AST analysis tools (outline, grep, symbols) for the review agent",
     )
 
+    # Repo Provisioning Configuration
+    repo_cache_enabled: bool = Field(
+        default=True,
+        description="Check out the PR repo so the agent's file tools read real code "
+        "(off = diff-only behavior)",
+    )
+    repo_cache_root: str = Field(
+        default="/tmp/baloo-repo-cache",
+        description="Ephemeral root dir for cached bare clones and per-review worktrees",
+    )
+    repo_cache_max_disk_gb: int = Field(
+        default=10,
+        description="Total cache disk cap (GB); least-recently-used caches are evicted over this",
+    )
+    repo_sandbox_mode: str = Field(
+        default="bwrap",
+        description="Filesystem sandbox for the agent subprocess: 'bwrap' or 'off' "
+        "(bwrap falls back to off if unprivileged user namespaces are unavailable)",
+    )
+
+    # Documentation Drift Configuration
+    documentation_drift_enabled: bool = Field(
+        default=False,
+        description="Enable PR-time documentation drift analysis",
+    )
+    documentation_drift_catalog_path: str = Field(
+        default=".baloo/documentation-catalog.json",
+        description="Repo-relative path to the documentation drift catalog",
+    )
+    documentation_drift_model: str = Field(
+        default="sonnet",
+        description="Model for documentation drift analysis (short name or provider/model)",
+    )
+
     # Fidelity Report Configuration
     fidelity_enabled: bool = Field(
         default=True,

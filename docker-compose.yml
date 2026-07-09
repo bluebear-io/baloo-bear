@@ -1,11 +1,11 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: baloo-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-baloo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baloo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-baloo}
     volumes:
       - baloo_pgdata:/var/lib/postgresql/data
@@ -42,14 +42,21 @@ services:
       AGENT_TEMPERATURE: ${AGENT_TEMPERATURE:-0.2}
       REVIEW_AUTO_APPROVE: ${REVIEW_AUTO_APPROVE:-false}
       REVIEW_MIN_SEVERITY: ${REVIEW_MIN_SEVERITY:-MEDIUM}
-      DATABASE_ENABLED: ${DATABASE_ENABLED:-true}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://baloo:baloo@db:5432/baloo}
+      DATABASE_ENABLED: ${DATABASE_ENABLED:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-baloo}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-baloo}}
       INSTALLATION_ID: ${INSTALLATION_ID:-}
       DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-true}
-      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-baloo}
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-baloo}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
       LINEAR_API_URL: ${LINEAR_API_URL:-https://api.linear.app/graphql}
+      REPO_CACHE_ENABLED: ${REPO_CACHE_ENABLED:-true}
+      REPO_CACHE_ROOT: ${REPO_CACHE_ROOT:-/tmp/baloo-repo-cache}
+      REPO_CACHE_MAX_DISK_GB: ${REPO_CACHE_MAX_DISK_GB:-10}
+      REPO_SANDBOX_MODE: ${REPO_SANDBOX_MODE:-bwrap}
+      DOCUMENTATION_DRIFT_ENABLED: ${DOCUMENTATION_DRIFT_ENABLED:-false}
+      DOCUMENTATION_DRIFT_CATALOG_PATH: ${DOCUMENTATION_DRIFT_CATALOG_PATH:-.baloo/documentation-catalog.json}
+      DOCUMENTATION_DRIFT_MODEL: ${DOCUMENTATION_DRIFT_MODEL:-sonnet}
     ports:
       - "127.0.0.1:8000:8000"
 

@@ -342,6 +342,64 @@ class TestFetchPaginatedJson:
         assert result == []
         mock_http.get.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_stops_on_404_mid_pagination(self):
+        # GitHub can return 404 for out-of-bounds pages (e.g. PR files endpoint)
+        page1 = [{"id": i} for i in range(100)]
+        page2 = [{"id": i} for i in range(100, 200)]
+        client, mock_http = _make_client()
+        mock_http.get.side_effect = [
+            _mock_response(page1),
+            _mock_response(page2),
+            _mock_response(status_code=404),
+        ]
+
+        result = await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        assert len(result) == 200
+        assert mock_http.get.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_raises_on_404_first_page(self):
+        # A 404 on page 1 is a genuine error (bad URL, deleted PR) — must not swallow it
+        client, mock_http = _make_client()
+        mock_http.get.return_value = _mock_response(status_code=404)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        mock_http.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_read_timeout(self, monkeypatch):
+        items = [{"id": 1}]
+        client, mock_http = _make_client()
+        sleep = AsyncMock()
+        monkeypatch.setattr("baloo.github.api_client.asyncio.sleep", sleep)
+        mock_http.get.side_effect = [
+            httpx.ReadTimeout("read timed out"),
+            _mock_response(items),
+        ]
+
+        result = await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        assert result == items
+        assert mock_http.get.call_count == 2
+        sleep.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_after_read_timeout_retries(self, monkeypatch):
+        client, mock_http = _make_client()
+        sleep = AsyncMock()
+        monkeypatch.setattr("baloo.github.api_client.asyncio.sleep", sleep)
+        mock_http.get.side_effect = httpx.ReadTimeout("read timed out")
+
+        with pytest.raises(httpx.ReadTimeout):
+            await client._fetch_paginated_json("https://api.github.com/some/endpoint")
+
+        assert mock_http.get.call_count == 3
+        assert sleep.await_count == 2
+
 
 class TestGetChangedScopeBetweenCommits:
     @pytest.mark.asyncio

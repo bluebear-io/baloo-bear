@@ -1,6 +1,8 @@
 # Multi-stage build for Baloo Code Review Agent
 # Pin to specific version for security patching - update periodically
-FROM python:3.11.11-slim-bookworm as base
+FROM node:26-bookworm-slim@sha256:b16ca7b4dcfb20184e1c70f9ee30c6a75ed1da669cfafd6d2add4761b123d79f as node-runtime
+
+FROM python:3.14.6-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 as base
 
 # Build arguments for version tracking
 ARG BALOO_VERSION=dev
@@ -11,34 +13,38 @@ ARG BALOO_BUILD_DATE=unknown
 ENV BALOO_VERSION=${BALOO_VERSION}
 ENV BALOO_COMMIT_SHA=${BALOO_COMMIT_SHA}
 ENV BALOO_BUILD_DATE=${BALOO_BUILD_DATE}
+ENV PATH="/app/node_modules/.bin:${PATH}"
+
+# Copy Node.js from the pinned official Node image. PI requires Node >=20.6.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # Install system dependencies and ensure OpenSSL is up-to-date
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    bubblewrap \
     && apt-get upgrade -y openssl libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js (required for PI coding agent)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
 # Copy dependency files first (for better layer caching)
-COPY pyproject.toml ./
+COPY requirements-prod.txt ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -e .
+# Install Python dependencies from a hash-pinned requirements export.
+RUN pip install --no-cache-dir --require-hashes -r requirements-prod.txt
 
-# Install PI coding agent globally (provides the 'pi' CLI)
-RUN npm install -g @mariozechner/pi-coding-agent
+# Install PI coding agent from package-lock.json (provides the 'pi' CLI)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Install AST tools extension dependencies
 COPY extensions/package.json extensions/package-lock.json /app/extensions/
-RUN cd /app/extensions && npm ci --production
+RUN cd /app/extensions && npm ci --omit=dev
 
 # Copy application code
 COPY . .

@@ -32,6 +32,8 @@ class FidelityAgent(PIAgentBase):
         pr_title: str,
         diff: str,
         ticket_id: str,
+        repo_path: str | None = None,
+        review_logger: object | None = None,
     ) -> FidelityResult | None:
         """
         Run fidelity analysis comparing PR changes to design spec.
@@ -41,6 +43,8 @@ class FidelityAgent(PIAgentBase):
             pr_title: PR title for context
             diff: The PR diff
             ticket_id: Ticket ID (e.g., PROJ-123)
+            repo_path: Provisioned worktree path; when set, the agent's file
+                tools read the real PR code from here instead of baloo's own fs.
 
         Returns:
             FidelityResult with analysis, or None if analysis fails
@@ -48,8 +52,13 @@ class FidelityAgent(PIAgentBase):
         logger.info(f"Starting fidelity analysis for {ticket_id}")
 
         try:
+            # Point the agent's file tools at the provisioned worktree. Set
+            # unconditionally (None = diff-only) so a reused instance can never
+            # retain a stale cwd from an earlier call.
+            self.options.cwd = repo_path
+
             prompt = build_fidelity_prompt(spec, pr_title, diff)
-            structured_data, metadata = await self.run_query(prompt)
+            structured_data, metadata = await self.run_query(prompt, review_logger=review_logger)
             result = self._parse_structured_fidelity(structured_data, ticket_id)
 
             if result:
@@ -94,7 +103,16 @@ async def analyze_fidelity(
     pr_title: str,
     diff: str,
     ticket_id: str,
+    repo_path: str | None = None,
+    review_logger: object | None = None,
 ) -> FidelityResult | None:
     """Run fidelity analysis via FidelityAgent."""
     agent = FidelityAgent()
-    return await agent.analyze(spec, pr_title, diff, ticket_id)
+    return await agent.analyze(
+        spec,
+        pr_title,
+        diff,
+        ticket_id,
+        repo_path=repo_path,
+        review_logger=review_logger,
+    )

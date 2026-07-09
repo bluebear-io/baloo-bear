@@ -55,3 +55,75 @@ def test_dashboard_overview_renders() -> None:
     assert response.status_code == 200
     assert "Overview" in response.text
     assert "example-org/example-repo" in response.text
+
+
+def test_dashboard_settings_renders_sanitized_values(monkeypatch) -> None:
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://dbuser:dbpass@db.example.com:5432/baloo"
+        "?sslmode=require&password=query-secret&sslpassword=ssl-secret",
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-secret")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "webhook-secret")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "dashboard-secret")
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    reset_settings()
+
+    app = _build_app()
+    client = TestClient(app)
+    response = client.get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "Settings" in response.text
+    assert "APP_ENVIRONMENT" in response.text
+    assert "production" in response.text
+    assert "DATABASE_URL" in response.text
+    assert (
+        "postgresql+asyncpg://db.example.com:5432/baloo"
+        "?sslmode=require&amp;password=%5BREDACTED%5D&amp;sslpassword=%5BREDACTED%5D"
+        in response.text
+    )
+    assert "Configured (redacted)" in response.text
+    assert "dbuser" not in response.text
+    assert "dbpass" not in response.text
+    assert "query-secret" not in response.text
+    assert "ssl-secret" not in response.text
+    assert "sk-ant-test-secret" not in response.text
+    assert "webhook-secret" not in response.text
+    assert "dashboard-secret" not in response.text
+
+
+def test_every_setting_is_categorized() -> None:
+    """No setting should fall into the catch-all 'Other' bucket — each new
+    field must be assigned a category so it surfaces under a real heading."""
+    from baloo.dashboard.router import _settings_rows
+
+    uncategorized = sorted(r["name"] for r in _settings_rows() if r["category"] == "Other")
+    assert uncategorized == [], f"settings missing a category: {uncategorized}"
+
+
+def test_repo_provisioning_settings_are_grouped() -> None:
+    from baloo.dashboard.router import _settings_rows
+
+    by_name = {r["name"]: r["category"] for r in _settings_rows()}
+    for name in (
+        "repo_cache_enabled",
+        "repo_cache_root",
+        "repo_cache_max_disk_gb",
+        "repo_sandbox_mode",
+    ):
+        assert by_name[name] == "Repo Provisioning"
+
+
+def test_documentation_drift_settings_are_grouped() -> None:
+    from baloo.dashboard.router import _settings_rows
+
+    by_name = {r["name"]: r["category"] for r in _settings_rows()}
+    for name in (
+        "documentation_drift_enabled",
+        "documentation_drift_catalog_path",
+        "documentation_drift_model",
+    ):
+        assert by_name[name] == "Documentation Drift"
