@@ -173,7 +173,7 @@ def _lang_for_file(filename: str) -> str:
     return _EXT_TO_LANG.get(ext, "text")
 
 
-def enforce_severity(finding: ReviewFinding) -> str:
+def enforce_severity(finding: ReviewFinding | GeneralReviewFinding) -> str:
     """Derive severity from category using deterministic rules.
 
     Security/Bugs/Silent Failures/Guidelines → floor of HIGH (CRITICAL passes through).
@@ -275,7 +275,7 @@ def parse_review_output(
 
     general: list[GeneralFinding] = []
     for gf in output.general_findings:
-        enforced_severity = enforce_severity(gf)  # type: ignore[arg-type]
+        enforced_severity = enforce_severity(gf)
         body_parts = [f"**{gf.title}**", "", gf.description]
         if gf.recommendation:
             body_parts.extend(["", "**Recommendation:**", gf.recommendation])

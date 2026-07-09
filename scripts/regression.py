@@ -55,21 +55,22 @@ def _run_scenario(scenario: dict, base_env: dict[str, str]) -> dict:
     if model_override:
         cmd += ["--model", model_override]
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(REPO_ROOT),
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-
-    if proc.returncode != 0:
-        return {"_error": proc.stderr[-2000:]}
-
     try:
-        return json.loads(Path(out_path).read_text())
-    except Exception as exc:
-        return {"_error": f"Could not parse output JSON: {exc}\nstderr: {proc.stderr[-500:]}"}
+        proc = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        if proc.returncode != 0:
+            return {"_error": proc.stderr[-2000:]}
+
+        try:
+            return json.loads(Path(out_path).read_text())
+        except Exception as exc:
+            return {"_error": f"Could not parse output JSON: {exc}\nstderr: {proc.stderr[-500:]}"}
     finally:
         Path(out_path).unlink(missing_ok=True)
 
@@ -125,6 +126,9 @@ def _check_assertions(result: dict, assertions: list[dict]) -> list[str]:
             want = a["severity"].upper()
             if not any(f.get("severity") == want for f in all_findings):
                 failures.append(f"Expected ≥1 {want} finding")
+
+        else:
+            failures.append(f"Unknown assertion type: '{t}'")
 
     return failures
 
