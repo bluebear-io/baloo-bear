@@ -219,3 +219,22 @@ class TestLifecycleEventEarlyReturn:
 
         assert resp.status_code == 200
         assert resp.json()["reason"] == "app lifecycle event"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lifecycle_delivery_is_suppressed(self):
+        from fastapi.testclient import TestClient
+
+        from baloo.github.webhook_handler import app
+
+        client = TestClient(app, raise_server_exceptions=True)
+        headers = {
+            "X-GitHub-Event": "ping",
+            "X-GitHub-Delivery": "dup-lifecycle-1",
+            "X-Hub-Signature-256": "sha256=fake",
+        }
+        with patch("baloo.github.webhook_handler.verify_webhook_signature", return_value=True):
+            first = client.post("/webhook", json={"zen": "z"}, headers=headers)
+            second = client.post("/webhook", json={"zen": "z"}, headers=headers)
+
+        assert first.json()["status"] == "ignored"
+        assert second.json()["reason"] == "duplicate delivery"

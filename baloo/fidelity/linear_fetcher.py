@@ -20,7 +20,7 @@ _MIN_TICKET_LINES = 5
 @dataclass
 class LinearFetchResult:
     content: str | None
-    skipped_reason: str | None  # "not_found" | "insufficient_detail" | None
+    skipped_reason: str | None  # "not_found" | "insufficient_detail" | "auth_error" | None
 
 
 _ISSUE_QUERY = """
@@ -64,7 +64,17 @@ async def fetch_linear_issue_content(ticket_id: str) -> LinearFetchResult:
 
     try:
         payload = await asyncio.to_thread(_post_graphql, req)
-    except (error.HTTPError, error.URLError, OSError, TimeoutError, json.JSONDecodeError) as exc:
+    except error.HTTPError as exc:
+        if exc.code in (401, 403):
+            logger.error(
+                "Linear API auth failed (HTTP %s) for %s — check LINEAR_API_KEY",
+                exc.code,
+                ticket_id,
+            )
+            return LinearFetchResult(content=None, skipped_reason="auth_error")
+        logger.warning("Linear issue fetch failed for %s: %s", ticket_id, exc)
+        return LinearFetchResult(content=None, skipped_reason="not_found")
+    except (error.URLError, OSError, TimeoutError, json.JSONDecodeError) as exc:
         logger.warning("Linear issue fetch failed for %s: %s", ticket_id, exc)
         return LinearFetchResult(content=None, skipped_reason="not_found")
 

@@ -90,6 +90,26 @@ async def test_returns_none_on_http_error():
         result = await fetch_linear_issue_content("PER-603")
 
     assert result.content is None
+    assert result.skipped_reason == "auth_error"
+
+
+@pytest.mark.asyncio
+async def test_non_auth_http_error_maps_to_not_found():
+    from urllib import error as url_error
+
+    with (
+        patch("baloo.fidelity.linear_fetcher.settings") as mock_settings,
+        patch(
+            "baloo.fidelity.linear_fetcher.request.urlopen",
+            side_effect=url_error.HTTPError(None, 500, "Server Error", {}, None),
+        ),
+    ):
+        mock_settings.linear_api_key = "lin_api_test"
+        mock_settings.linear_api_url = "https://api.linear.app/graphql"
+        result = await fetch_linear_issue_content("PER-603")
+
+    assert result.content is None
+    assert result.skipped_reason == "not_found"
 
 
 @pytest.mark.asyncio

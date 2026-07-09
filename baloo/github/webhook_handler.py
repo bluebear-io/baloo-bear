@@ -26,6 +26,9 @@ from baloo.review.orchestrator import (
 
 logger = logging.getLogger(__name__)
 
+# ponytail: process-local best-effort dedup — cleared on restart and not shared across
+# workers, so a multi-worker deploy gets no cross-process dedup. Move to a shared store
+# (e.g. Redis) if that ever matters.
 _recent_delivery_ids: dict[str, float] = {}
 
 
@@ -168,14 +171,14 @@ async def handle_webhook(
     event = request.headers.get("X-GitHub-Event")
     delivery_id = request.headers.get("X-GitHub-Delivery")
 
-    # Lifecycle events have no repository payload — return early before dedup and security validation
-    if event in ("ping", "installation", "installation_repositories", "meta"):
-        logger.info("Ignoring GitHub App lifecycle event: %s", event)
-        return {"status": "ignored", "event": event or "", "reason": "app lifecycle event"}
-
     if _mark_delivery_seen(delivery_id, settings.webhook_delivery_dedupe_ttl_seconds):
         logger.info("Ignoring duplicate webhook delivery %s", delivery_id)
         return {"status": "skipped", "reason": "duplicate delivery"}
+
+    # Lifecycle events have no repository payload — return early before security validation
+    if event in ("ping", "installation", "installation_repositories", "meta"):
+        logger.info("Ignoring GitHub App lifecycle event: %s", event)
+        return {"status": "ignored", "event": event or "", "reason": "app lifecycle event"}
 
     payload = await request.json()
 

@@ -739,6 +739,14 @@ async def _run_fidelity_analysis(
                 None,
             )
 
+        # ponytail: plan takes priority over a stub ticket — when the ticket exists but has
+        # insufficient detail and a plan file is present, we analyze against the plan alone.
+        if linear_result and linear_result.skipped_reason == "insufficient_detail":
+            logger.warning(
+                "Fidelity: Ticket %s has insufficient detail — analyzing against plan only",
+                ticket_id,
+            )
+
         logger.info(
             "Fidelity: Analyzing %s (ticket=%s, plan=%s)",
             ticket_id,
