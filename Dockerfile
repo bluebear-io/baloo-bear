@@ -1,8 +1,8 @@
 # Multi-stage build for Baloo Code Review Agent
 # Pin to specific version for security patching - update periodically
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 as node-runtime
+FROM node:26-bookworm-slim@sha256:b16ca7b4dcfb20184e1c70f9ee30c6a75ed1da669cfafd6d2add4761b123d79f as node-runtime
 
-FROM python:3.14.5-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb as base
+FROM python:3.14.6-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 as base
 
 # Build arguments for version tracking
 ARG BALOO_VERSION=dev

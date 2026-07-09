@@ -1681,6 +1681,14 @@ async def process_pr_review(
                         completion_msg += (
                             f"\n\nPosted {posted_review_result.posted} inline comment(s)."
                         )
+                        if posted_review_result.dropped:
+                            completion_msg += f"\n\n⚠️ {len(posted_review_result.dropped)} finding(s) could not be placed inline (line not in diff):\n"
+                            for d in posted_review_result.dropped:
+                                c = d.comment
+                                completion_msg += (
+                                    f"\n**[{c.severity.value}] {c.category.value}** "
+                                    f"`{c.path}:{c.line}`\n\n{c.body}\n"
+                                )
                 elif not request_changes and approve:
                     completion_msg = (
                         f"✅ Baloo review completed in {review_duration}s. No issues found!"
