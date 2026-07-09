@@ -1114,3 +1114,49 @@ class TestDocumentationDriftOrchestration:
             )
 
         assert documentation.await_args.args[2] is pr_context
+
+
+class TestGeneralFindingsPosting:
+    """A review whose only findings are general (no file/line) must still be visible."""
+
+    @pytest.mark.asyncio
+    async def test_general_findings_only_review_posts_request_changes(self):
+        from baloo.github.models import GeneralFinding
+
+        gf = GeneralFinding(
+            body="No tests cover the new validator",
+            severity=ReviewSeverity.HIGH,
+            category=FindingCategory.GUIDELINES,
+        )
+        agent = MagicMock()
+        agent.review_pr = AsyncMock(
+            return_value=ReviewResult(
+                summary="## Summary",
+                comments=[],
+                general_findings=[gf],
+                approve=False,
+                request_changes=True,
+                metadata={},
+            )
+        )
+        gc = _make_github_client()
+
+        await _run_review(gc, agent)
+
+        posted_blocking = [
+            call
+            for call in gc.post_review.call_args_list
+            if (
+                call.args[2] if len(call.args) >= 3 else call.kwargs.get("review_result")
+            ).request_changes
+        ]
+        assert posted_blocking, (
+            "A general-findings-only review must post a request_changes review, "
+            "not silently block the PR"
+        )
+        result_arg = (
+            posted_blocking[0].args[2]
+            if len(posted_blocking[0].args) >= 3
+            else posted_blocking[0].kwargs.get("review_result")
+        )
+        assert result_arg.comments == []

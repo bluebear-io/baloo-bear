@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from baloo.fidelity.models import FidelityResult
-from baloo.github.models import ReviewComment
+from baloo.github.models import GeneralFinding, ReviewComment
 from baloo.processor.decision_engine import DecisionEngine
 
 
@@ -230,3 +230,25 @@ class TestGetDecisionSummary:
         summary = DecisionEngine.get_decision_summary(approve=False, request_changes=False)
         assert "Comments Only" in summary
         assert "💬" in summary
+
+
+class TestMakeDecisionWithGeneralFindings:
+    def test_high_general_finding_blocks(self):
+        gf = GeneralFinding(body="Missing tests", severity="HIGH", category="Guidelines")
+        approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
+        assert request_changes is True
+        assert approve is False
+
+    def test_medium_general_finding_does_not_block(self):
+        gf = GeneralFinding(body="Minor observation", severity="MEDIUM", category="Quality")
+        with patch("baloo.processor.decision_engine.get_settings") as mock_settings:
+            mock_settings.return_value.review_auto_approve = False
+            mock_settings.return_value.fidelity_approval_threshold = 80
+            approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
+        assert request_changes is False
+
+    def test_inline_clean_general_high_still_blocks(self):
+        """No inline issues but a HIGH general finding should still request changes."""
+        gf = GeneralFinding(body="No tests added", severity="HIGH", category="Guidelines")
+        approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
+        assert request_changes is True

@@ -8,7 +8,7 @@ from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.prompts import (
     build_pr_review_prompt,
 )
-from baloo.agent.schemas import findings_to_comments
+from baloo.agent.schemas import parse_review_output
 from baloo.github.models import PRContext, ReviewResult
 from baloo.processor.decision_engine import DecisionEngine
 from baloo.processor.formatter import CommentFormatter
@@ -80,10 +80,11 @@ class BalooAgent(PIAgentBase):
                 review_query, review_logger=review_logger
             )
 
-            # Convert structured output to review comments
+            # Convert structured output to review comments and general findings
             comments = []
+            general_findings = []
             if structured_data is not None:
-                comments = findings_to_comments(structured_data)
+                comments, general_findings = parse_review_output(structured_data)
             else:
                 logger.warning(
                     "No structured output received from agent "
@@ -100,14 +101,19 @@ class BalooAgent(PIAgentBase):
                     metadata["error_category"] = metadata.get("error_category", "no_output")
 
             # Generate summary using shared formatter
-            summary = CommentFormatter.format_summary(comments, metadata)
+            summary = CommentFormatter.format_summary(
+                comments, metadata, general_findings=general_findings
+            )
 
             # Make approval decision using centralized engine
-            approve, request_changes = DecisionEngine.make_decision(comments)
+            approve, request_changes = DecisionEngine.make_decision(
+                comments, general_findings=general_findings
+            )
 
             return ReviewResult(
                 summary=summary,
                 comments=comments,
+                general_findings=general_findings,
                 approve=approve,
                 request_changes=request_changes,
                 metadata=metadata,

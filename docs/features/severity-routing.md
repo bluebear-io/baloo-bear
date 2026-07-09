@@ -11,6 +11,8 @@ Baloo routes findings to different GitHub surfaces based on severity, so develop
 | **MEDIUM** | GitHub Checks API annotation | ❌ No |
 | **LOW** | Filtered out (not posted) | ❌ No |
 
+General findings (no file/line anchor, e.g. missing tests) are not posted inline or to the Checks API — they appear under a "💬 General Observations" section in the review summary. CRITICAL/HIGH general findings still count toward the "Request Changes" decision.
+
 ## How It Looks
 
 ### CRITICAL / HIGH → Review Comments
@@ -47,7 +49,7 @@ The agent assigns severity based on these guidelines:
 ## Approval Decision Logic
 
 ```
-CRITICAL or HIGH found  →  Request Changes
+CRITICAL or HIGH found (inline or general)  →  Request Changes
 No blocking issues + high fidelity score  →  Approve
 No blocking issues + auto-approve enabled  →  Approve
 Otherwise  →  Comment only (no approval or rejection)

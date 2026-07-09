@@ -10,6 +10,9 @@ REVIEW_JSON_RESPONSE_SCHEMA = """## Output Schema
 Your response will be parsed as JSON automatically.  Return an object with:
 - "findings": list of objects with keys: file, line, severity (CRITICAL|HIGH|MEDIUM|LOW),
   category (Security|Bugs|Silent Failures|Guidelines|Performance|Quality), title, description, impact, recommendation, code_example
+- "general_findings": list of objects for observations that have no single file/line anchor
+  (e.g. missing tests, missing documentation, architectural gaps). Keys: severity, category, title, description, recommendation.
+  Use this instead of citing a file that is NOT changed in this PR.
 - "summary": object with keys: total_issues, critical, high, medium, low,
   files_examined, patterns_searched (list), positive_observations (list)
 """

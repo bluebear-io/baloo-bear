@@ -7,6 +7,7 @@ from baloo.agent.schemas import (
     _normalize_category,
     enforce_severity,
     findings_to_comments,
+    parse_review_output,
     review_output_schema,
 )
 from baloo.fidelity.models import (
@@ -641,3 +642,64 @@ class TestLangForFile:
         }
         comments = findings_to_comments(data)
         assert "```typescript" in comments[0].body
+
+
+class TestParseReviewOutput:
+    """Tests for parse_review_output returning both inline and general findings."""
+
+    def test_returns_inline_and_general(self):
+        data = {
+            "findings": [
+                {
+                    "file": "a.py",
+                    "line": 10,
+                    "severity": "HIGH",
+                    "category": "Bugs",
+                    "title": "Null check missing",
+                    "description": "Value may be None.",
+                }
+            ],
+            "general_findings": [
+                {
+                    "severity": "HIGH",
+                    "category": "Guidelines",
+                    "title": "No tests for new validator",
+                    "description": "The PR adds a model_validator but no tests.",
+                    "recommendation": "Add tests to tests/documentation/test_models.py.",
+                }
+            ],
+        }
+        comments, general = parse_review_output(data)
+        assert len(comments) == 1
+        assert comments[0].path == "a.py"
+        assert len(general) == 1
+        assert general[0].severity == "HIGH"
+        assert "No tests for new validator" in general[0].body
+        assert "Add tests" in general[0].body
+
+    def test_empty_general_findings(self):
+        data = {"findings": [], "general_findings": []}
+        comments, general = parse_review_output(data)
+        assert comments == []
+        assert general == []
+
+    def test_general_finding_severity_enforced(self):
+        data = {
+            "general_findings": [
+                {
+                    "severity": "LOW",
+                    "category": "Guidelines",
+                    "title": "Missing docs",
+                    "description": "No docs updated.",
+                }
+            ]
+        }
+        _, general = parse_review_output(data)
+        # Guidelines floor is HIGH; LOW should be escalated
+        assert general[0].severity == "HIGH"
+
+    def test_missing_general_findings_key(self):
+        """Output without general_findings key should work fine."""
+        data = {"findings": []}
+        comments, general = parse_review_output(data)
+        assert general == []

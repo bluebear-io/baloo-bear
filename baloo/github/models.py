@@ -238,11 +238,20 @@ class ReviewComment(BaseModel):
     category: FindingCategory = FindingCategory.QUALITY
 
 
+class GeneralFinding(BaseModel):
+    """A review finding with no specific file/line (e.g. missing tests, architectural gaps)."""
+
+    body: str
+    severity: ReviewSeverity = ReviewSeverity.MEDIUM
+    category: FindingCategory = FindingCategory.QUALITY
+
+
 class ReviewResult(BaseModel):
     """Result of a code review."""
 
     summary: str
     comments: list[ReviewComment]
+    general_findings: list[GeneralFinding] = Field(default_factory=list)
     approve: bool = False
     request_changes: bool = False
     metadata: dict = Field(default_factory=dict)

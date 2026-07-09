@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from baloo.github.models import ReviewComment
+from baloo.github.models import GeneralFinding, ReviewComment
 
 
 class CommentFormatter:
@@ -16,7 +16,11 @@ class CommentFormatter:
     }
 
     @staticmethod
-    def format_summary(comments: list[ReviewComment], metadata: dict[str, Any] = None) -> str:
+    def format_summary(
+        comments: list[ReviewComment],
+        metadata: dict[str, Any] | None = None,
+        general_findings: list[GeneralFinding] | None = None,
+    ) -> str:
         """
         Format a review summary markdown.
 
@@ -27,20 +31,22 @@ class CommentFormatter:
         Returns:
             Formatted Markdown summary
         """
+        general_findings = general_findings or []
         severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
-        for comment in comments:
-            sev = comment.severity.value if hasattr(comment.severity, "value") else comment.severity
+        for finding in list(comments) + list(general_findings):
+            sev = finding.severity.value if hasattr(finding.severity, "value") else finding.severity
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         critical = severity_counts["CRITICAL"]
         high = severity_counts["HIGH"]
         medium = severity_counts["MEDIUM"]
         low = severity_counts["LOW"]
+        total = len(comments) + len(general_findings)
 
         summary_parts = []
         summary_parts.append("## 🐻 Baloo Review Summary\n")
 
-        if not comments:
+        if not comments and not general_findings:
             summary_parts.append("✅ **No issues found!** Code looks good.")
         else:
             stats = []
@@ -54,7 +60,7 @@ class CommentFormatter:
                 stats.append(f"🔵 **{low}** Low")
 
             summary_parts.append(" | ".join(stats))
-            summary_parts.append(f"\n**Total**: {len(comments)} issue(s) found")
+            summary_parts.append(f"\n**Total**: {total} issue(s) found")
 
             if critical > 0 or high > 0:
                 summary_parts.append("\n⚠️ **Please address CRITICAL/HIGH issues before merging**")
@@ -62,6 +68,13 @@ class CommentFormatter:
                 summary_parts.append(
                     "\n✅ **No blocking issues - safe to merge** (consider addressing MEDIUM/LOW items)"
                 )
+
+        if general_findings:
+            summary_parts.append("\n---\n\n**💬 General Observations**\n")
+            for gf in general_findings:
+                sev = gf.severity.value if hasattr(gf.severity, "value") else gf.severity
+                emoji = CommentFormatter.SEVERITY_EMOJIS.get(sev, "")
+                summary_parts.append(f"{emoji} {gf.body}\n")
 
         if metadata:
             summary_parts.append(CommentFormatter.format_metadata_section(metadata))

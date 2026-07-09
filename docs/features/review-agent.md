@@ -8,7 +8,7 @@ Baloo uses [PI](https://github.com/mariozechner/pi-coding-agent) as its agentic 
 2. **Context assembly** — Baloo fetches the PR diff, file list, metadata, and any prior discussion threads
 3. **Agent spawns** — A PI process starts in RPC mode with **read-only tools**: `read`, `grep`, `find`, `ls`
 4. **Agentic review** — The agent reads changed files in full, greps for security patterns, explores project structure, checks for tests and configs
-5. **Structured output** — The agent returns a JSON object with findings (file, line, severity, category, description, recommendation)
+5. **Structured output** — The agent returns a JSON object with findings (file, line, severity, category, description, recommendation), plus a `general_findings` list for observations with no file/line anchor (e.g. missing tests, architectural gaps). General findings appear as a "General Observations" section in the PR summary rather than as inline comments
 6. **Post-processing** — Findings go through FP verification (optional), severity filtering, duplicate detection, and severity routing before being posted
 
 ## Why Agentic?

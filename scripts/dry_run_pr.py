@@ -91,6 +91,9 @@ async def async_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--head", default="HEAD", help="Head ref for the diff")
     parser.add_argument("--model", help="Optional Baloo model override")
     parser.add_argument(
+        "--output-json", metavar="PATH", help="Write ReviewResult JSON to this file"
+    )
+    parser.add_argument(
         "--reproduce-bug",
         action="store_true",
         help="Do NOT set the agent cwd (reproduces the production behavior where "
@@ -135,12 +138,25 @@ async def async_main(argv: list[str] | None = None) -> int:
     print("\n=== Review summary ===")
     print(result.summary)
     if result.comments:
-        print("\n=== Findings ===")
+        print("\n=== Inline findings ===")
         for c in result.comments:
             sev = c.severity.value if hasattr(c.severity, "value") else c.severity
             print(f"[{sev}] {c.path}:{c.line}")
+    if result.general_findings:
+        print("\n=== General findings ===")
+        for gf in result.general_findings:
+            sev = gf.severity.value if hasattr(gf.severity, "value") else gf.severity
+            print(f"[{sev}] {gf.body[:120]}")
 
     _print_outcome_summary(collector)
+
+    if args.output_json:
+        import json
+
+        out_path = Path(args.output_json)
+        out_path.write_text(json.dumps(result.model_dump(mode="json"), indent=2))
+        print(f"\n[output] wrote result to {out_path}", file=sys.stderr)
+
     return 0
 
 

@@ -1527,9 +1527,12 @@ async def process_pr_review(
 
             fresh_comments = verified_new_findings
             decision_comments = fresh_comments + [comment for _, comment in follow_up_comments]
+            general_findings = review_result.general_findings
 
             approve, request_changes = DecisionEngine.make_decision(
-                decision_comments, fidelity_result=fidelity_result
+                decision_comments,
+                fidelity_result=fidelity_result,
+                general_findings=general_findings,
             )
             awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
 
@@ -1538,7 +1541,9 @@ async def process_pr_review(
 
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
-            summary_text = CommentFormatter.format_summary(decision_comments, agent_metadata)
+            summary_text = CommentFormatter.format_summary(
+                decision_comments, agent_metadata, general_findings=general_findings
+            )
             summary_text = f"{summary_text}\n\n{decision_summary}"
 
             if skipped_responded:
@@ -1577,6 +1582,7 @@ async def process_pr_review(
             review_result = ReviewResult(
                 summary=summary_text,
                 comments=fresh_comments,
+                general_findings=general_findings,
                 approve=approve,
                 request_changes=request_changes,
                 metadata=agent_metadata,
@@ -1667,9 +1673,11 @@ async def process_pr_review(
                         )
                         await github_client.post_comment(repo_full_name, pr_number, comment_body)
 
-            has_new_feedback = bool(routed["review"] or follow_up_comments or routed["checks"])
+            has_new_feedback = bool(
+                routed["review"] or follow_up_comments or routed["checks"] or general_findings
+            )
 
-            if request_changes and (routed["review"] or follow_up_comments):
+            if request_changes and (routed["review"] or follow_up_comments or general_findings):
                 logger.info("Posting request-changes review with new or follow-up findings")
                 posted_result = await github_client.post_review(
                     repo_full_name,
