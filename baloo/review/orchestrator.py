@@ -809,6 +809,13 @@ async def _run_fidelity_analysis(
         spec = FidelitySpec(ticket=ticket_content, plan=plan_content)
 
         if not spec.has_content:
+            if linear_result and linear_result.skipped_reason == "auth_error":
+                logger.error(
+                    "Fidelity: Skipping — Linear auth failed for %s (check LINEAR_API_KEY)",
+                    ticket_id,
+                )
+                return format_fidelity_report(auth_error=True, ticket_id=ticket_id), None
+
             if linear_result and linear_result.skipped_reason == "insufficient_detail":
                 logger.info(
                     "Fidelity: Skipping — ticket found but insufficient detail for %s", ticket_id

@@ -450,3 +450,46 @@ async def test_fetch_returns_insufficient_detail_for_stub_ticket():
     assert isinstance(result, LinearFetchResult)
     assert result.content is None
     assert result.skipped_reason == "insufficient_detail"
+
+
+@pytest.mark.asyncio
+async def test_fidelity_emits_auth_error_skip_when_linear_auth_fails_and_no_plan():
+    """A Linear auth failure with no plan file surfaces the auth problem, not 'no plan'."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from baloo.fidelity.fidelity_report import AUTH_ERROR_FIDELITY_SENTINEL
+    from baloo.fidelity.linear_fetcher import LinearFetchResult
+    from baloo.github.models import FileChange, PRContext, PRDiscussionContext, PRMetadata
+    from baloo.review.orchestrator import _run_fidelity_analysis
+
+    pr_context = PRContext(
+        metadata=PRMetadata(
+            repo_full_name="org/repo",
+            pr_number=1,
+            title="PER-1 fix bug",
+            description="",
+            author="dev",
+            base_branch="main",
+            head_branch="fix/PER-1-bug",
+            head_sha="abc",
+            files_changed=[
+                FileChange(filename="a.py", status="modified", additions=1, deletions=0, changes=1)
+            ],
+        ),
+        discussion=PRDiscussionContext(),
+        diff="diff",
+    )
+
+    mock_client = MagicMock()
+    linear_result = LinearFetchResult(content=None, skipped_reason="auth_error")
+
+    with (
+        patch("baloo.review.orchestrator.extract_ticket_id", return_value="PER-1"),
+        patch("baloo.review.orchestrator.fetch_plan_content", new=AsyncMock(return_value=None)),
+    ):
+        report, result = await _run_fidelity_analysis(
+            mock_client, "org/repo", pr_context, linear_result=linear_result
+        )
+
+    assert result is None
+    assert AUTH_ERROR_FIDELITY_SENTINEL in report

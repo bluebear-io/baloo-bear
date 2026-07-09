@@ -7,12 +7,14 @@ NO_TICKET_FIDELITY_SENTINEL = "<!-- baloo:no-ticket-fidelity-report -->"
 MISSING_PLAN_FIDELITY_SENTINEL = "<!-- baloo:missing-plan-fidelity-report -->"
 ERROR_FIDELITY_SENTINEL = "<!-- baloo:error-fidelity-report -->"
 INSUFFICIENT_DETAIL_FIDELITY_SENTINEL = "<!-- baloo:insufficient-detail-fidelity-report -->"
+AUTH_ERROR_FIDELITY_SENTINEL = "<!-- baloo:auth-error-fidelity-report -->"
 STATIC_FIDELITY_SENTINELS = frozenset(
     {
         NO_TICKET_FIDELITY_SENTINEL,
         MISSING_PLAN_FIDELITY_SENTINEL,
         ERROR_FIDELITY_SENTINEL,
         INSUFFICIENT_DETAIL_FIDELITY_SENTINEL,
+        AUTH_ERROR_FIDELITY_SENTINEL,
     }
 )
 
@@ -24,6 +26,7 @@ def format_fidelity_report(
     no_plan: bool = False,
     plan_path: str | None = None,
     insufficient_detail: bool = False,
+    auth_error: bool = False,
 ) -> str:
     """
     Format fidelity analysis result as a collapsible markdown report.
@@ -35,12 +38,16 @@ def format_fidelity_report(
         no_plan: True if no plan file was found
         plan_path: Path to plan file (for no_plan case)
         insufficient_detail: True if ticket found but had insufficient detail
+        auth_error: True if the ticket fetch failed authentication (bad API key)
 
     Returns:
         Formatted markdown string
     """
     if no_ticket:
         return _format_no_ticket()
+
+    if auth_error:
+        return _format_auth_error(ticket_id)
 
     if insufficient_detail:
         return _format_insufficient_detail(ticket_id)
@@ -179,6 +186,22 @@ def _format_insufficient_detail(ticket_id: str | None) -> str:
 
 To enable fidelity analysis, add a description to the ticket with at least a few sentences
 explaining the goal, requirements, or acceptance criteria.
+
+</details>"""
+
+
+def _format_auth_error(ticket_id: str | None) -> str:
+    """Format report when the Linear ticket fetch failed authentication."""
+    tid = ticket_id or "unknown"
+    return f"""<details>
+<summary>\U0001f4cb Fidelity Report ({tid}) - ⚠️ Ticket fetch failed</summary>
+
+{AUTH_ERROR_FIDELITY_SENTINEL}
+
+**Could not fetch ticket {tid}: the Linear API rejected the configured credentials.**
+
+Fidelity analysis was skipped. Check that `LINEAR_API_KEY` is set to a valid, non-expired
+Linear API key (the server logs contain the HTTP status of the failed request).
 
 </details>"""
 

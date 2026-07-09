@@ -9,14 +9,17 @@ Baloo supports multiple LLM providers and models. You can use short names for co
 | `flash` | Google | gemini-2.5-flash | 10 | Economy |
 | `haiku` | Anthropic | claude-haiku-4-5 | 10 | Economy |
 | `sonnet` | Anthropic | claude-sonnet-4-6 | 20 | Standard |
+| `standard` | Anthropic | claude-sonnet-4-6 | 20 | Standard (alias for `sonnet`) |
 | `gemini-pro` | Google | gemini-2.5-pro | 20 | Standard |
 | `opus` | Anthropic | claude-opus-4-6 | 30 | Premium |
+| `premium` | Google | gemini-3.1-pro-preview | 30 | Premium |
+| `gemini-3.1-pro` | Google | gemini-3.1-pro-preview | 30 | Premium (alias for `premium`) |
 
 ## Choosing a Model
 
 - **Economy** (`flash`, `haiku`) — Good for simple PRs (docs, deps, configs). Fast and cheap. Also used internally for FP verification.
-- **Standard** (`sonnet`, `gemini-pro`) — The default. Handles most code reviews well. Best cost/quality balance.
-- **Premium** (`opus`) — Best for complex PRs with deep logic, security-sensitive code, or architectural changes.
+- **Standard** (`sonnet`, `standard`, `gemini-pro`) — The default. Handles most code reviews well. Best cost/quality balance.
+- **Premium** (`opus`, `premium`, `gemini-3.1-pro`) — Best for complex PRs with deep logic, security-sensitive code, or architectural changes.
 
 ## Configuration
 
