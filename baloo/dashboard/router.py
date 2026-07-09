@@ -49,6 +49,7 @@ SETTING_CATEGORIES = {
         "github_private_key",
         "github_webhook_secret",
         "webhook_pre_verified",
+        "webhook_delivery_dedupe_ttl_seconds",
     },
     "Anthropic": {"anthropic_api_key"},
     "Application": {
@@ -99,6 +100,8 @@ SETTING_CATEGORIES = {
         "fidelity_enabled",
         "fidelity_plan_path_pattern",
         "fidelity_approval_threshold",
+        "linear_api_key",
+        "linear_api_url",
     },
     "Repo Provisioning": {
         "repo_cache_enabled",

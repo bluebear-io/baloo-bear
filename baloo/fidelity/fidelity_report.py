@@ -1,15 +1,20 @@
 """Format fidelity analysis results as markdown report."""
 
+from baloo.config.settings import get_settings
 from baloo.fidelity.models import FidelityResult
 
 NO_TICKET_FIDELITY_SENTINEL = "<!-- baloo:no-ticket-fidelity-report -->"
 MISSING_PLAN_FIDELITY_SENTINEL = "<!-- baloo:missing-plan-fidelity-report -->"
 ERROR_FIDELITY_SENTINEL = "<!-- baloo:error-fidelity-report -->"
+INSUFFICIENT_DETAIL_FIDELITY_SENTINEL = "<!-- baloo:insufficient-detail-fidelity-report -->"
+AUTH_ERROR_FIDELITY_SENTINEL = "<!-- baloo:auth-error-fidelity-report -->"
 STATIC_FIDELITY_SENTINELS = frozenset(
     {
         NO_TICKET_FIDELITY_SENTINEL,
         MISSING_PLAN_FIDELITY_SENTINEL,
         ERROR_FIDELITY_SENTINEL,
+        INSUFFICIENT_DETAIL_FIDELITY_SENTINEL,
+        AUTH_ERROR_FIDELITY_SENTINEL,
     }
 )
 
@@ -20,6 +25,8 @@ def format_fidelity_report(
     no_ticket: bool = False,
     no_plan: bool = False,
     plan_path: str | None = None,
+    insufficient_detail: bool = False,
+    auth_error: bool = False,
 ) -> str:
     """
     Format fidelity analysis result as a collapsible markdown report.
@@ -30,12 +37,20 @@ def format_fidelity_report(
         no_ticket: True if no ticket ID was found
         no_plan: True if no plan file was found
         plan_path: Path to plan file (for no_plan case)
+        insufficient_detail: True if ticket found but had insufficient detail
+        auth_error: True if the ticket fetch failed authentication (bad API key)
 
     Returns:
         Formatted markdown string
     """
     if no_ticket:
         return _format_no_ticket()
+
+    if auth_error:
+        return _format_auth_error(ticket_id)
+
+    if insufficient_detail:
+        return _format_insufficient_detail(ticket_id)
 
     if no_plan:
         return _format_no_plan(ticket_id, plan_path)
@@ -144,6 +159,7 @@ def _get_severity_icon(severity: str) -> str:
 
 def _format_no_ticket() -> str:
     """Format report when no ticket ID is found."""
+    prefix = get_settings().ticket_id_prefix
     return f"""<details>
 <summary>\U0001f4cb Fidelity Report - \u23ed\ufe0f Skipped</summary>
 
@@ -152,8 +168,40 @@ def _format_no_ticket() -> str:
 **No ticket ID found in PR.**
 
 To enable fidelity analysis:
-- Use branch naming: `feat/PROJ-XXX/description` or `fix/PROJ-XXX-description`
-- Or include ticket in PR title: `[PROJ-XXX] Title` or `PROJ-XXX: Title`
+- Use branch naming: `feat/{prefix}-XXX/description` or `fix/{prefix}-XXX-description`
+- Or include ticket in PR title: `[{prefix}-XXX] Title` or `{prefix}-XXX: Title`
+
+</details>"""
+
+
+def _format_insufficient_detail(ticket_id: str | None) -> str:
+    """Format report when ticket was found but had insufficient detail."""
+    tid = ticket_id or "unknown"
+    return f"""<details>
+<summary>\U0001f4cb Fidelity Report - \u23ed\ufe0f Skipped</summary>
+
+{INSUFFICIENT_DETAIL_FIDELITY_SENTINEL}
+
+**Ticket {tid} found but contained insufficient detail for analysis.**
+
+To enable fidelity analysis, add a description to the ticket with at least a few sentences
+explaining the goal, requirements, or acceptance criteria.
+
+</details>"""
+
+
+def _format_auth_error(ticket_id: str | None) -> str:
+    """Format report when the Linear ticket fetch failed authentication."""
+    tid = ticket_id or "unknown"
+    return f"""<details>
+<summary>\U0001f4cb Fidelity Report ({tid}) - ⚠️ Ticket fetch failed</summary>
+
+{AUTH_ERROR_FIDELITY_SENTINEL}
+
+**Could not fetch ticket {tid}: the Linear API rejected the configured credentials.**
+
+Fidelity analysis was skipped. Check that `LINEAR_API_KEY` is set to a valid, non-expired
+Linear API key (the server logs contain the HTTP status of the failed request).
 
 </details>"""
 

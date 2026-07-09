@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,6 +25,25 @@ from baloo.review.orchestrator import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ponytail: process-local best-effort dedup — cleared on restart and not shared across
+# workers, so a multi-worker deploy gets no cross-process dedup. Move to a shared store
+# (e.g. Redis) if that ever matters.
+_recent_delivery_ids: dict[str, float] = {}
+
+
+def _mark_delivery_seen(delivery_id: str | None, ttl_seconds: int) -> bool:
+    """Return True when this GitHub delivery ID was already seen within ttl_seconds."""
+    if not delivery_id:
+        return False
+    now = time.monotonic()
+    expired = [k for k, seen_at in _recent_delivery_ids.items() if now - seen_at > ttl_seconds]
+    for k in expired:
+        _recent_delivery_ids.pop(k, None)
+    if delivery_id in _recent_delivery_ids:
+        return True
+    _recent_delivery_ids[delivery_id] = now
+    return False
 
 
 @asynccontextmanager
@@ -149,6 +169,17 @@ async def handle_webhook(
 
     # Parse event type and payload
     event = request.headers.get("X-GitHub-Event")
+    delivery_id = request.headers.get("X-GitHub-Delivery")
+
+    if _mark_delivery_seen(delivery_id, settings.webhook_delivery_dedupe_ttl_seconds):
+        logger.info("Ignoring duplicate webhook delivery %s", delivery_id)
+        return {"status": "skipped", "reason": "duplicate delivery"}
+
+    # Lifecycle events have no repository payload — return early before security validation
+    if event in ("ping", "installation", "installation_repositories", "meta"):
+        logger.info("Ignoring GitHub App lifecycle event: %s", event)
+        return {"status": "ignored", "event": event or "", "reason": "app lifecycle event"}
+
     payload = await request.json()
 
     # Security validation: confirm installation identity and repo ownership
@@ -158,7 +189,13 @@ async def handle_webhook(
     if _skip is not None:
         return _skip
 
-    logger.info(f"Received {event} event")
+    logger.info(
+        "Received %s event delivery=%s repo=%s installation=%s",
+        event,
+        delivery_id or "",
+        _repo_full_name or "",
+        _installation_id or "",
+    )
 
     # Handle pull_request events
     if event == "pull_request":
@@ -209,6 +246,7 @@ async def handle_webhook(
                         True,
                         before_sha if action == "synchronize" else None,
                         head_sha or "",
+                        delivery_id,
                     )
                 )
                 active_reviews[(repo_name, pr_number)] = task
