@@ -29,8 +29,9 @@ REPO_ROOT = Path(__file__).parent.parent
 
 def _run_scenario(scenario: dict, base_env: dict[str, str]) -> dict:
     """Run one scenario via dry_run_pr and return the parsed ReviewResult JSON."""
-    env = os.environ.copy()
-    env.update(base_env)
+    # BASE_ENV provides defaults; ambient env wins (see regression_scenarios.py).
+    env = dict(base_env)
+    env.update(os.environ)
 
     model_override = os.environ.get("BALOO_REGRESSION_MODEL") or scenario.get("model")
 
