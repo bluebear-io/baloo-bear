@@ -125,12 +125,13 @@ class TestAnalyzeFidelityWrapper:
 @pytest.mark.asyncio
 async def test_analyze_sets_cwd_from_repo_path():
     from baloo.fidelity.fidelity_analyzer import FidelityAgent
+    from baloo.fidelity.models import FidelitySpec
 
     agent = FidelityAgent()
     fake_run = AsyncMock(return_value=(None, {"num_turns": 0}))
     with patch.object(FidelityAgent, "run_query", new=fake_run):
         await agent.analyze(
-            plan_content="plan",
+            FidelitySpec(ticket=None, plan="plan"),
             pr_title="t",
             diff="d",
             ticket_id="PROJ-1",
@@ -142,13 +143,14 @@ async def test_analyze_sets_cwd_from_repo_path():
 @pytest.mark.asyncio
 async def test_analyze_forwards_review_logger_to_run_query():
     from baloo.fidelity.fidelity_analyzer import FidelityAgent
+    from baloo.fidelity.models import FidelitySpec
 
     agent = FidelityAgent()
     sentinel = object()
     fake_run = AsyncMock(return_value=(None, {"num_turns": 0}))
     with patch.object(FidelityAgent, "run_query", new=fake_run):
         await agent.analyze(
-            plan_content="plan",
+            FidelitySpec(ticket=None, plan="plan"),
             pr_title="t",
             diff="d",
             ticket_id="PROJ-1",
