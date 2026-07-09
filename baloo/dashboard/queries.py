@@ -2,15 +2,89 @@
 
 from __future__ import annotations
 
+import json
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from baloo.config.settings import get_settings
 from baloo.db.engine import get_session_factory
 from baloo.db.models import Finding, FindingOutcome, Review, ReviewLog
 from baloo.db.tenant import apply_tenant_filter
+
+
+def _log_cost(metadata_json: str | None) -> float:
+    if not metadata_json:
+        return 0.0
+    try:
+        metadata = json.loads(metadata_json)
+    except (TypeError, ValueError):
+        return 0.0
+    if not isinstance(metadata, dict):
+        return 0.0
+    for key in ("cost", "cost_usd"):
+        value = metadata.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+async def _attach_pr_total_costs(
+    session, reviews: list[Review], installation_id: str | None
+) -> None:
+    if not reviews:
+        return
+
+    keys = {(r.repo_full_name, r.pr_number) for r in reviews}
+    pr_filter = or_(
+        *(
+            and_(Review.repo_full_name == repo_full_name, Review.pr_number == pr_number)
+            for repo_full_name, pr_number in keys
+        )
+    )
+    rows = (
+        await session.execute(
+            apply_tenant_filter(
+                select(Review.id, Review.repo_full_name, Review.pr_number, Review.cost_usd).where(
+                    pr_filter
+                ),
+                Review,
+                installation_id,
+            )
+        )
+    ).all()
+
+    review_ids = [review_id for review_id, *_ in rows]
+    logged_costs: dict[int, float] = defaultdict(float)
+    if review_ids:
+        log_rows = (
+            await session.execute(
+                apply_tenant_filter(
+                    select(ReviewLog.review_id, ReviewLog.metadata_json).where(
+                        ReviewLog.review_id.in_(review_ids),
+                        ReviewLog.event_type == "agent_completed",
+                    ),
+                    ReviewLog,
+                    installation_id,
+                )
+            )
+        ).all()
+        for review_id, metadata_json in log_rows:
+            logged_costs[review_id] += _log_cost(metadata_json)
+
+    totals: dict[tuple[str, int], float] = defaultdict(float)
+    for review_id, repo_full_name, pr_number, cost_usd in rows:
+        totals[(repo_full_name, pr_number)] += (
+            cost_usd if cost_usd is not None else logged_costs[review_id]
+        )
+
+    for review in reviews:
+        review.pr_total_cost_usd = totals[(review.repo_full_name, review.pr_number)]
 
 
 class DashboardService:
@@ -195,6 +269,7 @@ class DashboardService:
             q = q.offset((page - 1) * per_page).limit(per_page)
 
             reviews = (await session.execute(q)).scalars().all()
+            await _attach_pr_total_costs(session, reviews, installation_id)
 
             # Distinct repos for filter dropdown
             repos_stmt = apply_tenant_filter(
@@ -228,7 +303,10 @@ class DashboardService:
                 installation_id,
             )
             result = await session.execute(stmt)
-            return result.scalars().first()
+            review = result.scalars().first()
+            if review:
+                await _attach_pr_total_costs(session, [review], installation_id)
+            return review
 
     @staticmethod
     async def get_review_logs(review_id: int) -> list[ReviewLog]:

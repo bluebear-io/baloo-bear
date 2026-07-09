@@ -66,6 +66,10 @@
     <p class="text-sm font-semibold">{{ "$%.4f"|format(review.cost_usd) if review.cost_usd else "-" }}</p>
   </div>
   <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-xs text-gray-500 uppercase">PR Total Cost</p>
+    <p class="text-sm font-semibold">{{ "$%.4f"|format(review.pr_total_cost_usd) if review.pr_total_cost_usd else "-" }}</p>
+  </div>
+  <div class="bg-white rounded-lg shadow p-4">
     <p class="text-xs text-gray-500 uppercase">Files Examined</p>
     <p class="text-sm font-semibold">{{ review.files_examined if review.files_examined is not none else "-" }}</p>
   </div>
