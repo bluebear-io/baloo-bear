@@ -24,7 +24,14 @@ def _log_cost(metadata_json: str | None) -> float:
         return 0.0
     if not isinstance(metadata, dict):
         return 0.0
-    return float(metadata.get("cost") or metadata.get("cost_usd") or 0.0)
+    for key in ("cost", "cost_usd"):
+        value = metadata.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
 
 
 async def _attach_pr_total_costs(

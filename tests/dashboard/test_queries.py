@@ -165,3 +165,15 @@ async def test_pr_total_cost_includes_active_and_cancelled_logged_costs(dashboar
     assert {r.review_status for r in pr_reviews} == {"approved", "in_progress", "cancelled"}
     assert all(r.pr_total_cost_usd == pytest.approx(0.15) for r in pr_reviews)
     assert detail.pr_total_cost_usd == pytest.approx(0.15)
+
+
+def test_log_cost_zero_and_invalid_values():
+    """cost=0 must not fall through to cost_usd; bad values must not raise."""
+    from baloo.dashboard.queries import _log_cost
+
+    assert _log_cost(json.dumps({"cost": 0, "cost_usd": 0.5})) == 0.0
+    assert _log_cost(json.dumps({"cost_usd": 0.25})) == 0.25
+    assert _log_cost(json.dumps({"cost": "not-a-number"})) == 0.0
+    assert _log_cost(json.dumps({"cost": None, "cost_usd": 0.1})) == 0.1
+    assert _log_cost(None) == 0.0
+    assert _log_cost("not json") == 0.0
