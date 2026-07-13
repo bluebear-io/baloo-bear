@@ -41,7 +41,8 @@ RUN pip install --no-cache-dir --require-hashes -r requirements-prod.txt
 
 # Install PI coding agent from package-lock.json (provides the 'pi' CLI)
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# husky's prepare script needs .husky/ and devDeps, neither present in this layer
+RUN npm pkg delete scripts.prepare && npm ci --omit=dev
 
 # Install AST tools extension dependencies
 COPY extensions/package.json extensions/package-lock.json /app/extensions/
