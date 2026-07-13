@@ -530,6 +530,18 @@ class GitHubAPIClient:
         )
         response.raise_for_status()
 
+    async def add_reaction(
+        self, repo_full_name: str, comment_id: int, content: str = "eyes"
+    ) -> None:
+        """Add a reaction to an issue/PR conversation comment (acknowledges a command)."""
+        url = f"{self.base_url}/repos/{repo_full_name}/issues/comments/{comment_id}/reactions"
+        response = await self._http.post(
+            url,
+            headers=self._get_headers(),
+            json={"content": content},
+        )
+        response.raise_for_status()
+
     async def reply_to_review_comment(
         self,
         repo_full_name: str,

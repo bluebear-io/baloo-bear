@@ -46,6 +46,59 @@ def _mark_delivery_seen(delivery_id: str | None, ttl_seconds: int) -> bool:
     return False
 
 
+_REVIEW_COMMAND = "@baloo review"
+# Only people with write access to the repo may spend review budget via a comment command.
+# GitHub stamps every comment with the author's association, so this needs no extra API call.
+_REVIEW_COMMAND_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+
+def _is_review_command(body: str) -> bool:
+    """True when a comment's first line is the `@baloo review` command (case-insensitive)."""
+    if not body:
+        return False
+    lines = body.strip().splitlines()
+    if not lines:
+        return False
+    tokens = lines[0].strip().lower().split()
+    return tokens[:2] == ["@baloo", "review"]
+
+
+async def _run_review_command(
+    repo_full_name: str,
+    pr_number: int,
+    installation_id: int,
+    comment_id: int | None,
+    delivery_id: str | None,
+) -> None:
+    """Acknowledge a `@baloo review` command with a reaction, then run a full review.
+
+    Passes head_sha="" so the review skips DB-level dedup and always re-runs — an explicit
+    command means "review the current head now", even if it was reviewed before.
+    """
+    if comment_id is not None:
+        try:
+            async with GitHubAPIClient(installation_id) as gh_client:
+                await gh_client.add_reaction(repo_full_name, comment_id, "eyes")
+        except Exception:
+            logger.warning(
+                "Failed to react to @baloo review command on %s#%s",
+                repo_full_name,
+                pr_number,
+                exc_info=True,
+            )
+
+    await process_pr_review(
+        repo_full_name,
+        pr_number,
+        installation_id,
+        trigger_reason="issue_comment:@baloo review",
+        notify_progress=True,
+        synchronize_base_sha=None,
+        head_sha="",
+        delivery_id=delivery_id,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize and tear down database."""
@@ -337,7 +390,61 @@ async def handle_webhook(
 
         return {"status": "queued", "event": event, "action": "thread_reply"}
 
-    elif event in ("issue_comment", "pull_request_review"):
+    elif event == "issue_comment":
+        action = payload.get("action")
+
+        # Only new comments carry commands (not edits or deletions)
+        if action != "created":
+            return {"status": "ignored", "event": event, "reason": f"action={action}"}
+
+        issue = payload.get("issue", {})
+        # issue_comment fires for both issues and PRs; only PRs carry a pull_request object
+        if "pull_request" not in issue:
+            return {"status": "ignored", "event": event, "reason": "not a pull request"}
+
+        comment_data = payload.get("comment", {})
+        if not _is_review_command(comment_data.get("body", "")):
+            return {"status": "ignored", "event": event, "reason": "not a review command"}
+
+        association = comment_data.get("author_association", "")
+        if association not in _REVIEW_COMMAND_ASSOCIATIONS:
+            logger.info(
+                "Ignoring @baloo review on %s#%s from @%s — association %s not authorized",
+                _repo_full_name or "",
+                issue.get("number", 0),
+                (comment_data.get("user") or {}).get("login", ""),
+                association,
+            )
+            return {"status": "ignored", "event": event, "reason": "commenter not authorized"}
+
+        repo_full_name = _repo_full_name or ""
+        pr_number = issue.get("number", 0)
+        comment_id = comment_data.get("id")
+
+        # Cancel any redundant in-flight review, then force a fresh full review of the current
+        # head — deliberately bypassing the merge/sync-commit skip that synchronize applies.
+        cancel_existing_review(repo_full_name, pr_number)
+        task = asyncio.create_task(
+            _run_review_command(
+                repo_full_name,
+                pr_number,
+                _installation_id,
+                comment_id,
+                delivery_id,
+            )
+        )
+        active_reviews[(repo_full_name, pr_number)] = task
+        background_tasks.add_task(lambda: None)
+
+        logger.info(
+            "Queued @baloo review command for %s#%s (comment=%s)",
+            repo_full_name,
+            pr_number,
+            comment_id,
+        )
+        return {"status": "queued", "event": event, "action": "review_command"}
+
+    elif event == "pull_request_review":
         logger.debug("Ignoring %s event — reviews trigger only on new code", event)
         return {"status": "ignored", "event": event, "reason": "comment events disabled"}
 
