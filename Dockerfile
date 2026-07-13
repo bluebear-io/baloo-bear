@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     bubblewrap \
+    libatomic1 \
     && apt-get upgrade -y openssl libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
