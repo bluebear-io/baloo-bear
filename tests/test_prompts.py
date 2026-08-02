@@ -227,6 +227,15 @@ def test_exhaustive_reporting_in_system_prompt():
     assert "balanced" not in REVIEW_SYSTEM_PROMPT
 
 
+def test_required_pr_description_section_rule_in_system_prompt():
+    """System prompt requires flagging a PR description missing a required review-brief section."""
+    from baloo.agent.prompts import REVIEW_SYSTEM_PROMPT
+
+    assert "Required PR-Description Sections" in REVIEW_SYSTEM_PROMPT
+    assert "## Review guidance for Baloo" in REVIEW_SYSTEM_PROMPT
+    assert "pr-review-brief" in REVIEW_SYSTEM_PROMPT
+
+
 def test_exhaustive_reporting_in_code_review_prompt():
     """Full code review prompt includes completeness check step."""
     pr_context = {

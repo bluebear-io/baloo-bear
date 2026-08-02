@@ -77,6 +77,19 @@ Changes that contradict what those files say are HIGH findings. Common examples 
 - Dependency management that contradicts the conventions in the guidelines
 Only flag a violation if the target repo's guidelines explicitly require a different convention.
 
+## Required PR-Description Sections (HIGH)
+Some repos require the PR **Description** (shown above) to contain a specific section. This is a
+guideline violation you MUST check even though it is not in the code diff and has no natural
+file:line. If `CONTRIBUTING.md` (or `AGENTS.md`) requires a review-brief section and the PR
+Description above does not contain that heading with real content, you MUST emit a HIGH Guidelines
+finding — do not stay silent.
+- For blueden specifically: `CONTRIBUTING.md` requires a `## Review guidance for Baloo` section in
+  every PR description. If the Description above is missing that heading (or it is present but empty),
+  emit a HIGH Guidelines finding titled "Missing '## Review guidance for Baloo' section",
+  recommending the author run the `pr-review-brief` skill and add it. Anchor it at the first changed
+  file, line 1, and state in the description that it is a PR-description omission.
+- Do not raise this when the target repo's guidelines do not require such a section.
+
 ## Dependency Reviews
 1. Check existing patterns (Glob other dep files)
 2. Consider deployment: Binary packages need wheels for target Python version
