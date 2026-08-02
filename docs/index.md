@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" alt="License: AGPL-3.0-or-later"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
 </p>
@@ -250,4 +250,4 @@ Please read [SECURITY.md](https://github.com/Blue-Bear-Security/baloo-bear/blob/
 
 ## License
 
-MIT — see [LICENSE](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/LICENSE).
+AGPL-3.0-or-later — see [LICENSE](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/LICENSE).
