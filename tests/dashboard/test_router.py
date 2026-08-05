@@ -127,3 +127,93 @@ def test_documentation_drift_settings_are_grouped() -> None:
         "documentation_drift_model",
     ):
         assert by_name[name] == "Documentation Drift"
+
+
+def test_settings_rows_mark_mutable_keys() -> None:
+    from baloo.config.runtime_settings import MUTABLE_KEYS
+    from baloo.dashboard.router import _settings_rows
+
+    by_name = {r["name"]: r for r in _settings_rows()}
+    for key in MUTABLE_KEYS:
+        assert by_name[key]["mutable"] is True
+    assert by_name["database_url"]["mutable"] is False
+
+
+def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache, resolve_setting
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        import baloo.config.runtime_settings as rs
+
+        rs._cache = {**(rs._cache or {}), key: value}
+        rs._cache_loaded_at = 10**12
+        return value
+
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set):
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={"key": "agent_provider", "value": "amazon-bedrock", "action": "save"},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 303
+    assert "message=" in response.headers["location"]
+    assert resolve_setting("agent_provider") == "amazon-bedrock"
+
+
+def test_dashboard_settings_post_clear_override(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.clear_override", new=AsyncMock(return_value=True)) as clear:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={"key": "agent_model", "value": "", "action": "clear"},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 303
+    clear.assert_awaited_once_with("agent_model")
+
+
+def test_dashboard_settings_post_rejects_non_mutable(monkeypatch) -> None:
+    from baloo.config.runtime_settings import RuntimeSettingsError, reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeSettingsError("Setting is not mutable at runtime: database_url")
+
+    with patch("baloo.dashboard.router.set_override", side_effect=boom):
+        app = _build_app()
+        client = TestClient(app)
+        response = client.post(
+            "/dashboard/settings",
+            data={"key": "database_url", "value": "x", "action": "save"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]

@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from baloo.config.runtime_settings import (
+    MUTABLE_KEYS,
+    RuntimeSettingsError,
+    clear_override,
+    ensure_fresh_cache,
+    resolve_setting,
+    set_override,
+    setting_source,
+)
 from baloo.config.settings import Settings, get_settings
 from baloo.dashboard.auth import verify_credentials
 from baloo.dashboard.queries import DashboardService
@@ -177,20 +186,30 @@ def _setting_category(name: str) -> str:
     return "Other"
 
 
-def _settings_rows() -> list[dict[str, str]]:
+def _settings_rows() -> list[dict[str, Any]]:
     settings = get_settings()
     rows = []
     for name, field in Settings.model_fields.items():
-        value = getattr(settings, name)
+        env_value = getattr(settings, name)
+        mutable = name in MUTABLE_KEYS
+        if mutable:
+            effective = resolve_setting(name)
+            source = setting_source(name)
+        else:
+            effective = env_value
+            source = "env"
         default = field.default
         rows.append(
             {
                 "category": _setting_category(name),
                 "env_var": name.upper(),
                 "name": name,
-                "value": _format_setting_value(name, value),
+                "value": _format_setting_value(name, effective),
+                "raw_value": "" if effective is None else str(effective),
                 "default": _format_setting_value(name, default),
                 "description": field.description or "",
+                "mutable": mutable,
+                "source": source,
             }
         )
     return rows
@@ -286,8 +305,43 @@ async def outcomes(
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
+    await ensure_fresh_cache()
+    settings = get_settings()
+    message = request.query_params.get("message")
+    error = request.query_params.get("error")
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
-        context={"settings_rows": _settings_rows()},
+        context={
+            "settings_rows": _settings_rows(),
+            "database_enabled": settings.database_enabled and bool(settings.database_url),
+            "message": message,
+            "error": error,
+        },
     )
+
+
+@router.post("/settings")
+async def update_settings(
+    key: str = Form(...),
+    value: str = Form(""),
+    action: str = Form("save"),
+    username: str = Depends(verify_credentials),
+):
+    """Set or clear an allowlisted runtime override."""
+    try:
+        if action == "clear":
+            await clear_override(key)
+            msg = f"Cleared override for {key.upper()}; using env default."
+        else:
+            await set_override(key, value, updated_by=username)
+            msg = f"Updated {key.upper()}."
+        return RedirectResponse(
+            url=f"/dashboard/settings?message={quote_plus(msg)}",
+            status_code=303,
+        )
+    except RuntimeSettingsError as exc:
+        return RedirectResponse(
+            url=f"/dashboard/settings?error={quote_plus(str(exc))}",
+            status_code=303,
+        )

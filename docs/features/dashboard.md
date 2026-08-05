@@ -8,7 +8,7 @@ Baloo includes an optional review history dashboard backed by PostgreSQL. It pro
 - **Findings** — Individual findings per review with severity, category, file, and line
 - **Cost tracking** — Token usage and dollar cost per review and in aggregate
 - **Fidelity scores** — When fidelity analysis is enabled
-- **Settings** — A read-only view of the instance's effective runtime configuration
+- **Settings** — Effective runtime configuration; allowlisted agent knobs can be edited when the database is enabled
 
 ## Requirements
 
@@ -31,9 +31,11 @@ http://localhost:8000/dashboard/
 
 ## Settings Page
 
-The dashboard includes a read-only **Settings** page at `/dashboard/settings` showing the effective runtime configuration loaded for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). Each row lists the environment variable, its current value, its default, and a description.
+The dashboard includes a **Settings** page at `/dashboard/settings` showing the effective runtime configuration for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). Each row lists the environment variable, its current value, its default, and a description.
 
-Secrets are never exposed: sensitive settings (API keys, private keys, passwords, webhook secrets) render as `Configured (redacted)` or `Not configured`, and `DATABASE_URL` is shown with its credentials stripped. The page is for inspection only — it cannot change configuration.
+Allowlisted agent settings (`AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, and secondary model knobs) can be overridden at runtime when `DATABASE_ENABLED=true`. Overridden rows show a `db` source badge and a **Revert to env** control. All other settings remain read-only and always come from environment variables.
+
+Secrets are never exposed: sensitive settings (API keys, private keys, passwords, webhook secrets) render as `Configured (redacted)` or `Not configured`, and `DATABASE_URL` is shown with its credentials stripped. Secrets cannot be stored as runtime overrides.
 
 ## Configuration
 

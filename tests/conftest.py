@@ -23,8 +23,11 @@ os.environ.setdefault("FIDELITY_ENABLED", "true")
 @pytest.fixture(autouse=True)
 def reset_baloo_settings():
     """Reset cached settings between tests so env overrides stay deterministic."""
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
     from baloo.config.settings import reset_settings
 
     reset_settings()
+    reset_runtime_settings_cache()
     yield
     reset_settings()
+    reset_runtime_settings_cache()

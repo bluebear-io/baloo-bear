@@ -164,13 +164,12 @@ class BalooAgent(PIAgentBase):
 
     async def _run_with_fallback(self, query: str, review_logger: Any = None):
         """Run query with automatic fallback to secondary model on failure."""
-        from baloo.config.settings import get_settings
+        from baloo.config.runtime_settings import resolve_setting
 
         try:
             return await self.run_query(query, review_logger=review_logger)
         except Exception as primary_err:
-            settings = get_settings()
-            fallback = settings.agent_fallback_model
+            fallback = resolve_setting("agent_fallback_model")
             if not fallback or "/" not in fallback:
                 raise  # No valid fallback configured
 

@@ -4,6 +4,7 @@ import logging
 
 from baloo.agent.pi_runtime import PIAgentOptions
 from baloo.agent.prompts import AST_TOOLS_PROMPT_SECTION, REVIEW_SYSTEM_PROMPT
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
     Returns:
         PIAgentOptions configured for read-only code review
     """
-    level = thinking_level or settings.pi_thinking_level
+    level = thinking_level or resolve_setting("pi_thinking_level")
     system_prompt = _build_system_prompt()
 
     # 1. Short name lookup
@@ -86,8 +87,8 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
             max_turns=20,
         )
 
-    # 4. Default from settings — resolve short names first
-    default_model = settings.agent_model
+    # 4. Default from settings (env + DB overlay) — resolve short names first
+    default_model = resolve_setting("agent_model")
     if default_model in MODEL_REGISTRY:
         provider, model_id, max_turns = MODEL_REGISTRY[default_model]
         return PIAgentOptions(
@@ -100,7 +101,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
 
     return PIAgentOptions(
         model=default_model,
-        provider=settings.agent_provider,
+        provider=resolve_setting("agent_provider"),
         system_prompt=system_prompt,
         thinking_level=level,
         max_turns=20,

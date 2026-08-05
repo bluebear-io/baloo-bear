@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All Baloo settings are environment variables. Set them in `.env`, pass them via `docker-compose.yml`, or export them directly.
+All Baloo settings are environment variables by default. Set them in `.env`, pass them via `docker-compose.yml`, or export them directly. When the database is enabled, a small allowlist of agent settings can also be overridden at runtime (see [Runtime Overrides](#runtime-overrides-db)).
 
 ## GitHub App
 
@@ -89,6 +89,18 @@ All Baloo settings are environment variables. Set them in `.env`, pass them via 
 | `DASHBOARD_USERNAME` | — | Dashboard basic auth username |
 | `DASHBOARD_PASSWORD` | — | Dashboard basic auth password |
 | `LOG_RETENTION_DAYS` | `30` | Days to retain execution logs (0 to disable cleanup) |
+
+## Runtime Overrides (DB)
+
+When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings at runtime without restarting the process. Overrides are stored in the `runtime_settings` table (scoped by `INSTALLATION_ID` when set) and layered over env defaults:
+
+**Precedence:** DB overlay → environment variable → field default
+
+**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
+
+Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
+
+If the database is disabled, behavior is unchanged: env vars only.
 
 ## Thread Agent
 
