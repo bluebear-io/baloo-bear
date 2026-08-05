@@ -124,6 +124,8 @@ class GitHubAuth:
 
 async def verify_repo_belongs_to_installation(installation_id: int, repo_full_name: str) -> bool:
     """Return True if repo_full_name is accessible under the given installation token."""
+    import asyncio
+
     import httpx
 
     auth = GitHubAuth()
@@ -137,9 +139,25 @@ async def verify_repo_belongs_to_installation(installation_id: int, repo_full_na
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://api.github.com/repos/{repo_full_name}",
-            headers=headers,
-        )
-    return response.status_code == 200
+    # Transient TLS/network failures must not drop the webhook — GitHub never
+    # redelivers once a 5xx response has been sent, so a single network hiccup
+    # would permanently lose the event (e.g. a push that never gets reviewed).
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"https://api.github.com/repos/{repo_full_name}",
+                    headers=headers,
+                )
+            return response.status_code == 200
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if attempt < 3:
+                await asyncio.sleep(2 * attempt)
+    logger.warning(
+        "verify_repo_belongs_to_installation failed after 3 attempts for %s: %s",
+        repo_full_name,
+        last_exc,
+    )
+    return False

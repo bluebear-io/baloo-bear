@@ -769,6 +769,8 @@ class TestRepoProvisioningWiring:
     async def test_agent_cwd_unset_when_unavailable(self):
         from contextlib import asynccontextmanager
 
+        from baloo.review.orchestrator import _DIFF_ONLY_DIR
+
         gc = _make_github_client()
         agent = _make_agent()
         agent.options = MagicMock()
@@ -783,7 +785,9 @@ class TestRepoProvisioningWiring:
         with patch("baloo.review.orchestrator.provision_repo", fake_provision):
             await _run_review(gc, agent)
 
-        assert agent.options.cwd is None
+        # Diff-only fallback points the agent at an empty dir, never baloo's own
+        # source tree (/app), so its file tools can't wander into baloo code.
+        assert agent.options.cwd == str(_DIFF_ONLY_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -1160,3 +1164,48 @@ class TestGeneralFindingsPosting:
             else posted_blocking[0].kwargs.get("review_result")
         )
         assert result_arg.comments == []
+
+
+class TestCommentsOnlyReviewPosting:
+    """A review with only MEDIUM/LOW findings (auto-approve off) must still post."""
+
+    @pytest.mark.asyncio
+    async def test_medium_only_review_posts_comments_only_review(self):
+        comment = ReviewComment(
+            path="file.py",
+            line=10,
+            body="**Medium issue**\n\nThis code path leaks the resource handle",
+            severity=ReviewSeverity.MEDIUM,
+            category=FindingCategory.QUALITY,
+        )
+        # approve=False + request_changes=False = comments-only state (REVIEW_AUTO_APPROVE=false)
+        agent = _make_agent(comments=[comment], approve=False, request_changes=False)
+        gc = _make_github_client()
+
+        with patch("baloo.config.settings.settings.review_auto_approve", False):
+            await _run_review(gc, agent)
+
+        posted = [
+            call
+            for call in gc.post_review.call_args_list
+            if len(call.args) >= 3 or call.kwargs.get("review_result")
+        ]
+        assert posted, "Comments-only review must be posted when non-blocking findings exist"
+        result_arg = (
+            posted[0].args[2] if len(posted[0].args) >= 3 else posted[0].kwargs.get("review_result")
+        )
+        assert result_arg.request_changes is False
+        assert result_arg.approve is False
+
+    @pytest.mark.asyncio
+    async def test_no_findings_comments_only_state_posts_nothing(self):
+        # approve=False + request_changes=False with zero findings: nothing to post
+        agent = _make_agent(comments=[], approve=False, request_changes=False)
+        gc = _make_github_client()
+
+        with patch("baloo.config.settings.settings.review_auto_approve", False):
+            await _run_review(gc, agent)
+
+        assert gc.post_review.call_args_list == [], (
+            "No review should be posted when there are no findings to share"
+        )

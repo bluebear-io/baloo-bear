@@ -8,6 +8,7 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
@@ -85,6 +86,10 @@ _REVIEW_SIDE_AGENT_METADATA_KEYS = (
     "thread_reverification",
     "sync_scope_decider",
 )
+
+# Empty working directory used for diff-only reviews so the agent's file tools
+# never wander through baloo's own source tree.
+_DIFF_ONLY_DIR = Path("/tmp/baloo-diff-only")
 
 
 def get_review_semaphore() -> asyncio.Semaphore:
@@ -1335,14 +1340,16 @@ async def process_pr_review(
                         repo_path,
                     )
                 else:
-                    # No checkout: the PI subprocess inherits baloo's own cwd
-                    # (/app in the container), so every PR-file read/grep/find
-                    # fails and the review is effectively diff-only. Surface why
-                    # — the master switch being off is otherwise totally silent.
+                    # No checkout: point the agent at an empty directory instead of
+                    # inheriting baloo's own cwd (/app in the container). Otherwise
+                    # the agent's read/grep/find tools would wander through baloo's
+                    # own source tree and can produce garbage output (e.g. no
+                    # structured JSON), failing the review.
+                    _DIFF_ONLY_DIR.mkdir(parents=True, exist_ok=True)
+                    agent.options.cwd = str(_DIFF_ONLY_DIR)
                     logger.warning(
                         "No PR checkout for %s#%s (repo_cache_enabled=%s) — agent "
-                        "file tools will run against baloo's own cwd, not the PR; "
-                        "reviewing diff-only",
+                        "file tools run in an empty dir; reviewing diff-only",
                         repo_full_name,
                         pr_number,
                         settings.repo_cache_enabled,
@@ -1723,6 +1730,33 @@ async def process_pr_review(
                     ),
                     diff=pr_context.diff,
                 )
+            # Comments-only review: non-blocking findings (MEDIUM/LOW) exist but
+            # auto-approve is off (approve=False, request_changes=False). Without
+            # this branch those findings would be saved to the DB but never posted
+            # to GitHub — the PR author never sees them.
+            elif not request_changes and has_new_feedback and posted_review_result is None:
+                logger.info("Posting comments-only review with non-blocking findings")
+                posted_result = await github_client.post_review(
+                    repo_full_name,
+                    pr_number,
+                    ReviewResult(
+                        summary=review_result.summary,
+                        comments=routed["review"],
+                        approve=False,
+                        request_changes=False,
+                    ),
+                    diff=pr_context.diff,
+                )
+                if isinstance(posted_result, PostedReviewResult):
+                    posted_review_result = posted_result
+                    if posted_result.dropped:
+                        logger.warning(
+                            "Dropped %d/%d non-blocking review finding(s) while posting %s#%s",
+                            len(posted_result.dropped),
+                            posted_result.attempted,
+                            repo_full_name,
+                            pr_number,
+                        )
             # Update progress comment with completion status
             review_duration = int(time.time() - review_start_time)
             if progress_comment_id:
