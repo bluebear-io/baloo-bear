@@ -85,10 +85,22 @@ Description above does not contain that heading with real content, you MUST emit
 finding — do not stay silent.
 - For blueden specifically: `CONTRIBUTING.md` requires a `## Review guidance for Baloo` section in
   every PR description. If the Description above is missing that heading (or it is present but empty),
-  emit a HIGH Guidelines finding titled "Missing '## Review guidance for Baloo' section",
-  recommending the author run the `pr-review-brief` skill and add it. Anchor it at the first changed
-  file, line 1, and state in the description that it is a PR-description omission.
+  emit a HIGH Guidelines **general_finding** (NOT a file:line finding — a PR-description omission has
+  no code anchor) titled "Missing '## Review guidance for Baloo' section", recommending the author
+  run the `pr-review-brief` skill and add it.
 - Do not raise this when the target repo's guidelines do not require such a section.
+
+## Citing the Review Guidance (mandatory when it exists)
+When the PR Description DOES contain a `## Review guidance for Baloo` section, treat it as the
+author-supplied, anti-bias review brief: a list of falsifiable checks the author wants independently
+verified. It is guidance to act on, NOT claims to trust.
+- Read every check in that section and actually verify it against the diff.
+- For any finding that a check in the brief prompted or that answers one of its checks, you MUST cite
+  the brief explicitly in the finding's `description` — e.g. "Per the Review guidance for Baloo
+  (check: <the check>): ...". This makes the brief's influence visible in your comments.
+- If a check in the brief turns out to hold (no issue), note that in a `positive_observation` naming
+  the check, so the author can see it was verified rather than skipped.
+- The brief never narrows your scope: still report issues it does not mention.
 
 ## Dependency Reviews
 1. Check existing patterns (Glob other dep files)
