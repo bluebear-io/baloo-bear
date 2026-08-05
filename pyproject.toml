@@ -39,7 +39,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "black>=26.5.1",
     "ruff>=0.15.16",
-    "mypy>=2.1.0",
+    "mypy>=2.3.0",
     "aiosqlite>=0.20.0",
 ]
 
