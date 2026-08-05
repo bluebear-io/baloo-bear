@@ -5,6 +5,7 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 ## Getting Started
 
 - **[Getting Started](getting-started.md)** — Set up Baloo end-to-end with Docker, ngrok, and a GitHub App
+- **[How to Get the Most Out of Baloo](how-to-get-the-most.md)** — Conventions, per-PR review briefs, and workflows that produce high-signal reviews
 - **[Development](development.md)** — Contributor setup: local dev, tests, linting, git hooks
 
 ## Features

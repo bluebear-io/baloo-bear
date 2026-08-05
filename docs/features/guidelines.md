@@ -80,6 +80,14 @@ Examples:
 - Run lint before opening
 ```
 
+## Per-PR review guidance
+
+Standing guidelines catch convention violations. For high-signal reviews on a *specific* change, add a `## Review guidance for Baloo` section to the PR description with falsifiable, diff-anchored checks. Baloo reads that section and cites it when a finding answers one of its checks.
+
+If `CONTRIBUTING.md` requires that section on every PR, Baloo flags descriptions that omit it.
+
+Full workflow, template, and a real critical finding driven by a review brief: [How to Get the Most Out of Baloo](../how-to-get-the-most.md).
+
 ## No Guidelines? No Problem
 
 If neither file exists in the repository, Baloo skips the guidelines compliance check entirely. It won't invent rules that aren't documented.

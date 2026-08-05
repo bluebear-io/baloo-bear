@@ -233,9 +233,10 @@ def test_required_pr_description_section_rule_in_system_prompt():
 
     assert "Required PR-Description Sections" in REVIEW_SYSTEM_PROMPT
     assert "## Review guidance for Baloo" in REVIEW_SYSTEM_PROMPT
-    assert "pr-review-brief" in REVIEW_SYSTEM_PROMPT
     # A PR-description omission has no code anchor — it must be a general_finding, not a fake file:line.
     assert "general_finding" in REVIEW_SYSTEM_PROMPT
+    # Stay product-generic — no customer/repo-specific names in the system prompt.
+    assert "blueden" not in REVIEW_SYSTEM_PROMPT.lower()
 
 
 def test_cite_review_guidance_rule_in_system_prompt():

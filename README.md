@@ -20,6 +20,7 @@ Website: [BlueBear Security](https://www.bluebear.io)
 
 - **Catches what linters can't** — logic errors, silent failures, security antipatterns, missing error handling
 - **Respects your conventions** — reads `AGENTS.md` and `CONTRIBUTING.md` from your repo and enforces them
+- **Follows per-PR review briefs** — when a PR includes `## Review guidance for Baloo`, Baloo verifies those falsifiable, context-aware checks and cites them in findings
 - **Posts like a teammate** — inline comments on specific lines, severity labels, approval/request-changes decisions
 - **Runs on every push** — new commits get reviewed automatically, with discussion thread tracking across iterations
 - **Self-hosted & private** — your code never leaves your infrastructure; bring your own API keys
@@ -59,6 +60,7 @@ Inline comments appear on the exact lines:
 | **Multi-model**           | Supports Claude (Sonnet, Haiku, Opus) and Gemini (Flash, Pro) with automatic fallback                                             |
 | **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered                                                  |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
+| **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
 | **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |
 | **Fidelity analysis**     | Optionally compares PR against design plan documents                                                                              |
 | **Documentation drift**   | Optionally asks authors to update mapped docs when implementation changes make them stale                                         |
@@ -105,6 +107,8 @@ docker compose up --build
 Install the GitHub App on your repositories. Open a PR — Baloo will review it automatically.
 
 📖 **Full setup guide**: [docs/getting-started.md](docs/getting-started.md)
+
+📖 **Get sharper reviews**: [docs/how-to-get-the-most.md](docs/how-to-get-the-most.md) — conventions, per-PR review briefs, and workflows that turn Baloo into a context-aware reviewer
 
 ## Architecture
 
@@ -177,6 +181,7 @@ Full reference: [docs/configuration.md](docs/configuration.md)
 
 Feature guides:
 
+- [How to Get the Most Out of Baloo](docs/how-to-get-the-most.md) — Conventions, per-PR review briefs, high-signal workflows
 - [Review Agent](docs/features/review-agent.md) — How the agentic review works
 - [Guidelines Enforcement](docs/features/guidelines.md) — Repo convention checking
 - [Fidelity Analysis](docs/features/fidelity.md) — Plan-vs-implementation scoring

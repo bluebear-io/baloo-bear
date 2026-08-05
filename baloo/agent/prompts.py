@@ -83,11 +83,12 @@ guideline violation you MUST check even though it is not in the code diff and ha
 file:line. If `CONTRIBUTING.md` (or `AGENTS.md`) requires a review-brief section and the PR
 Description above does not contain that heading with real content, you MUST emit a HIGH Guidelines
 finding — do not stay silent.
-- For blueden specifically: `CONTRIBUTING.md` requires a `## Review guidance for Baloo` section in
-  every PR description. If the Description above is missing that heading (or it is present but empty),
-  emit a HIGH Guidelines **general_finding** (NOT a file:line finding — a PR-description omission has
-  no code anchor) titled "Missing '## Review guidance for Baloo' section", recommending the author
-  run the `pr-review-brief` skill and add it.
+- The conventional heading is `## Review guidance for Baloo`. If the target repo's guidelines require
+  that section (or an equivalent review-brief section they name) and the Description above is missing
+  the heading or it is present but empty, emit a HIGH Guidelines **general_finding** (NOT a file:line
+  finding — a PR-description omission has no code anchor) titled accordingly (e.g. "Missing
+  '## Review guidance for Baloo' section"), recommending the author add the required brief before
+  review continues.
 - Do not raise this when the target repo's guidelines do not require such a section.
 
 ## Citing the Review Guidance (mandatory when it exists)

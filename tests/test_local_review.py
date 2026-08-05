@@ -81,7 +81,7 @@ def test_build_local_pr_context_git_workdir_sets_initial_git_cwd(tmp_path):
             "config",
             "--get",
             "remote.origin.url",
-        ): "git@github.com:Blue-Bear-Security/blueden.git",
+        ): "git@github.com:Blue-Bear-Security/baloo-bear.git",
         ("diff", "--numstat", "origin/main...HEAD"): "1\t0\tREADME.md\n",
         ("diff", "--name-status", "origin/main...HEAD"): "M\tREADME.md\n",
         ("diff", "origin/main...HEAD"): "diff --git a/README.md b/README.md\n",
@@ -104,7 +104,7 @@ def test_build_local_pr_context_git_workdir_sets_initial_git_cwd(tmp_path):
     )
 
     assert git_calls[0] == (("rev-parse", "--show-toplevel"), workdir)
-    assert ctx.repo_full_name == "Blue-Bear-Security/blueden"
+    assert ctx.repo_full_name == "Blue-Bear-Security/baloo-bear"
     assert all(cwd == "/resolved/repo/root" for _, cwd in git_calls[1:])
 
 
