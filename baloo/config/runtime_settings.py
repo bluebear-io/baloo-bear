@@ -161,12 +161,7 @@ def resolve_setting(key: str) -> Any:
 def setting_source(key: str) -> str:
     """Return ``db`` if an overlay is active for ``key``, else ``env``."""
     settings = get_settings()
-    if (
-        key in MUTABLE_KEYS
-        and settings.database_enabled
-        and _cache is not None
-        and key in _cache
-    ):
+    if key in MUTABLE_KEYS and settings.database_enabled and _cache is not None and key in _cache:
         return "db"
     return "env"
 
