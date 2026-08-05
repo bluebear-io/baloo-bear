@@ -82,11 +82,13 @@ Examples:
 
 ## Per-PR review guidance
 
-Standing guidelines catch convention violations. For high-signal reviews on a *specific* change, add a `## Review guidance for Baloo` section to the PR description with falsifiable, diff-anchored checks. Baloo reads that section and cites it when a finding answers one of its checks.
+Standing guidelines catch convention violations. For high-signal reviews on a *specific* change, add a `## Review guidance for Baloo` section to the PR description with falsifiable, diff-anchored checks.
 
-If `CONTRIBUTING.md` requires that section on every PR, Baloo flags descriptions that omit it.
+When that heading is present, Baloo extracts the section from the PR body and elevates it into a dedicated checklist for the review (primary checks to verify and cite). Findings that answer a check should cite the brief.
 
-Full workflow, template, and a real critical finding driven by a review brief: [How to Get the Most Out of Baloo](../how-to-get-the-most.md).
+If `CONTRIBUTING.md` requires that section on every PR, Baloo's guidelines rules also cover omissions — but the reliability win is putting a real brief in the PR body so it becomes the primary checklist.
+
+Full workflow and template: [How to Get the Most Out of Baloo](../how-to-get-the-most.md).
 
 ## No Guidelines? No Problem
 
