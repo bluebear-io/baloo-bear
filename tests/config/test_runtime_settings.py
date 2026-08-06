@@ -166,6 +166,62 @@ async def test_set_override_rejects_non_mutable(runtime_db):
         await set_override("database_url", "postgresql://x", updated_by="x")
 
 
+@pytest.mark.asyncio
+async def test_set_override_updates_existing_row(runtime_db):
+    await set_override("agent_model", "opus", updated_by="alice")
+    await set_override("agent_model", "sonnet", updated_by="bob")
+
+    async with runtime_db() as session:
+        rows = (await session.execute(select(RuntimeSetting))).scalars().all()
+
+    assert len(rows) == 1
+    assert rows[0].value == "sonnet"
+    assert rows[0].updated_by == "bob"
+    assert resolve_setting("agent_model") == "sonnet"
+
+
+@pytest.mark.asyncio
+async def test_set_override_recovers_from_concurrent_insert(runtime_db):
+    """A racing writer inserts first; our INSERT loses the unique index and retries as update."""
+    import baloo.config.runtime_settings as rs
+
+    async with runtime_db() as session:
+        async with session.begin():
+            session.add(
+                RuntimeSetting(
+                    key="agent_model",
+                    value="haiku",
+                    installation_id=None,
+                    updated_at=datetime.now(timezone.utc),
+                    updated_by="racer",
+                )
+            )
+
+    real_filter = rs._tenant_filter
+    calls = {"n": 0}
+
+    def flaky_filter(stmt, model, installation_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # First lookup misses the row the racing writer just committed,
+            # so set_override attempts an INSERT and hits the unique index.
+            return stmt.where(model.key == "__never_matches__")
+        return real_filter(stmt, model, installation_id)
+
+    with patch.object(rs, "_tenant_filter", flaky_filter):
+        await set_override("agent_model", "opus", updated_by="admin")
+
+    assert calls["n"] >= 2
+
+    async with runtime_db() as session:
+        rows = (await session.execute(select(RuntimeSetting))).scalars().all()
+
+    assert len(rows) == 1
+    assert rows[0].value == "opus"
+    assert rows[0].updated_by == "admin"
+    assert resolve_setting("agent_model") == "opus"
+
+
 def test_get_agent_options_picks_up_overlay(monkeypatch):
     monkeypatch.setenv("DATABASE_ENABLED", "true")
     monkeypatch.setenv("AGENT_MODEL", "haiku")
@@ -199,3 +255,19 @@ def test_fidelity_agent_uses_get_agent_options(monkeypatch):
     agent = FidelityAgent()
     assert agent.options.model == "claude-sonnet-4-6"
     assert "fidelity" in agent.options.system_prompt.lower() or agent.options.system_prompt
+
+
+def test_fidelity_agent_keeps_medium_thinking_level(monkeypatch):
+    """Global PI_THINKING_LEVEL changes must not degrade fidelity analysis."""
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("PI_THINKING_LEVEL", "off")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    import baloo.config.runtime_settings as rs
+    from baloo.fidelity.fidelity_analyzer import FidelityAgent
+
+    rs._cache = {"pi_thinking_level": "off"}
+    rs._cache_loaded_at = 10**12
+
+    assert FidelityAgent().options.thinking_level == "medium"

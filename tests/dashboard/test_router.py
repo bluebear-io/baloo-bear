@@ -326,6 +326,33 @@ def test_dashboard_settings_test_connection(monkeypatch) -> None:
     assert "Smoke test passed for anthropic/claude-sonnet-4-6" in follow.text
 
 
+def test_dashboard_settings_rejects_unknown_action(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.set_override", new=AsyncMock()) as set_mock:
+        with patch("baloo.dashboard.router.clear_override", new=AsyncMock()) as clear_mock:
+            with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+                app = _build_app()
+                client = TestClient(app)
+                response = client.post(
+                    "/dashboard/settings",
+                    data={"key": "agent_model", "value": "opus", "action": "delete"},
+                    follow_redirects=False,
+                )
+                assert response.status_code == 303
+                follow = client.get(response.headers["location"])
+
+    set_mock.assert_not_awaited()
+    clear_mock.assert_not_awaited()
+    assert "Unknown action" in follow.text
+
+
 def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
     from baloo.agent.provider_smoke import SmokeResult
     from baloo.config.runtime_settings import reset_runtime_settings_cache

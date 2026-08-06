@@ -238,6 +238,7 @@ async def set_override(key: str, value: str, *, updated_by: str | None = None) -
     from datetime import datetime, timezone
 
     from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
 
     from baloo.db.engine import get_session_factory
     from baloo.db.models import RuntimeSetting
@@ -246,16 +247,20 @@ async def set_override(key: str, value: str, *, updated_by: str | None = None) -
     now = datetime.now(timezone.utc)
     factory = get_session_factory(settings.database_url)
 
-    async with factory() as session:
-        async with session.begin():
-            stmt = select(RuntimeSetting).where(RuntimeSetting.key == key)
-            stmt = _tenant_filter(stmt, RuntimeSetting, installation_id)
-            existing = (await session.execute(stmt)).scalar_one_or_none()
-            if existing:
-                existing.value = stored
-                existing.updated_at = now
-                existing.updated_by = updated_by
-            else:
+    async def _write(insert_allowed: bool) -> bool:
+        """Update in place, or insert when absent. Returns True when written."""
+        async with factory() as session:
+            async with session.begin():
+                stmt = select(RuntimeSetting).where(RuntimeSetting.key == key)
+                stmt = _tenant_filter(stmt, RuntimeSetting, installation_id)
+                existing = (await session.execute(stmt)).scalar_one_or_none()
+                if existing:
+                    existing.value = stored
+                    existing.updated_at = now
+                    existing.updated_by = updated_by
+                    return True
+                if not insert_allowed:
+                    return False
                 session.add(
                     RuntimeSetting(
                         key=key,
@@ -265,6 +270,16 @@ async def set_override(key: str, value: str, *, updated_by: str | None = None) -
                         updated_by=updated_by,
                     )
                 )
+                return True
+
+    try:
+        await _write(insert_allowed=True)
+    except IntegrityError:
+        # A concurrent writer inserted the same (key, installation_id) between
+        # our SELECT and INSERT; the partial unique index rejected the race
+        # loser. Re-read and update the row the winner created.
+        if not await _write(insert_allowed=False):
+            raise
 
     if _cache is None:
         _cache = {}

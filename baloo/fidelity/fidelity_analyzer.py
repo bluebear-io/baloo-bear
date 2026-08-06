@@ -20,6 +20,9 @@ class FidelityAgent(PIAgentBase):
     def __init__(self):
         options = get_agent_options()
         options.system_prompt = FIDELITY_SYSTEM_PROMPT
+        # Fidelity comparison needs deliberate reasoning; keep it independent of
+        # the global PI_THINKING_LEVEL an admin may tune for primary reviews.
+        options.thinking_level = "medium"
         options.name = "FidelityAgent"
         super().__init__(options)
 

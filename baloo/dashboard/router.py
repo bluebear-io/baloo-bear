@@ -466,9 +466,11 @@ async def update_settings(
         if action == "clear":
             await clear_override(key)
             msg = f"Cleared override for {key.upper()}; using env default."
-        else:
+        elif action == "save":
             await set_override(key, value, updated_by=username)
             msg = f"Updated {key.upper()}."
+        else:
+            return _settings_redirect(error="Unknown action.")
     except RuntimeSettingsError as exc:
         return _settings_redirect(error=str(exc))
 
