@@ -140,6 +140,7 @@ def test_settings_rows_mark_mutable_keys() -> None:
 
 
 def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
     from baloo.config.runtime_settings import reset_runtime_settings_cache, resolve_setting
     from baloo.config.settings import reset_settings
 
@@ -156,15 +157,26 @@ def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
         rs._cache_loaded_at = 10**12
         return value
 
+    smoke = SmokeResult(
+        ok=True,
+        provider="amazon-bedrock",
+        model="claude-sonnet-4-6",
+        duration_seconds=0.1,
+        message="Smoke test passed",
+    )
     with patch("baloo.dashboard.router.set_override", side_effect=fake_set):
         with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
-            app = _build_app()
-            client = TestClient(app)
-            response = client.post(
-                "/dashboard/settings",
-                data={"key": "agent_provider", "value": "amazon-bedrock", "action": "save"},
-                follow_redirects=False,
-            )
+            with patch(
+                "baloo.agent.provider_smoke.smoke_test_provider",
+                new=AsyncMock(return_value=smoke),
+            ):
+                app = _build_app()
+                client = TestClient(app)
+                response = client.post(
+                    "/dashboard/settings",
+                    data={"key": "agent_provider", "value": "amazon-bedrock", "action": "save"},
+                    follow_redirects=False,
+                )
 
     assert response.status_code == 303
     assert "message=" in response.headers["location"]
@@ -217,3 +229,83 @@ def test_dashboard_settings_post_rejects_non_mutable(monkeypatch) -> None:
 
     assert response.status_code == 303
     assert "error=" in response.headers["location"]
+
+
+def test_dashboard_settings_test_connection(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    smoke = SmokeResult(
+        ok=True,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        duration_seconds=0.5,
+        message="Smoke test passed for anthropic/claude-sonnet-4-6 in 0.5s",
+    )
+    with patch(
+        "baloo.agent.provider_smoke.smoke_test_provider",
+        new=AsyncMock(return_value=smoke),
+    ):
+        app = _build_app()
+        client = TestClient(app)
+        response = client.post(
+            "/dashboard/settings",
+            data={"key": "agent_model", "value": "", "action": "test_connection"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "smoke_ok=1" in location
+    assert "smoke_message=" in location
+
+
+def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        return value
+
+    smoke = SmokeResult(
+        ok=False,
+        provider="amazon-bedrock",
+        model="us.anthropic.x",
+        duration_seconds=1.0,
+        message="Smoke test failed for amazon-bedrock/us.anthropic.x: auth",
+        error="auth",
+    )
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set):
+        with patch(
+            "baloo.agent.provider_smoke.smoke_test_provider",
+            new=AsyncMock(return_value=smoke),
+        ):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={
+                    "key": "agent_provider",
+                    "value": "amazon-bedrock",
+                    "action": "save",
+                },
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "message=" in location
+    assert "smoke_ok=0" in location

@@ -100,6 +100,8 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
 
+After changing `AGENT_PROVIDER` or `AGENT_MODEL` (or clicking **Test connection**), Baloo runs a short PI smoke call with the effective provider/model to confirm credentials and endpoint wiring. A failure is shown on the Settings page; the override is still saved so you can fix auth and retry.
+
 If the database is disabled, behavior is unchanged: env vars only.
 
 ## Thread Agent

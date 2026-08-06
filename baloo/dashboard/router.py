@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -309,6 +309,8 @@ async def settings_page(request: Request):
     settings = get_settings()
     message = request.query_params.get("message")
     error = request.query_params.get("error")
+    smoke_ok = request.query_params.get("smoke_ok")
+    smoke_message = request.query_params.get("smoke_message")
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -317,7 +319,32 @@ async def settings_page(request: Request):
             "database_enabled": settings.database_enabled and bool(settings.database_url),
             "message": message,
             "error": error,
+            "smoke_ok": smoke_ok,
+            "smoke_message": smoke_message,
         },
+    )
+
+
+def _settings_redirect(
+    *,
+    message: str | None = None,
+    error: str | None = None,
+    smoke_ok: bool | None = None,
+    smoke_message: str | None = None,
+) -> RedirectResponse:
+    params: list[tuple[str, str]] = []
+    if message:
+        params.append(("message", message))
+    if error:
+        params.append(("error", error))
+    if smoke_message:
+        params.append(("smoke_message", smoke_message))
+        if smoke_ok is not None:
+            params.append(("smoke_ok", "1" if smoke_ok else "0"))
+    query = urlencode(params)
+    return RedirectResponse(
+        url=f"/dashboard/settings?{query}" if query else "/dashboard/settings",
+        status_code=303,
     )
 
 
@@ -328,7 +355,17 @@ async def update_settings(
     action: str = Form("save"),
     username: str = Depends(verify_credentials),
 ):
-    """Set or clear an allowlisted runtime override."""
+    """Set or clear an allowlisted runtime override, or run a provider smoke test."""
+    from baloo.agent.provider_smoke import SMOKE_TRIGGER_KEYS, smoke_test_provider
+
+    if action == "test_connection":
+        result = await smoke_test_provider()
+        return _settings_redirect(
+            message="Ran provider smoke test.",
+            smoke_ok=result.ok,
+            smoke_message=result.message,
+        )
+
     try:
         if action == "clear":
             await clear_override(key)
@@ -336,12 +373,18 @@ async def update_settings(
         else:
             await set_override(key, value, updated_by=username)
             msg = f"Updated {key.upper()}."
-        return RedirectResponse(
-            url=f"/dashboard/settings?message={quote_plus(msg)}",
-            status_code=303,
-        )
     except RuntimeSettingsError as exc:
-        return RedirectResponse(
-            url=f"/dashboard/settings?error={quote_plus(str(exc))}",
-            status_code=303,
-        )
+        return _settings_redirect(error=str(exc))
+
+    smoke_ok = None
+    smoke_message = None
+    if key in SMOKE_TRIGGER_KEYS:
+        result = await smoke_test_provider()
+        smoke_ok = result.ok
+        smoke_message = result.message
+
+    return _settings_redirect(
+        message=msg,
+        smoke_ok=smoke_ok,
+        smoke_message=smoke_message,
+    )

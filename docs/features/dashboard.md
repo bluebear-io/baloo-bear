@@ -35,6 +35,8 @@ The dashboard includes a **Settings** page at `/dashboard/settings` showing the 
 
 Allowlisted agent settings (`AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, and secondary model knobs) can be overridden at runtime when `DATABASE_ENABLED=true`. Overridden rows show a `db` source badge and a **Revert to env** control. All other settings remain read-only and always come from environment variables.
 
+Use **Test connection** to run a one-shot PI smoke call against the effective provider/model (no tools, ~30s timeout). Saving or clearing `AGENT_PROVIDER` / `AGENT_MODEL` also auto-runs that smoke check and shows pass/fail on the page. Overrides are kept even if the smoke fails so you can inspect credentials and retry.
+
 Secrets are never exposed: sensitive settings (API keys, private keys, passwords, webhook secrets) render as `Configured (redacted)` or `Not configured`, and `DATABASE_URL` is shown with its credentials stripped. Secrets cannot be stored as runtime overrides.
 
 ## Configuration
