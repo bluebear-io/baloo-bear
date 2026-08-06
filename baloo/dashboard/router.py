@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -29,6 +31,12 @@ router = APIRouter(
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# One-shot flash payloads for PRG redirects. Location only carries a server-
+# generated token so user-controlled form values never flow into the URL
+# (CodeQL: URL redirection from remote source).
+_FLASH_TTL_SECONDS = 300
+_flash_store: dict[str, tuple[float, dict[str, Any]]] = {}
 
 SENSITIVE_SETTINGS = {
     "anthropic_api_key",
@@ -383,10 +391,7 @@ async def outcomes(
 async def settings_page(request: Request):
     await ensure_fresh_cache()
     settings = get_settings()
-    message = request.query_params.get("message")
-    error = request.query_params.get("error")
-    smoke_ok = request.query_params.get("smoke_ok")
-    smoke_message = request.query_params.get("smoke_message")
+    flash = _pop_flash(request.query_params.get("flash"))
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -394,33 +399,47 @@ async def settings_page(request: Request):
             "settings_rows": _settings_rows(),
             "models_in_use": _models_in_use(),
             "database_enabled": settings.database_enabled and bool(settings.database_url),
-            "message": message,
-            "error": error,
-            "smoke_ok": smoke_ok,
-            "smoke_message": smoke_message,
+            "message": flash.get("message") if flash else None,
+            "error": flash.get("error") if flash else None,
+            "smoke_ok": flash.get("smoke_ok") if flash else None,
+            "smoke_message": flash.get("smoke_message") if flash else None,
         },
     )
 
 
-def _settings_redirect(
-    *,
-    message: str | None = None,
-    error: str | None = None,
-    smoke_ok: bool | None = None,
-    smoke_message: str | None = None,
-) -> RedirectResponse:
-    params: list[tuple[str, str]] = []
-    if message:
-        params.append(("message", message))
-    if error:
-        params.append(("error", error))
-    if smoke_message:
-        params.append(("smoke_message", smoke_message))
-        if smoke_ok is not None:
-            params.append(("smoke_ok", "1" if smoke_ok else "0"))
-    query = urlencode(params)
+def _purge_expired_flash() -> None:
+    now = time.monotonic()
+    expired = [token for token, (expires, _) in _flash_store.items() if expires <= now]
+    for token in expired:
+        _flash_store.pop(token, None)
+
+
+def _put_flash(payload: dict[str, Any]) -> str:
+    """Store a one-shot flash payload; return an opaque token for the redirect."""
+    _purge_expired_flash()
+    token = secrets.token_urlsafe(16)
+    _flash_store[token] = (time.monotonic() + _FLASH_TTL_SECONDS, payload)
+    return token
+
+
+def _pop_flash(token: str | None) -> dict[str, Any] | None:
+    if not token:
+        return None
+    _purge_expired_flash()
+    entry = _flash_store.pop(token, None)
+    if entry is None:
+        return None
+    return entry[1]
+
+
+def _settings_redirect(**flash: Any) -> RedirectResponse:
+    """Redirect to settings with a server-generated flash token only."""
+    payload = {key: value for key, value in flash.items() if value is not None}
+    if not payload:
+        return RedirectResponse(url="/dashboard/settings", status_code=303)
+    token = _put_flash(payload)
     return RedirectResponse(
-        url=f"/dashboard/settings?{query}" if query else "/dashboard/settings",
+        url=f"/dashboard/settings?flash={token}",
         status_code=303,
     )
 
@@ -439,7 +458,7 @@ async def update_settings(
         result = await smoke_test_provider()
         return _settings_redirect(
             message="Ran provider smoke test.",
-            smoke_ok=result.ok,
+            smoke_ok="1" if result.ok else "0",
             smoke_message=result.message,
         )
 
@@ -453,15 +472,10 @@ async def update_settings(
     except RuntimeSettingsError as exc:
         return _settings_redirect(error=str(exc))
 
-    smoke_ok = None
-    smoke_message = None
+    flash: dict[str, Any] = {"message": msg}
     if key in SMOKE_TRIGGER_KEYS:
         result = await smoke_test_provider()
-        smoke_ok = result.ok
-        smoke_message = result.message
+        flash["smoke_ok"] = "1" if result.ok else "0"
+        flash["smoke_message"] = result.message
 
-    return _settings_redirect(
-        message=msg,
-        smoke_ok=smoke_ok,
-        smoke_message=smoke_message,
-    )
+    return _settings_redirect(**flash)
