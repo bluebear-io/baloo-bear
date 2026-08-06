@@ -215,7 +215,7 @@ def test_dashboard_settings_renders_provider_selector(monkeypatch) -> None:
     assert 'aria-label="AGENT_PROVIDER"' in response.text
     assert '<option value="anthropic" selected>Anthropic (direct API)</option>' in response.text
     assert '<option value="amazon-bedrock" >Amazon Bedrock</option>' in response.text
-    assert "Amazon Bedrock requires a Bedrock model ID" in response.text
+    assert "Applies to all Baloo agents" in response.text
 
 
 def test_dashboard_settings_post_sets_override(monkeypatch) -> None:

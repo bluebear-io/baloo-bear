@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # Agent Configuration
     agent_provider: str = Field(
         default="anthropic",
-        description="LLM provider (anthropic, google, openai, amazon-bedrock)",
+        description="LLM provider for all agents (anthropic, google, openai, amazon-bedrock)",
     )
     agent_model: str = Field(default="claude-sonnet-4-6", description="Model to use for reviews")
     agent_fallback_model: str = Field(

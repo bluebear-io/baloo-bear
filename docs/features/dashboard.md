@@ -35,7 +35,7 @@ The dashboard includes a **Settings** page at `/dashboard/settings` showing the 
 
 Allowlisted agent settings (`AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, and secondary model knobs) can be overridden at runtime when `DATABASE_ENABLED=true`. Overridden rows show a `db` source badge and a **Revert to env** control. All other settings remain read-only and always come from environment variables.
 
-`AGENT_PROVIDER` is a selector with labeled choices, including **Anthropic (direct API)** and **Amazon Bedrock**. When selecting Bedrock, also set `AGENT_MODEL` to a Bedrock model ID; provider selection does not translate Anthropic short names into regional Bedrock IDs.
+`AGENT_PROVIDER` is a selector with labeled choices, including **Anthropic (direct API)** and **Amazon Bedrock**. It applies to **all** Baloo agents (primary, FP verification, thread, fidelity, docs, sync). Short names like `haiku` / `sonnet` / `opus` are model tiers on that provider, not separate backends — with Bedrock selected they resolve to Bedrock inference-profile IDs.
 
 The page opens with a **Models in use** summary: each agent role (primary review, fallback, FP verification, thread agent, fidelity, documentation drift, sync scope) with its configured value and resolved `provider/model` (so defaults like `haiku` for FP/thread are visible without scrolling).
 

@@ -46,14 +46,15 @@ Example:
 
 ```bash
 AGENT_PROVIDER=amazon-bedrock
-AGENT_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
-# or: AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0
+AGENT_MODEL=sonnet
+# or a specific Bedrock ID / ARN:
+# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
-Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
+`AGENT_PROVIDER` applies to all agents. Short names (`haiku` / `sonnet` / `opus`) resolve to Bedrock tier IDs automatically. Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
 
 ## Application
 
@@ -71,8 +72,8 @@ Use **Test connection** on the dashboard Settings page after switching to confir
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider: `anthropic`, `google`, `openai`, `amazon-bedrock` |
-| `AGENT_MODEL` | `sonnet` | Model short name or `provider/model` string. See [Models](features/models.md). For Bedrock use a Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514-v1:0`) |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock` |
+| `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback model (`provider/model`). Empty to disable |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Generation temperature |

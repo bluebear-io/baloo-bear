@@ -147,7 +147,7 @@
             <td class="px-4 py-3 text-sm text-gray-600 min-w-64">
               {{ row.description }}
               {% if row.name == "agent_provider" %}
-              <span class="block mt-1 text-xs text-gray-500">Amazon Bedrock requires a Bedrock model ID in <code class="font-mono">AGENT_MODEL</code>.</span>
+              <span class="block mt-1 text-xs text-gray-500">Applies to all Baloo agents. Short names (<code class="font-mono">haiku</code>/<code class="font-mono">sonnet</code>/<code class="font-mono">opus</code>) resolve to that provider's tier models; override with a bare model ID when needed.</span>
               {% endif %}
             </td>
           </tr>
