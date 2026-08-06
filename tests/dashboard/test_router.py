@@ -183,6 +183,41 @@ def test_settings_rows_mark_mutable_keys() -> None:
     assert by_name["database_url"]["mutable"] is False
 
 
+def test_agent_provider_row_has_labeled_selector_choices() -> None:
+    from baloo.dashboard.router import _settings_rows
+
+    provider = next(row for row in _settings_rows() if row["name"] == "agent_provider")
+    assert provider["choices"] == (
+        ("anthropic", "Anthropic (direct API)"),
+        ("amazon-bedrock", "Amazon Bedrock"),
+        ("google", "Google Gemini"),
+        ("openai", "OpenAI"),
+    )
+
+
+def test_dashboard_settings_renders_provider_selector(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        response = TestClient(app).get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "<select" in response.text
+    assert 'name="value"' in response.text
+    assert 'aria-label="AGENT_PROVIDER"' in response.text
+    assert '<option value="anthropic" selected>Anthropic (direct API)</option>' in response.text
+    assert '<option value="amazon-bedrock" >Amazon Bedrock</option>' in response.text
+    assert "Amazon Bedrock requires a Bedrock model ID" in response.text
+
+
 def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
     from baloo.agent.provider_smoke import SmokeResult
     from baloo.config.runtime_settings import reset_runtime_settings_cache, resolve_setting

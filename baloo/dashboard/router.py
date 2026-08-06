@@ -133,6 +133,13 @@ SETTING_CATEGORIES = {
     },
 }
 
+AGENT_PROVIDER_CHOICES = (
+    ("anthropic", "Anthropic (direct API)"),
+    ("amazon-bedrock", "Amazon Bedrock"),
+    ("google", "Google Gemini"),
+    ("openai", "OpenAI"),
+)
+
 
 def _sanitize_database_query(query: str) -> str:
     if not query:
@@ -218,6 +225,7 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "description": field.description or "",
                 "mutable": mutable,
                 "source": source,
+                "choices": AGENT_PROVIDER_CHOICES if name == "agent_provider" else None,
             }
         )
     return rows
