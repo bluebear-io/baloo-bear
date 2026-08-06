@@ -215,6 +215,82 @@ def _settings_rows() -> list[dict[str, Any]]:
     return rows
 
 
+def _resolve_model_ref(configured: str) -> str:
+    """Resolve a short name or provider/model string to ``provider/model_id``."""
+    from baloo.agent.config import get_agent_options
+
+    if not configured:
+        return "(disabled)"
+    options = get_agent_options(configured)
+    return f"{options.provider}/{options.model}"
+
+
+def _models_in_use() -> list[dict[str, str]]:
+    """Summarize each agent role and the model it will actually call."""
+    from baloo.agent.config import get_agent_options
+
+    primary = get_agent_options()
+    primary_ref = f"{primary.provider}/{primary.model}"
+    primary_configured = str(resolve_setting("agent_model"))
+
+    fallback_configured = str(resolve_setting("agent_fallback_model") or "")
+    fp_configured = str(resolve_setting("fp_verification_model"))
+    thread_configured = str(resolve_setting("thread_agent_model"))
+    docs_configured = str(resolve_setting("documentation_drift_model"))
+
+    return [
+        {
+            "role": "Primary review",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+        {
+            "role": "Fallback",
+            "setting": "AGENT_FALLBACK_MODEL",
+            "configured": fallback_configured or "(empty)",
+            "resolved": _resolve_model_ref(fallback_configured),
+            "source": setting_source("agent_fallback_model"),
+        },
+        {
+            "role": "FP verification",
+            "setting": "FP_VERIFICATION_MODEL",
+            "configured": fp_configured,
+            "resolved": _resolve_model_ref(fp_configured),
+            "source": setting_source("fp_verification_model"),
+        },
+        {
+            "role": "Thread agent",
+            "setting": "THREAD_AGENT_MODEL",
+            "configured": thread_configured,
+            "resolved": _resolve_model_ref(thread_configured),
+            "source": setting_source("thread_agent_model"),
+        },
+        {
+            "role": "Fidelity analysis",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+        {
+            "role": "Documentation drift",
+            "setting": "DOCUMENTATION_DRIFT_MODEL",
+            "configured": docs_configured,
+            "resolved": _resolve_model_ref(docs_configured),
+            "source": setting_source("documentation_drift_model"),
+        },
+        {
+            "role": "Sync scope decider",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+    ]
+
+
 @router.get("/", response_class=HTMLResponse)
 async def overview(request: Request):
     stats = await DashboardService.get_overview_stats()
@@ -316,6 +392,7 @@ async def settings_page(request: Request):
         name="settings.html",
         context={
             "settings_rows": _settings_rows(),
+            "models_in_use": _models_in_use(),
             "database_enabled": settings.database_enabled and bool(settings.database_url),
             "message": message,
             "error": error,

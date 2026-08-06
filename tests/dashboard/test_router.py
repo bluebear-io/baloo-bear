@@ -129,6 +129,50 @@ def test_documentation_drift_settings_are_grouped() -> None:
         assert by_name[name] == "Documentation Drift"
 
 
+def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+    from baloo.dashboard.router import _models_in_use
+
+    monkeypatch.setenv("AGENT_MODEL", "sonnet")
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "haiku")
+    monkeypatch.setenv("DOCUMENTATION_DRIFT_MODEL", "sonnet")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    by_role = {row["role"]: row for row in _models_in_use()}
+    assert by_role["Primary review"]["configured"] == "sonnet"
+    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
+    assert by_role["FP verification"]["configured"] == "haiku"
+    assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
+    assert by_role["Thread agent"]["configured"] == "haiku"
+    assert by_role["Fidelity analysis"]["resolved"] == by_role["Primary review"]["resolved"]
+    assert by_role["Documentation drift"]["configured"] == "sonnet"
+
+
+def test_dashboard_settings_shows_models_in_use(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "haiku")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        client = TestClient(app)
+        response = client.get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "Models in use" in response.text
+    assert "FP verification" in response.text
+    assert "Thread agent" in response.text
+    assert "haiku" in response.text
+    assert "claude-haiku-4-5-20251001" in response.text
+
+
 def test_settings_rows_mark_mutable_keys() -> None:
     from baloo.config.runtime_settings import MUTABLE_KEYS
     from baloo.dashboard.router import _settings_rows
