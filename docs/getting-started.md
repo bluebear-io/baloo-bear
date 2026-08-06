@@ -205,6 +205,8 @@ Baloo becomes more useful when the reviewed repository contains:
 
 Baloo reads those files from the target repository and uses them as review guidance.
 
+For the highest-signal reviews, also put a `## Review guidance for Baloo` section in each PR description with falsifiable checks for that diff. See [How to Get the Most Out of Baloo](how-to-get-the-most.md).
+
 If fidelity analysis is enabled, the reviewed repository can also include plan files such as:
 
 ```text

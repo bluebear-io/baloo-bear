@@ -10,6 +10,7 @@ Canonical website: https://www.bluebear.io
 
 - [Project README](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/README.md): Overview, features, quick start, use cases, and FAQ.
 - [Getting Started](https://blue-bear-security.github.io/baloo-bear/getting-started/): End-to-end setup with Docker Compose, ngrok, and a GitHub App.
+- [How to Get the Most Out of Baloo](https://blue-bear-security.github.io/baloo-bear/how-to-get-the-most/): Repo conventions, per-PR review briefs, and workflows that produce high-signal reviews.
 - [Configuration](https://blue-bear-security.github.io/baloo-bear/configuration/): Environment variables, defaults, and deployment settings.
 
 ## Core Concepts

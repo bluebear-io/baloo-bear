@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from baloo.agent.review_guidance import extract_review_guidance
 from baloo.github.models import PRContext
 
 REVIEW_JSON_RESPONSE_SCHEMA = """## Output Schema
@@ -83,11 +84,12 @@ guideline violation you MUST check even though it is not in the code diff and ha
 file:line. If `CONTRIBUTING.md` (or `AGENTS.md`) requires a review-brief section and the PR
 Description above does not contain that heading with real content, you MUST emit a HIGH Guidelines
 finding — do not stay silent.
-- For blueden specifically: `CONTRIBUTING.md` requires a `## Review guidance for Baloo` section in
-  every PR description. If the Description above is missing that heading (or it is present but empty),
-  emit a HIGH Guidelines **general_finding** (NOT a file:line finding — a PR-description omission has
-  no code anchor) titled "Missing '## Review guidance for Baloo' section", recommending the author
-  run the `pr-review-brief` skill and add it.
+- The conventional heading is `## Review guidance for Baloo`. If the target repo's guidelines require
+  that section (or an equivalent review-brief section they name) and the Description above is missing
+  the heading or it is present but empty, emit a HIGH Guidelines **general_finding** (NOT a file:line
+  finding — a PR-description omission has no code anchor) titled accordingly (e.g. "Missing
+  '## Review guidance for Baloo' section"), recommending the author add the required brief before
+  review continues.
 - Do not raise this when the target repo's guidelines do not require such a section.
 
 ## Citing the Review Guidance (mandatory when it exists)
@@ -291,6 +293,35 @@ explicitly accepted.
 """
 
 
+def _review_guidance_section(description: str | None) -> tuple[str, str]:
+    """Extract and format the elevated Review Guidance prompt blocks.
+
+    Returns:
+        ``(section, task_step)`` — both empty strings when no brief is present.
+        ``section`` is injected near PR metadata; ``task_step`` is an explicit
+        Task step so the checks are not optional noise in the Description.
+    """
+    brief = extract_review_guidance(description)
+    if not brief:
+        return "", ""
+
+    section = f"""## Review Guidance for Baloo (verify every check)
+
+Author-supplied anti-bias brief — verify each check against the diff; do not trust claims.
+Cite findings with: Per the Review guidance for Baloo (check: …)
+Record positive_observations for checks that hold. Still report issues the brief omits.
+
+{brief}
+"""
+    task_step = """### Step 0b: Execute Review Guidance checks (REQUIRED)
+The **Review Guidance for Baloo** section above is the primary checklist for this PR.
+Read every check and verify it against the diff and full file context.
+For findings that answer a check, cite it: `Per the Review guidance for Baloo (check: …)`.
+For checks that hold, add a `positive_observation` naming the check.
+"""
+    return section, task_step
+
+
 def _is_dependabot_pr(pr_context: PRContext | dict[str, Any]) -> bool:
     """Check if this PR is from Dependabot or similar dependency update bots."""
     author = (_ctx_get(pr_context, "author", "") or "").lower()
@@ -399,6 +430,17 @@ Be practical - automated updates usually don't need extensive review unless they
 
 """
 
+    description = _ctx_get(pr_context, "description", "No description provided.")
+    review_guidance_section, review_guidance_task = _review_guidance_section(
+        _ctx_get(pr_context, "description")
+    )
+    guidance_task_block = ""
+    if review_guidance_task:
+        guidance_task_block = f"""
+{review_guidance_task}
+Then continue with the focused review below.
+"""
+
     return f"""Review this simple configuration/dependency change:
 
 ## Pull Request Information
@@ -409,8 +451,9 @@ Be practical - automated updates usually don't need extensive review unless they
 {files_list}
 
 **Description**:
-{_ctx_get(pr_context, "description", "No description provided.")}
+{description}
 
+{review_guidance_section}
 {dependabot_notice}
 {_discussion_section(pr_context)}
 {feedback_signals_text}
@@ -423,7 +466,7 @@ Be practical - automated updates usually don't need extensive review unless they
 ## Task
 
 This is a configuration or dependency file change. Perform a focused review:
-
+{guidance_task_block}
 **FIRST - Check PR Context**:
 Look at the PR description above. Does it mention:
 - "Baloo" or "previous review" or "code review"?
@@ -502,6 +545,10 @@ def build_pr_review_prompt(pr_context: PRContext | dict[str, Any]) -> str:
     else:
         ticket_scope_section = ""
 
+    review_guidance_section, review_guidance_task = _review_guidance_section(
+        _ctx_get(pr_context, "description")
+    )
+
     # Use simplified prompt for simple PRs (configs, deps, docs)
     if _is_simple_pr(pr_context):
         return _build_simple_pr_review_prompt(pr_context, files_list, feedback_signals_text)
@@ -518,7 +565,7 @@ def build_pr_review_prompt(pr_context: PRContext | dict[str, Any]) -> str:
 {_ctx_get(pr_context, "description", "No description provided.")}
 
 {ticket_scope_section}
-
+{review_guidance_section}
 {_discussion_section(pr_context)}
 {feedback_signals_text}
 **Files Changed**: {len(_ctx_get(pr_context, "files_changed", []))} files
@@ -543,7 +590,7 @@ Perform a thorough agentic code review following your system prompt guidelines. 
 
 **If this PR is fixing a problem**: Understand the constraint being addressed before suggesting alternatives. Be practical.
 
-### Step 1: Read Full Context (REQUIRED)
+{review_guidance_task}### Step 1: Read Full Context (REQUIRED)
 Use the **read** tool to examine each changed file in full context:
 {files_list}
 

@@ -233,9 +233,10 @@ def test_required_pr_description_section_rule_in_system_prompt():
 
     assert "Required PR-Description Sections" in REVIEW_SYSTEM_PROMPT
     assert "## Review guidance for Baloo" in REVIEW_SYSTEM_PROMPT
-    assert "pr-review-brief" in REVIEW_SYSTEM_PROMPT
     # A PR-description omission has no code anchor — it must be a general_finding, not a fake file:line.
     assert "general_finding" in REVIEW_SYSTEM_PROMPT
+    # Stay product-generic — no customer/repo-specific names in the system prompt.
+    assert "blueden" not in REVIEW_SYSTEM_PROMPT.lower()
 
 
 def test_cite_review_guidance_rule_in_system_prompt():
@@ -244,6 +245,79 @@ def test_cite_review_guidance_rule_in_system_prompt():
 
     assert "Citing the Review Guidance" in REVIEW_SYSTEM_PROMPT
     assert "Per the Review guidance for Baloo" in REVIEW_SYSTEM_PROMPT
+
+
+def test_prompt_elevates_review_guidance_when_present():
+    """PR-body Review guidance is extracted into a dedicated prompt section + task step."""
+    brief_check = "Prod gate returns empty/false outside production"
+    pr_context = {
+        "title": "Enable tracing",
+        "author": "dev",
+        "description": (
+            "## Summary\nShip tracing.\n\n"
+            "## Review guidance for Baloo\n\n"
+            f"1. {brief_check}\n"
+            "2. No silent scope creep\n\n"
+            "## Test plan\n- [x] done\n"
+        ),
+        "base_branch": "main",
+        "head_branch": "feat/tracing",
+        "files_changed": [{"filename": "infra/factory.py"}],
+        "changed_file_paths": ["infra/factory.py"],
+        "diff": "--- a\n+++ b\n@@\n-old\n+new",
+    }
+
+    prompt = build_pr_review_prompt(pr_context)
+
+    assert "## Review Guidance for Baloo (verify every check)" in prompt
+    assert brief_check in prompt
+    assert "Step 0b: Execute Review Guidance checks" in prompt
+    assert "primary checklist" in prompt
+    # Following H2 from the PR body must not leak into the elevated brief block as a peer section.
+    elevated_idx = prompt.index("## Review Guidance for Baloo (verify every check)")
+    task_idx = prompt.index("## Your Task")
+    elevated = prompt[elevated_idx:task_idx]
+    assert "## Test plan" not in elevated
+    assert brief_check in elevated
+
+
+def test_prompt_omits_review_guidance_section_when_absent():
+    """No dedicated Review Guidance block when the PR description has no brief."""
+    pr_context = {
+        "title": "Fix typo",
+        "author": "dev",
+        "description": "## Summary\nJust a typo.\n",
+        "base_branch": "main",
+        "head_branch": "fix/typo",
+        "files_changed": [{"filename": "readme.md"}],
+        "changed_file_paths": ["readme.md"],
+        "diff": "--- a\n+++ b\n@@\n-old\n+new",
+    }
+
+    prompt = build_pr_review_prompt(pr_context)
+
+    assert "## Review Guidance for Baloo (verify every check)" not in prompt
+    assert "Step 0b: Execute Review Guidance checks" not in prompt
+
+
+def test_simple_prompt_elevates_review_guidance_when_present():
+    """Simple/config PRs still elevate a Review guidance brief when present."""
+    pr_context = {
+        "title": "Bump deps",
+        "author": "dev",
+        "description": ("## Review guidance for Baloo\n\n" "1. Pin versions exactly\n"),
+        "base_branch": "main",
+        "head_branch": "chore/deps",
+        "files_changed": [{"filename": "requirements.txt"}],
+        "changed_file_paths": ["requirements.txt"],
+        "diff": "--- a\n+++ b\n@@\n-old\n+new",
+    }
+
+    prompt = build_pr_review_prompt(pr_context)
+
+    assert "## Review Guidance for Baloo (verify every check)" in prompt
+    assert "Pin versions exactly" in prompt
+    assert "Step 0b: Execute Review Guidance checks" in prompt
 
 
 def test_exhaustive_reporting_in_code_review_prompt():
