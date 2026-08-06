@@ -30,17 +30,17 @@ class TestReviewLoggerEvents:
         mock_session.add = MagicMock()
 
         logger = ReviewLogger(review_id=42, session=mock_session)
-        await logger.agent_started(model="claude-sonnet-5", thinking_level="medium")
+        await logger.agent_started(model="claude-sonnet-4-6", thinking_level="medium")
 
         mock_session.add.assert_called_once()
         log_row = mock_session.add.call_args[0][0]
         assert log_row.review_id == 42
         assert log_row.event_type == "agent_started"
-        assert "claude-sonnet-5" in log_row.message
+        assert "claude-sonnet-4-6" in log_row.message
         assert log_row.raw_text is None
 
         meta = json.loads(log_row.metadata_json)
-        assert meta["model"] == "claude-sonnet-5"
+        assert meta["model"] == "claude-sonnet-4-6"
         assert meta["thinking_level"] == "medium"
 
     @pytest.mark.asyncio

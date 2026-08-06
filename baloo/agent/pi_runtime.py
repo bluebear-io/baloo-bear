@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class PIAgentOptions:
     """Configuration for a PI agent session."""
 
-    model: str = "claude-sonnet-5"
+    model: str = "claude-sonnet-4-6"
     provider: str = "anthropic"
     system_prompt: str = ""
     thinking_level: str = "medium"

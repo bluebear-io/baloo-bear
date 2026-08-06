@@ -24,7 +24,7 @@ STATUS_WEIGHTS = [50, 25, 20, 5]
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 CATEGORIES = ["Security", "Bugs", "Performance", "Quality"]
 
-MODELS = ["claude-sonnet-5", "claude-sonnet-5"]
+MODELS = ["claude-sonnet-4-6", "claude-sonnet-4-6"]
 
 
 async def seed(n: int = 100) -> None:

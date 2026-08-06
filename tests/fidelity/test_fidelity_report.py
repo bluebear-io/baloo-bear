@@ -85,7 +85,7 @@ class TestFidelityAgentOptions:
     def test_uses_sonnet_model(self):
         """Fidelity analyzer must use Sonnet for thorough analysis."""
         agent = FidelityAgent()
-        assert agent.options.model == "claude-sonnet-5"
+        assert agent.options.model == "claude-sonnet-4-6"
 
 
 class TestFormatFidelityReportNoTicket:

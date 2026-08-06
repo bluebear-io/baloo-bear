@@ -48,7 +48,7 @@ Example:
 AGENT_PROVIDER=amazon-bedrock
 AGENT_MODEL=sonnet
 # or a specific Bedrock ID / ARN:
-# AGENT_MODEL=us.anthropic.claude-sonnet-5
+# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...

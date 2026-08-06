@@ -17,13 +17,13 @@ class TestGetAgentOptions:
 
     def test_get_options_with_sonnet_short_name(self):
         options = get_agent_options("sonnet")
-        assert options.model == "claude-sonnet-5"
+        assert options.model == "claude-sonnet-4-6"
         assert options.provider == "anthropic"
         assert options.max_turns == 20
 
     def test_get_options_with_opus_short_name(self):
         options = get_agent_options("opus")
-        assert options.model == "claude-opus-5"
+        assert options.model == "claude-opus-4-6"
         assert options.provider == "anthropic"
         assert options.max_turns == 30
 
@@ -60,14 +60,14 @@ class TestGetAgentOptions:
         assert options.provider == "google"
 
     def test_get_options_with_anthropic_slash_model(self):
-        options = get_agent_options("anthropic/claude-opus-5")
-        assert options.model == "claude-opus-5"
+        options = get_agent_options("anthropic/claude-opus-4-6")
+        assert options.model == "claude-opus-4-6"
         assert options.provider == "anthropic"
 
     # --- Full model name passthrough ---
 
     def test_get_options_with_full_model_name(self):
-        full_model = "claude-opus-5"
+        full_model = "claude-opus-4-6"
         options = get_agent_options(full_model)
         assert options.model == full_model
         assert options.provider == "anthropic"
@@ -75,9 +75,9 @@ class TestGetAgentOptions:
     def test_full_model_name_uses_effective_provider(self, monkeypatch):
         monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
         reset_settings()
-        options = get_agent_options("us.anthropic.claude-sonnet-5")
+        options = get_agent_options("us.anthropic.claude-sonnet-4-6")
         assert options.provider == "amazon-bedrock"
-        assert options.model == "us.anthropic.claude-sonnet-5"
+        assert options.model == "us.anthropic.claude-sonnet-4-6"
 
     # --- Defaults ---
 
@@ -125,7 +125,7 @@ def test_standard_alias_resolves_to_sonnet():
     from baloo.agent.config import get_agent_options
 
     opts = get_agent_options("standard")
-    assert opts.model == "claude-sonnet-5"
+    assert opts.model == "claude-sonnet-4-6"
     assert opts.provider == "anthropic"
     assert opts.max_turns == 20
 
@@ -164,21 +164,21 @@ def test_openai_tier_short_names(monkeypatch):
 def test_bedrock_provider_model_string():
     from baloo.agent.config import get_agent_options
 
-    opts = get_agent_options("amazon-bedrock/us.anthropic.claude-sonnet-5")
+    opts = get_agent_options("amazon-bedrock/us.anthropic.claude-sonnet-4-6")
     assert opts.provider == "amazon-bedrock"
-    assert opts.model == "us.anthropic.claude-sonnet-5"
+    assert opts.model == "us.anthropic.claude-sonnet-4-6"
 
 
 def test_bedrock_via_settings_provider(monkeypatch):
     from baloo.agent.config import get_agent_options
 
     monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
-    monkeypatch.setenv("AGENT_MODEL", "us.anthropic.claude-sonnet-5")
+    monkeypatch.setenv("AGENT_MODEL", "us.anthropic.claude-sonnet-4-6")
     reset_settings()
 
     opts = get_agent_options()
     assert opts.provider == "amazon-bedrock"
-    assert opts.model == "us.anthropic.claude-sonnet-5"
+    assert opts.model == "us.anthropic.claude-sonnet-4-6"
 
 
 def test_bedrock_short_names_use_bedrock_tiers(monkeypatch):
@@ -193,12 +193,12 @@ def test_bedrock_short_names_use_bedrock_tiers(monkeypatch):
 
     standard = get_agent_options("sonnet")
     assert standard.provider == "amazon-bedrock"
-    assert standard.model == "us.anthropic.claude-sonnet-5"
+    assert standard.model == "us.anthropic.claude-sonnet-4-6"
     assert standard.max_turns == 20
 
     premium = get_agent_options("opus")
     assert premium.provider == "amazon-bedrock"
-    assert premium.model == "us.anthropic.claude-opus-5"
+    assert premium.model == "us.anthropic.claude-opus-4-6-v1"
     assert premium.max_turns == 30
 
 
@@ -209,7 +209,7 @@ def test_bedrock_default_short_name_agent_model(monkeypatch):
 
     opts = get_agent_options()
     assert opts.provider == "amazon-bedrock"
-    assert opts.model == "us.anthropic.claude-sonnet-5"
+    assert opts.model == "us.anthropic.claude-sonnet-4-6"
 
 
 def test_bedrock_fp_and_thread_short_names_follow_provider(monkeypatch):
@@ -229,5 +229,5 @@ def test_bedrock_fp_and_thread_short_names_follow_provider(monkeypatch):
 def test_resolve_short_name_helper():
     provider, model_id, max_turns = resolve_short_name("sonnet", "amazon-bedrock")
     assert provider == "amazon-bedrock"
-    assert model_id == "us.anthropic.claude-sonnet-5"
+    assert model_id == "us.anthropic.claude-sonnet-4-6"
     assert max_turns == 20

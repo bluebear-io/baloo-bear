@@ -236,7 +236,7 @@ def test_get_agent_options_picks_up_overlay(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     options = get_agent_options()
-    assert options.model == "claude-opus-5"
+    assert options.model == "claude-opus-4-6"
     assert options.provider == "anthropic"
 
 
@@ -253,7 +253,7 @@ def test_fidelity_agent_uses_get_agent_options(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     agent = FidelityAgent()
-    assert agent.options.model == "claude-sonnet-5"
+    assert agent.options.model == "claude-sonnet-4-6"
     assert "fidelity" in agent.options.system_prompt.lower() or agent.options.system_prompt
 
 

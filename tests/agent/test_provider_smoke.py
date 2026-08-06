@@ -13,7 +13,7 @@ from baloo.agent.provider_smoke import SmokeResult, smoke_test_provider
 def _options(**kwargs) -> PIAgentOptions:
     defaults = {
         "provider": "anthropic",
-        "model": "claude-sonnet-5",
+        "model": "claude-sonnet-4-6",
         "system_prompt": "",
         "thinking_level": "medium",
         "max_turns": 20,
@@ -125,8 +125,8 @@ def test_smoke_result_model_ref():
     result = SmokeResult(
         ok=True,
         provider="anthropic",
-        model="claude-sonnet-5",
+        model="claude-sonnet-4-6",
         duration_seconds=1.2,
         message="ok",
     )
-    assert result.model_ref == "anthropic/claude-sonnet-5"
+    assert result.model_ref == "anthropic/claude-sonnet-4-6"

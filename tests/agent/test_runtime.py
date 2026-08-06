@@ -70,7 +70,7 @@ class TestPIAgentOptions:
 
     def test_defaults(self):
         opts = PIAgentOptions()
-        assert opts.model == "claude-sonnet-5"
+        assert opts.model == "claude-sonnet-4-6"
         assert opts.provider == "anthropic"
         assert opts.thinking_level == "medium"
         assert opts.max_turns == 20
@@ -79,13 +79,13 @@ class TestPIAgentOptions:
 
     def test_custom_values(self):
         opts = PIAgentOptions(
-            model="claude-opus-5",
+            model="claude-opus-4-6",
             provider="anthropic",
             thinking_level="high",
             max_turns=30,
             cwd="/tmp/repo",
         )
-        assert opts.model == "claude-opus-5"
+        assert opts.model == "claude-opus-4-6"
         assert opts.max_turns == 30
         assert opts.cwd == "/tmp/repo"
 
@@ -170,7 +170,7 @@ class TestPIAgentBaseRunQuery:
                 "message": {
                     "role": "assistant",
                     "content": [{"type": "text", "text": assistant_text}],
-                    "model": "claude-sonnet-5",
+                    "model": "claude-sonnet-4-6",
                     "usage": usage,
                     "stopReason": "stop",
                 },
@@ -187,7 +187,7 @@ class TestPIAgentBaseRunQuery:
         structured = {"findings": [{"file": "a.py", "line": 1, "severity": "HIGH"}], "summary": {}}
         events = self._make_events(structured)
 
-        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-5"))
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6"))
 
         with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
             proc = AsyncMock()
@@ -223,7 +223,7 @@ class TestPIAgentBaseRunQuery:
             assert metadata["cache_write_tokens"] == 0
             assert metadata["cost_usd"] == pytest.approx(0.003)
             assert metadata["num_turns"] == 1
-            assert metadata["model"] == "claude-sonnet-5"
+            assert metadata["model"] == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_anthropic_usage_metadata_includes_cache_tokens_and_estimated_cost(self):
@@ -238,7 +238,7 @@ class TestPIAgentBaseRunQuery:
         }
         events = self._make_events(structured, usage)
 
-        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-5", provider="anthropic"))
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", provider="anthropic"))
 
         with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
             proc = AsyncMock()
@@ -933,7 +933,7 @@ class TestSandboxWiring:
         monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
 
-        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-5", cwd="/work/tree"))
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd="/work/tree"))
 
         events = [
             json.dumps({"type": "agent_end"}).encode("utf-8") + b"\n",
