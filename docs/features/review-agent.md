@@ -44,6 +44,12 @@ The system prompt instructs the agent to check, in priority order:
 5. **Performance** — N+1 queries, blocking operations, algorithm efficiency
 6. **Quality** — DRY, complexity, naming, test coverage
 
+### Per-PR review guidance (when present)
+
+When the PR description contains a `## Review guidance for Baloo` section, Baloo extracts that brief and elevates it as **Step 0b** — a dedicated primary checklist verified before the standard review steps above. Findings that answer a brief check cite it explicitly.
+
+Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for how to write falsifiable, diff-anchored checks.
+
 ## Configuration
 
 | Variable | Default | Description |
