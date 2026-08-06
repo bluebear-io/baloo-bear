@@ -17,7 +17,7 @@ This is especially useful for teams that use ticket-linked plan files as part of
 1. **Extract ticket ID** — Baloo looks for a ticket ID in the PR branch name, title, or description (e.g., `PROJ-123` from branch `feat/PROJ-123-add-auth`)
 2. **Fetch ticket** — When `LINEAR_API_KEY` is set, the linked ticket is fetched from Linear and becomes the ticket layer of the spec
 3. **Fetch plan file** — Looks for a plan document at a configurable path (default: `docs/plans/{ticket_id}.md`) in the PR branch; this is the plan layer
-4. **Analyze** — An LLM compares the two-layer spec (ticket and/or plan) against the PR diff
+4. **Analyze** — An LLM compares the two-layer spec (ticket and/or plan) against the PR diff, using the same model as the primary review agent (`AGENT_MODEL`)
 5. **Score** — Produces a fidelity score (0–100) and a breakdown of matched/missing/extra items
 6. **Report** — Posts the fidelity report as a separate PR comment
 
@@ -97,6 +97,13 @@ This means a high-fidelity PR with only MEDIUM issues can still be auto-approved
 | `TICKET_ID_PREFIX` | `PROJ` | Prefix for ticket extraction (e.g., `PROJ` matches `PROJ-123`) |
 | `LINEAR_API_KEY` | *(empty)* | Linear API key; enables ticket fetching when set |
 | `LINEAR_API_URL` | `https://api.linear.app/graphql` | Linear GraphQL endpoint |
+| `AGENT_MODEL` | *(see [Models](models.md))* | Model used for fidelity analysis — shared with the primary review agent |
+
+Fidelity analysis runs on the effective `AGENT_MODEL`, including any runtime override set from the
+dashboard (see [Runtime Overrides](../configuration.md#runtime-overrides-db)). Choosing a premium
+model for reviews therefore also applies to fidelity. The thinking level is always `medium` for
+fidelity regardless of `PI_THINKING_LEVEL`, so tuning that for reviews cannot degrade fidelity
+results.
 
 ## No Spec? No Report
 

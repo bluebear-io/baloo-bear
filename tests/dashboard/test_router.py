@@ -127,3 +127,275 @@ def test_documentation_drift_settings_are_grouped() -> None:
         "documentation_drift_model",
     ):
         assert by_name[name] == "Documentation Drift"
+
+
+def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+    from baloo.dashboard.router import _models_in_use
+
+    monkeypatch.setenv("AGENT_MODEL", "sonnet")
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "haiku")
+    monkeypatch.setenv("DOCUMENTATION_DRIFT_MODEL", "sonnet")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    by_role = {row["role"]: row for row in _models_in_use()}
+    assert by_role["Primary review"]["configured"] == "sonnet"
+    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
+    assert by_role["FP verification"]["configured"] == "haiku"
+    assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
+    assert by_role["Thread agent"]["configured"] == "haiku"
+    assert by_role["Fidelity analysis"]["resolved"] == by_role["Primary review"]["resolved"]
+    assert by_role["Documentation drift"]["configured"] == "sonnet"
+
+
+def test_dashboard_settings_shows_models_in_use(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "haiku")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        client = TestClient(app)
+        response = client.get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "Models in use" in response.text
+    assert "FP verification" in response.text
+    assert "Thread agent" in response.text
+    assert "haiku" in response.text
+    assert "claude-haiku-4-5-20251001" in response.text
+
+
+def test_settings_rows_mark_mutable_keys() -> None:
+    from baloo.config.runtime_settings import MUTABLE_KEYS
+    from baloo.dashboard.router import _settings_rows
+
+    by_name = {r["name"]: r for r in _settings_rows()}
+    for key in MUTABLE_KEYS:
+        assert by_name[key]["mutable"] is True
+    assert by_name["database_url"]["mutable"] is False
+
+
+def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
+    from baloo.config.runtime_settings import reset_runtime_settings_cache, resolve_setting
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        import baloo.config.runtime_settings as rs
+
+        rs._cache = {**(rs._cache or {}), key: value}
+        rs._cache_loaded_at = 10**12
+        return value
+
+    smoke = SmokeResult(
+        ok=True,
+        provider="amazon-bedrock",
+        model="claude-sonnet-4-6",
+        duration_seconds=0.1,
+        message="Smoke test passed",
+    )
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set):
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            with patch(
+                "baloo.agent.provider_smoke.smoke_test_provider",
+                new=AsyncMock(return_value=smoke),
+            ):
+                app = _build_app()
+                client = TestClient(app)
+                response = client.post(
+                    "/dashboard/settings",
+                    data={"key": "agent_provider", "value": "amazon-bedrock", "action": "save"},
+                    follow_redirects=False,
+                )
+                assert response.status_code == 303
+                location = response.headers["location"]
+                assert location.startswith("/dashboard/settings?flash=")
+                # User-controlled values must not appear in the redirect URL.
+                assert "amazon-bedrock" not in location
+                assert "AGENT_PROVIDER" not in location
+
+                follow = client.get(location)
+
+    assert resolve_setting("agent_provider") == "amazon-bedrock"
+    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Smoke test passed" in follow.text
+
+
+def test_dashboard_settings_post_clear_override(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.clear_override", new=AsyncMock(return_value=True)) as clear:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={"key": "agent_model", "value": "", "action": "clear"},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/dashboard/settings?flash=")
+    clear.assert_awaited_once_with("agent_model")
+
+
+def test_dashboard_settings_post_rejects_non_mutable(monkeypatch) -> None:
+    from baloo.config.runtime_settings import RuntimeSettingsError, reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeSettingsError("Setting is not mutable at runtime: database_url")
+
+    with patch("baloo.dashboard.router.set_override", side_effect=boom):
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={"key": "database_url", "value": "x", "action": "save"},
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            location = response.headers["location"]
+            assert location.startswith("/dashboard/settings?flash=")
+            assert "database_url" not in location
+            follow = client.get(location)
+
+    assert "not mutable" in follow.text
+
+
+def test_dashboard_settings_test_connection(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    smoke = SmokeResult(
+        ok=True,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        duration_seconds=0.5,
+        message="Smoke test passed for anthropic/claude-sonnet-4-6 in 0.5s",
+    )
+    with patch(
+        "baloo.agent.provider_smoke.smoke_test_provider",
+        new=AsyncMock(return_value=smoke),
+    ):
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={"key": "agent_model", "value": "", "action": "test_connection"},
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            location = response.headers["location"]
+            assert location.startswith("/dashboard/settings?flash=")
+            follow = client.get(location)
+
+    assert "Smoke test passed for anthropic/claude-sonnet-4-6" in follow.text
+
+
+def test_dashboard_settings_rejects_unknown_action(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.set_override", new=AsyncMock()) as set_mock:
+        with patch("baloo.dashboard.router.clear_override", new=AsyncMock()) as clear_mock:
+            with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+                app = _build_app()
+                client = TestClient(app)
+                response = client.post(
+                    "/dashboard/settings",
+                    data={"key": "agent_model", "value": "opus", "action": "delete"},
+                    follow_redirects=False,
+                )
+                assert response.status_code == 303
+                follow = client.get(response.headers["location"])
+
+    set_mock.assert_not_awaited()
+    clear_mock.assert_not_awaited()
+    assert "Unknown action" in follow.text
+
+
+def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
+    from baloo.agent.provider_smoke import SmokeResult
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        return value
+
+    smoke = SmokeResult(
+        ok=False,
+        provider="amazon-bedrock",
+        model="us.anthropic.x",
+        duration_seconds=1.0,
+        message="Smoke test failed for amazon-bedrock/us.anthropic.x: auth",
+        error="auth",
+    )
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set):
+        with patch(
+            "baloo.agent.provider_smoke.smoke_test_provider",
+            new=AsyncMock(return_value=smoke),
+        ):
+            with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+                app = _build_app()
+                client = TestClient(app)
+                response = client.post(
+                    "/dashboard/settings",
+                    data={
+                        "key": "agent_provider",
+                        "value": "amazon-bedrock",
+                        "action": "save",
+                    },
+                    follow_redirects=False,
+                )
+                assert response.status_code == 303
+                location = response.headers["location"]
+                assert location.startswith("/dashboard/settings?flash=")
+                follow = client.get(location)
+
+    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Smoke test failed for amazon-bedrock" in follow.text

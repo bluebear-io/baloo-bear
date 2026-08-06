@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.thread_prompts import THREAD_AGENT_SYSTEM_PROMPT, build_thread_prompt
-from baloo.config.settings import get_settings
 from baloo.github.models import DiscussionComment
 
 logger = logging.getLogger(__name__)
@@ -42,8 +41,9 @@ class ThreadAgent:
     """
 
     def __init__(self, model: str | None = None):
-        settings = get_settings()
-        self.model = model or settings.thread_agent_model
+        from baloo.config.runtime_settings import resolve_setting
+
+        self.model = model or resolve_setting("thread_agent_model")
 
     async def classify(
         self,

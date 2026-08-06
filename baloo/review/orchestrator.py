@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.repo_provision import provision_repo
+from baloo.config.runtime_settings import ensure_fresh_cache, resolve_setting
 from baloo.config.settings import settings
 from baloo.db.service import DuplicateReviewError, ReviewCompleteDTO, ReviewService
 from baloo.db.tenant import apply_tenant_filter
@@ -941,7 +942,7 @@ async def _run_documentation_drift_analysis(
                 work_item=work_item,
                 catalog_path=settings.documentation_drift_catalog_path,
                 repo_path=repo_path,
-                model=settings.documentation_drift_model,
+                model=resolve_setting("documentation_drift_model"),
                 review_logger=documentation_logger,
             )
         finally:
@@ -1158,6 +1159,7 @@ async def process_pr_review(
     github_client: GitHubAPIClient | None = None
 
     try:
+        await ensure_fresh_cache()
         async with semaphore:
             active_count = max(0, sum(1 for t in active_reviews.values() if not t.done()) - 1)
             logger.info(

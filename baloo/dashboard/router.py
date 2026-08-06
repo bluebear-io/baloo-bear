@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import secrets
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from baloo.config.runtime_settings import (
+    MUTABLE_KEYS,
+    RuntimeSettingsError,
+    clear_override,
+    ensure_fresh_cache,
+    resolve_setting,
+    set_override,
+    setting_source,
+)
 from baloo.config.settings import Settings, get_settings
 from baloo.dashboard.auth import verify_credentials
 from baloo.dashboard.queries import DashboardService
@@ -20,6 +31,12 @@ router = APIRouter(
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# One-shot flash payloads for PRG redirects. Location only carries a server-
+# generated token so user-controlled form values never flow into the URL
+# (CodeQL: URL redirection from remote source).
+_FLASH_TTL_SECONDS = 300
+_flash_store: dict[str, tuple[float, dict[str, Any]]] = {}
 
 SENSITIVE_SETTINGS = {
     "anthropic_api_key",
@@ -177,23 +194,109 @@ def _setting_category(name: str) -> str:
     return "Other"
 
 
-def _settings_rows() -> list[dict[str, str]]:
+def _settings_rows() -> list[dict[str, Any]]:
     settings = get_settings()
     rows = []
     for name, field in Settings.model_fields.items():
-        value = getattr(settings, name)
+        env_value = getattr(settings, name)
+        mutable = name in MUTABLE_KEYS
+        if mutable:
+            effective = resolve_setting(name)
+            source = setting_source(name)
+        else:
+            effective = env_value
+            source = "env"
         default = field.default
         rows.append(
             {
                 "category": _setting_category(name),
                 "env_var": name.upper(),
                 "name": name,
-                "value": _format_setting_value(name, value),
+                "value": _format_setting_value(name, effective),
+                "raw_value": "" if effective is None else str(effective),
                 "default": _format_setting_value(name, default),
                 "description": field.description or "",
+                "mutable": mutable,
+                "source": source,
             }
         )
     return rows
+
+
+def _resolve_model_ref(configured: str) -> str:
+    """Resolve a short name or provider/model string to ``provider/model_id``."""
+    from baloo.agent.config import get_agent_options
+
+    if not configured:
+        return "(disabled)"
+    options = get_agent_options(configured)
+    return f"{options.provider}/{options.model}"
+
+
+def _models_in_use() -> list[dict[str, str]]:
+    """Summarize each agent role and the model it will actually call."""
+    from baloo.agent.config import get_agent_options
+
+    primary = get_agent_options()
+    primary_ref = f"{primary.provider}/{primary.model}"
+    primary_configured = str(resolve_setting("agent_model"))
+
+    fallback_configured = str(resolve_setting("agent_fallback_model") or "")
+    fp_configured = str(resolve_setting("fp_verification_model"))
+    thread_configured = str(resolve_setting("thread_agent_model"))
+    docs_configured = str(resolve_setting("documentation_drift_model"))
+
+    return [
+        {
+            "role": "Primary review",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+        {
+            "role": "Fallback",
+            "setting": "AGENT_FALLBACK_MODEL",
+            "configured": fallback_configured or "(empty)",
+            "resolved": _resolve_model_ref(fallback_configured),
+            "source": setting_source("agent_fallback_model"),
+        },
+        {
+            "role": "FP verification",
+            "setting": "FP_VERIFICATION_MODEL",
+            "configured": fp_configured,
+            "resolved": _resolve_model_ref(fp_configured),
+            "source": setting_source("fp_verification_model"),
+        },
+        {
+            "role": "Thread agent",
+            "setting": "THREAD_AGENT_MODEL",
+            "configured": thread_configured,
+            "resolved": _resolve_model_ref(thread_configured),
+            "source": setting_source("thread_agent_model"),
+        },
+        {
+            "role": "Fidelity analysis",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+        {
+            "role": "Documentation drift",
+            "setting": "DOCUMENTATION_DRIFT_MODEL",
+            "configured": docs_configured,
+            "resolved": _resolve_model_ref(docs_configured),
+            "source": setting_source("documentation_drift_model"),
+        },
+        {
+            "role": "Sync scope decider",
+            "setting": "AGENT_MODEL",
+            "configured": primary_configured,
+            "resolved": primary_ref,
+            "source": setting_source("agent_model"),
+        },
+    ]
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -286,8 +389,95 @@ async def outcomes(
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
+    await ensure_fresh_cache()
+    settings = get_settings()
+    flash = _pop_flash(request.query_params.get("flash"))
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
-        context={"settings_rows": _settings_rows()},
+        context={
+            "settings_rows": _settings_rows(),
+            "models_in_use": _models_in_use(),
+            "database_enabled": settings.database_enabled and bool(settings.database_url),
+            "message": flash.get("message") if flash else None,
+            "error": flash.get("error") if flash else None,
+            "smoke_ok": flash.get("smoke_ok") if flash else None,
+            "smoke_message": flash.get("smoke_message") if flash else None,
+        },
     )
+
+
+def _purge_expired_flash() -> None:
+    now = time.monotonic()
+    expired = [token for token, (expires, _) in _flash_store.items() if expires <= now]
+    for token in expired:
+        _flash_store.pop(token, None)
+
+
+def _put_flash(payload: dict[str, Any]) -> str:
+    """Store a one-shot flash payload; return an opaque token for the redirect."""
+    _purge_expired_flash()
+    token = secrets.token_urlsafe(16)
+    _flash_store[token] = (time.monotonic() + _FLASH_TTL_SECONDS, payload)
+    return token
+
+
+def _pop_flash(token: str | None) -> dict[str, Any] | None:
+    if not token:
+        return None
+    _purge_expired_flash()
+    entry = _flash_store.pop(token, None)
+    if entry is None:
+        return None
+    return entry[1]
+
+
+def _settings_redirect(**flash: Any) -> RedirectResponse:
+    """Redirect to settings with a server-generated flash token only."""
+    payload = {key: value for key, value in flash.items() if value is not None}
+    if not payload:
+        return RedirectResponse(url="/dashboard/settings", status_code=303)
+    token = _put_flash(payload)
+    return RedirectResponse(
+        url=f"/dashboard/settings?flash={token}",
+        status_code=303,
+    )
+
+
+@router.post("/settings")
+async def update_settings(
+    key: str = Form(...),
+    value: str = Form(""),
+    action: str = Form("save"),
+    username: str = Depends(verify_credentials),
+):
+    """Set or clear an allowlisted runtime override, or run a provider smoke test."""
+    from baloo.agent.provider_smoke import SMOKE_TRIGGER_KEYS, smoke_test_provider
+
+    if action == "test_connection":
+        result = await smoke_test_provider()
+        return _settings_redirect(
+            message="Ran provider smoke test.",
+            smoke_ok="1" if result.ok else "0",
+            smoke_message=result.message,
+        )
+
+    try:
+        if action == "clear":
+            await clear_override(key)
+            msg = f"Cleared override for {key.upper()}; using env default."
+        elif action == "save":
+            await set_override(key, value, updated_by=username)
+            msg = f"Updated {key.upper()}."
+        else:
+            return _settings_redirect(error="Unknown action.")
+    except RuntimeSettingsError as exc:
+        return _settings_redirect(error=str(exc))
+
+    flash: dict[str, Any] = {"message": msg}
+    if key in SMOKE_TRIGGER_KEYS:
+        result = await smoke_test_provider()
+        flash["smoke_ok"] = "1" if result.ok else "0"
+        flash["smoke_message"] = result.message
+
+    return _settings_redirect(**flash)

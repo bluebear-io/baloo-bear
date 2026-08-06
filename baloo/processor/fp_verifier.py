@@ -19,6 +19,7 @@ from pathlib import Path
 
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase, PIAgentOptions
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import get_settings
 from baloo.github.models import PRContext, ReviewComment
 from baloo.processor.fp_prompts import (
@@ -95,8 +96,10 @@ class FPVerifier:
         model: str | None = None,
         max_concurrent: int | None = None,
     ):
+        from baloo.config.runtime_settings import resolve_setting
+
         settings = get_settings()
-        self.model = model or settings.fp_verification_model
+        self.model = model or resolve_setting("fp_verification_model")
         self.max_concurrent = max_concurrent or settings.fp_verification_max_concurrent
         self.audit_log_path = settings.fp_audit_log_path
 
@@ -343,7 +346,7 @@ class FPVerifier:
             "verdict": verdict,
             "reason": reason,
             "model": model,
-            "review_model": get_settings().agent_model,
+            "review_model": resolve_setting("agent_model"),
             "cost_usd": cost_usd,
         }
 

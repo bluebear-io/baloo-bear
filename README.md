@@ -141,7 +141,7 @@ Install the GitHub App on your repositories. Open a PR — Baloo will review it 
 ```text
 baloo/
 ├── agent/       # PI runtime, prompts, structured output parsing
-├── config/      # Environment-based settings
+├── config/      # Settings (env + DB runtime overlay)
 ├── db/          # PostgreSQL models + migrations (optional)
 ├── dashboard/   # Review history UI (optional)
 ├── documentation/ # Documentation drift analysis (optional)
@@ -152,7 +152,7 @@ baloo/
 
 ## Configuration
 
-All settings are environment variables. Key ones:
+Settings are configured via environment variables; allowlisted agent knobs can also be overridden at runtime when `DATABASE_ENABLED=true`. Key variables:
 
 | Variable                      | Default                   | Description                                                                              |
 | ----------------------------- | ------------------------- | ---------------------------------------------------------------------------------------- |

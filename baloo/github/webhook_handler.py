@@ -105,6 +105,9 @@ async def lifespan(app: FastAPI):
     if settings.database_enabled and settings.database_url:
         logger.info("Database enabled, initializing...")
         await init_db(settings.database_url)
+        from baloo.config.runtime_settings import refresh_cache
+
+        await refresh_cache()
     elif settings.database_enabled:
         logger.warning(
             "DATABASE_ENABLED=true but DATABASE_URL is not set — "

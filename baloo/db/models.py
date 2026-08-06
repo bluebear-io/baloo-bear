@@ -190,3 +190,38 @@ class FeedbackSignal(Base):
             sqlite_where=text("installation_id IS NOT NULL"),
         ),
     )
+
+
+class RuntimeSetting(Base):
+    """DB-backed runtime overrides for allowlisted settings (env remains fallback)."""
+
+    __tablename__ = "runtime_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    installation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_runtime_settings_null_tenant",
+            "key",
+            unique=True,
+            postgresql_where=text("installation_id IS NULL"),
+            sqlite_where=text("installation_id IS NULL"),
+        ),
+        Index(
+            "uq_runtime_settings_with_tenant",
+            "key",
+            "installation_id",
+            unique=True,
+            postgresql_where=text("installation_id IS NOT NULL"),
+            sqlite_where=text("installation_id IS NOT NULL"),
+        ),
+    )

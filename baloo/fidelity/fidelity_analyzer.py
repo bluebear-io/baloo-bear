@@ -2,7 +2,8 @@
 
 import logging
 
-from baloo.agent.pi_runtime import PIAgentBase, PIAgentOptions
+from baloo.agent.config import get_agent_options
+from baloo.agent.pi_runtime import PIAgentBase
 from baloo.fidelity.models import (
     FidelityOutput,
     FidelityResult,
@@ -17,13 +18,12 @@ class FidelityAgent(PIAgentBase):
     """Agent for fidelity analysis comparing PR changes to design spec."""
 
     def __init__(self):
-        options = PIAgentOptions(
-            model="claude-sonnet-4-6",
-            provider="anthropic",
-            system_prompt=FIDELITY_SYSTEM_PROMPT,
-            thinking_level="medium",
-            max_turns=20,
-        )
+        options = get_agent_options()
+        options.system_prompt = FIDELITY_SYSTEM_PROMPT
+        # Fidelity comparison needs deliberate reasoning; keep it independent of
+        # the global PI_THINKING_LEVEL an admin may tune for primary reviews.
+        options.thinking_level = "medium"
+        options.name = "FidelityAgent"
         super().__init__(options)
 
     async def analyze(

@@ -4,10 +4,71 @@
 {% block title %}Settings - Baloo Dashboard{% endblock %}
 
 {% block content %}
-<div class="flex items-start justify-between mb-6">
+<div class="flex items-start justify-between mb-6 gap-4 flex-wrap">
   <div>
     <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-    <p class="mt-1 text-sm text-gray-500">Effective runtime configuration loaded for this Baloo instance.</p>
+    <p class="mt-1 text-sm text-gray-500">Effective runtime configuration for this Baloo instance. Allowlisted agent knobs can be overridden in the database without redeploying.</p>
+  </div>
+  <form method="post" action="/dashboard/settings">
+    <input type="hidden" name="key" value="agent_model" />
+    <input type="hidden" name="value" value="" />
+    <button type="submit" name="action" value="test_connection" class="text-sm bg-white border border-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-50">
+      Test connection
+    </button>
+  </form>
+</div>
+
+{% if message %}
+<div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ error }}</div>
+{% endif %}
+{% if smoke_message %}
+  {% if smoke_ok == "1" %}
+  <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{{ smoke_message }}</div>
+  {% else %}
+  <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ smoke_message }}</div>
+  {% endif %}
+{% endif %}
+{% if not database_enabled %}
+<div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Runtime overrides require the database. Set <code class="font-mono">DATABASE_ENABLED=true</code> and <code class="font-mono">DATABASE_URL</code>.</div>
+{% endif %}
+
+<div class="bg-white rounded-lg shadow overflow-hidden mb-8">
+  <div class="px-5 py-4 border-b border-gray-200">
+    <h2 class="text-lg font-semibold text-gray-900">Models in use</h2>
+    <p class="mt-1 text-sm text-gray-500">Each Baloo agent role and the model it will call with the current effective settings (short names like <code class="font-mono">haiku</code> are resolved to provider/model).</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Setting</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Configured</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resolved</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for row in models_in_use %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{{ row.role }}</td>
+          <td class="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{{ row.setting }}</td>
+          <td class="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{{ row.configured }}</td>
+          <td class="px-4 py-3 text-sm font-mono text-gray-900 whitespace-nowrap">{{ row.resolved }}</td>
+          <td class="px-4 py-3 text-sm whitespace-nowrap">
+            {% if row.source == "db" %}
+            <span class="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">db</span>
+            {% else %}
+            <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">env</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -31,6 +92,7 @@
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Variable</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
           </tr>
@@ -39,7 +101,36 @@
   {% endif %}
           <tr class="hover:bg-gray-50">
             <td class="px-4 py-3 text-sm font-mono text-gray-900 whitespace-nowrap">{{ row.env_var }}</td>
-            <td class="px-4 py-3 text-sm font-mono text-gray-700 max-w-md break-all">{{ row.value }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700 max-w-md">
+              {% if row.mutable and database_enabled %}
+              <form method="post" action="/dashboard/settings" class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="key" value="{{ row.name }}" />
+                <input
+                  type="text"
+                  name="value"
+                  value="{{ row.raw_value }}"
+                  class="font-mono text-sm border border-gray-300 rounded px-2 py-1 min-w-48 max-w-md"
+                />
+                <button type="submit" name="action" value="save" class="text-xs bg-gray-900 text-white px-2 py-1 rounded hover:bg-gray-700">Save</button>
+                {% if row.source == "db" %}
+                <button type="submit" name="action" value="clear" class="text-xs border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-100">Revert to env</button>
+                {% endif %}
+              </form>
+              {% else %}
+              <span class="font-mono break-all">{{ row.value }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-sm whitespace-nowrap">
+              {% if row.mutable %}
+                {% if row.source == "db" %}
+                <span class="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">db</span>
+                {% else %}
+                <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">env</span>
+                {% endif %}
+              {% else %}
+              <span class="text-gray-400 text-xs">—</span>
+              {% endif %}
+            </td>
             <td class="px-4 py-3 text-sm font-mono text-gray-500 max-w-sm break-all">{{ row.default }}</td>
             <td class="px-4 py-3 text-sm text-gray-600 min-w-64">{{ row.description }}</td>
           </tr>

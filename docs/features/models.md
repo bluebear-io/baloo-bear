@@ -34,6 +34,8 @@ AGENT_MODEL=anthropic/claude-sonnet-4-6
 AGENT_MODEL=opus
 ```
 
+When `DATABASE_ENABLED=true`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, and `PI_THINKING_LEVEL` can also be changed at runtime from the dashboard Settings page without restarting. See [Runtime Overrides](../configuration.md#runtime-overrides-db).
+
 ## Automatic Fallback
 
 If the primary model fails (rate limit, timeout, availability), Baloo automatically retries with a fallback model:
