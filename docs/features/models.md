@@ -21,6 +21,23 @@ Baloo supports multiple LLM providers and models. You can use short names for co
 - **Standard** (`sonnet`, `standard`, `gemini-pro`) — The default. Handles most code reviews well. Best cost/quality balance.
 - **Premium** (`opus`, `premium`, `gemini-3.1-pro`) — Best for complex PRs with deep logic, security-sensitive code, or architectural changes.
 
+## Amazon Bedrock
+
+pi natively supports AWS Bedrock under the provider token `amazon-bedrock`. Point Baloo at it with:
+
+```bash
+AGENT_PROVIDER=amazon-bedrock
+AGENT_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+# equivalent: AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0
+AWS_REGION=us-east-1
+```
+
+Model IDs are Bedrock inference-profile style (e.g. `us.anthropic.claude-sonnet-4-20250514-v1:0`) or application inference profile ARNs. There are no Baloo short-name aliases for Bedrock — IDs vary by region and account.
+
+Auth (pick one): IAM access keys (+ optional session token), `AWS_BEARER_TOKEN_BEDROCK`, `AWS_PROFILE`, IRSA (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), or ECS/EC2 instance roles. Baloo allowlists these AWS env vars into the sandboxed pi subprocess and bind-mounts IRSA/credential files when their paths are set. See [Configuration](../configuration.md#amazon-bedrock).
+
+Cost estimation for Bedrock models currently falls back to whatever cost pi reports (Baloo's built-in pricing table is Anthropic-first-party only).
+
 ## Configuration
 
 ```bash
@@ -53,12 +70,14 @@ When fallback is used, the review metadata includes:
 
 ## API Keys
 
-Each provider needs its own API key:
+Each provider needs its own credentials:
 
-| Provider | Environment Variable |
+| Provider | Environment Variable / Auth |
 |---|---|
 | Anthropic | `ANTHROPIC_API_KEY` |
 | Google | `GEMINI_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Amazon Bedrock | AWS credentials / IRSA / bearer token (see [Amazon Bedrock](#amazon-bedrock)) |
 
 ## Thinking Level
 

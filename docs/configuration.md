@@ -15,8 +15,45 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | ✅ | — | Anthropic API key (for Claude models) |
+| `ANTHROPIC_API_KEY` | ✅* | — | Anthropic API key (for Claude models) |
 | `GEMINI_API_KEY` | — | — | Google Gemini API key (for fallback / Gemini models) |
+| `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
+
+\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead).
+
+## Amazon Bedrock
+
+pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars through to the sandboxed pi subprocess.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AWS_ACCESS_KEY_ID` | —* | — | IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | —* | — | IAM secret key |
+| `AWS_SESSION_TOKEN` | — | — | Session token for temporary credentials |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | — | SDK default (`us-east-1`) | Bedrock region |
+| `AWS_BEARER_TOKEN_BEDROCK` | —* | — | Bearer-token auth alternative to IAM keys |
+| `AWS_PROFILE` | —* | — | Named profile (needs credentials file visible to the sandbox) |
+| `AWS_WEB_IDENTITY_TOKEN_FILE` | —* | — | IRSA / web-identity token path (bound into the sandbox when set) |
+| `AWS_ROLE_ARN` | — | — | Role ARN for IRSA / assume-role |
+| `AWS_ENDPOINT_URL_BEDROCK_RUNTIME` | — | — | Bedrock proxy endpoint |
+| `AWS_BEDROCK_FORCE_CACHE` | — | — | Force prompt caching for application inference profile ARNs |
+| `AWS_BEDROCK_SKIP_AUTH` | — | — | Skip auth for unauthenticated Bedrock proxies |
+| `AWS_BEDROCK_FORCE_HTTP1` | — | — | Force HTTP/1.1 for Bedrock proxies |
+
+\* Pick one auth path: static keys, bearer token, profile, IRSA, ECS task role, or EC2 instance role. ECS/EC2 instance metadata works over the shared network without extra env vars beyond what the AWS SDK already sets.
+
+Example:
+
+```bash
+AGENT_PROVIDER=amazon-bedrock
+AGENT_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+# or: AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
 
 ## Application
 
@@ -34,8 +71,8 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider: `anthropic`, `google` |
-| `AGENT_MODEL` | `sonnet` | Model short name or `provider/model` string. See [Models](features/models.md) |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider: `anthropic`, `google`, `openai`, `amazon-bedrock` |
+| `AGENT_MODEL` | `sonnet` | Model short name or `provider/model` string. See [Models](features/models.md). For Bedrock use a Bedrock model ID (e.g. `us.anthropic.claude-sonnet-4-20250514-v1:0`) |
 | `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback model (`provider/model`). Empty to disable |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Generation temperature |

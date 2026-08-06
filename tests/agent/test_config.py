@@ -126,3 +126,24 @@ def test_gemini_3_1_pro_alias_resolves_same_as_premium():
     opts = get_agent_options("gemini-3.1-pro")
     assert opts.model == "gemini-3.1-pro-preview"
     assert opts.provider == "google"
+
+
+def test_bedrock_provider_model_string():
+    from baloo.agent.config import get_agent_options
+
+    opts = get_agent_options("amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0")
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == "us.anthropic.claude-sonnet-4-20250514-v1:0"
+
+
+def test_bedrock_via_settings_provider(monkeypatch):
+    from baloo.agent.config import get_agent_options
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    monkeypatch.setenv("AGENT_MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0")
+    reset_settings()
+
+    opts = get_agent_options()
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == "us.anthropic.claude-sonnet-4-20250514-v1:0"
