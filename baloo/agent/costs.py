@@ -35,8 +35,10 @@ class ModelPricing:
 # 5-minute cache creation price; 1-hour cache writes require request-level TTL
 # details that PI does not currently expose.
 ANTHROPIC_PRICING: dict[str, ModelPricing] = {
+    "claude-sonnet-5": ModelPricing(3.0, 15.0, 3.75, 0.30),
     "claude-sonnet-4-6": ModelPricing(3.0, 15.0, 3.75, 0.30),
     "claude-haiku-4-5-20251001": ModelPricing(1.0, 5.0, 1.25, 0.10),
+    "claude-opus-5": ModelPricing(5.0, 25.0, 6.25, 0.50),
     "claude-opus-4-6": ModelPricing(5.0, 25.0, 6.25, 0.50),
     "claude-opus-4-7": ModelPricing(5.0, 25.0, 6.25, 0.50),
 }

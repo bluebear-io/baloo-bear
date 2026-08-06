@@ -70,7 +70,7 @@ def _make_pi_events(
             "message": {
                 "role": "assistant",
                 "content": [{"type": "text", "text": assistant_text}] if assistant_text else [],
-                "model": "claude-sonnet-4-6",
+                "model": "claude-sonnet-5",
                 "usage": usage,
                 "stopReason": "error" if is_error else "stop",
             },
@@ -319,7 +319,7 @@ class TestBalooAgentModelSelection:
             mock_exec.return_value = _mock_pi_process(events)
             await agent.review_pr(sample_pr_context, model_override="sonnet")
 
-            assert agent.options.model == "claude-sonnet-4-6"
+            assert agent.options.model == "claude-sonnet-5"
 
     @pytest.mark.asyncio
     async def test_uses_opus_for_security_pr(self):
@@ -355,7 +355,7 @@ class TestBalooAgentModelSelection:
             mock_exec.return_value = _mock_pi_process(events)
             await agent.review_pr(security_context, model_override="opus")
 
-            assert agent.options.model == "claude-opus-4-6"
+            assert agent.options.model == "claude-opus-5"
 
 
 class TestBalooAgentSeveritySummary:
@@ -506,7 +506,7 @@ class TestBalooAgentMetadata:
     def test_format_metadata_section(self):
         """Test summary formatting with metadata."""
         metadata = {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-sonnet-5",
             "input_tokens": 2000,
             "output_tokens": 500,
             "cache_read_tokens": 1000,
@@ -520,6 +520,6 @@ class TestBalooAgentMetadata:
 
         result = CommentFormatter.format_summary([], metadata)
 
-        assert "**Model:** `claude-sonnet-4-6`" in result
+        assert "**Model:** `claude-sonnet-5`" in result
         assert "**Cache:** 200 write / 1,000 read" in result
         assert "**Cost:** $0.1000" in result

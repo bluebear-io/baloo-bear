@@ -31,23 +31,23 @@ SHORT_NAME_TIERS: dict[str, tuple[str, int]] = {
 PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
     "anthropic": {
         "economy": "claude-haiku-4-5-20251001",
-        "standard": "claude-sonnet-4-6",
-        "premium": "claude-opus-4-6",
+        "standard": "claude-sonnet-5",
+        "premium": "claude-opus-5",
     },
     "google": {
-        "economy": "gemini-2.5-flash",
-        "standard": "gemini-2.5-pro",
+        "economy": "gemini-3.5-flash-lite",
+        "standard": "gemini-3.6-flash",
         "premium": "gemini-3.1-pro-preview",
     },
     "amazon-bedrock": {
         "economy": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "standard": "us.anthropic.claude-sonnet-4-6",
-        "premium": "us.anthropic.claude-opus-4-6-v1",
+        "standard": "us.anthropic.claude-sonnet-5",
+        "premium": "us.anthropic.claude-opus-5",
     },
     "openai": {
-        "economy": "gpt-4o-mini",
-        "standard": "gpt-4o",
-        "premium": "o3",
+        "economy": "gpt-5.6-luna",
+        "standard": "gpt-5.6-terra",
+        "premium": "gpt-5.6-sol",
     },
 }
 
@@ -55,14 +55,14 @@ PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
 # historical default where Claude-named aliases pointed at Anthropic and
 # Gemini-named aliases at Google. Prefer resolve_short_name() / get_agent_options().
 MODEL_REGISTRY: dict[str, tuple[str, str, int]] = {
-    "flash": ("google", "gemini-2.5-flash", 10),
+    "flash": ("google", "gemini-3.5-flash-lite", 10),
     "haiku": ("anthropic", "claude-haiku-4-5-20251001", 10),
-    "standard": ("anthropic", "claude-sonnet-4-6", 20),
-    "gemini-pro": ("google", "gemini-2.5-pro", 20),
-    "sonnet": ("anthropic", "claude-sonnet-4-6", 20),
+    "standard": ("anthropic", "claude-sonnet-5", 20),
+    "gemini-pro": ("google", "gemini-3.6-flash", 20),
+    "sonnet": ("anthropic", "claude-sonnet-5", 20),
     "premium": ("google", "gemini-3.1-pro-preview", 30),
     "gemini-3.1-pro": ("google", "gemini-3.1-pro-preview", 30),
-    "opus": ("anthropic", "claude-opus-4-6", 30),
+    "opus": ("anthropic", "claude-opus-5", 30),
 }
 
 MODEL_MAP = {name: spec[1] for name, spec in MODEL_REGISTRY.items()}

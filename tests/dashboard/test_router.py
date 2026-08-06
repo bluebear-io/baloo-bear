@@ -143,7 +143,7 @@ def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
 
     by_role = {row["role"]: row for row in _models_in_use()}
     assert by_role["Primary review"]["configured"] == "sonnet"
-    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
+    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-5"
     assert by_role["FP verification"]["configured"] == "haiku"
     assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
     assert by_role["Thread agent"]["configured"] == "haiku"
@@ -239,7 +239,7 @@ def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
     smoke = SmokeResult(
         ok=True,
         provider="amazon-bedrock",
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         duration_seconds=0.1,
         message="Smoke test passed",
     )
@@ -337,9 +337,9 @@ def test_dashboard_settings_test_connection(monkeypatch) -> None:
     smoke = SmokeResult(
         ok=True,
         provider="anthropic",
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         duration_seconds=0.5,
-        message="Smoke test passed for anthropic/claude-sonnet-4-6 in 0.5s",
+        message="Smoke test passed for anthropic/claude-sonnet-5 in 0.5s",
     )
     with patch(
         "baloo.agent.provider_smoke.smoke_test_provider",
@@ -358,7 +358,7 @@ def test_dashboard_settings_test_connection(monkeypatch) -> None:
             assert location.startswith("/dashboard/settings?flash=")
             follow = client.get(location)
 
-    assert "Smoke test passed for anthropic/claude-sonnet-4-6" in follow.text
+    assert "Smoke test passed for anthropic/claude-sonnet-5" in follow.text
 
 
 def test_dashboard_settings_rejects_unknown_action(monkeypatch) -> None:

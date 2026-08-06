@@ -16,10 +16,10 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 
 | Provider | Economy | Standard | Premium |
 |---|---|---|---|
-| `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-4-6` | `claude-opus-4-6` |
-| `google` | `gemini-2.5-flash` | `gemini-2.5-pro` | `gemini-3.1-pro-preview` |
-| `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-4-6` | `us.anthropic.claude-opus-4-6-v1` |
-| `openai` | `gpt-4o-mini` | `gpt-4o` | `o3` |
+| `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-5` | `claude-opus-5` |
+| `google` | `gemini-3.5-flash-lite` | `gemini-3.6-flash` | `gemini-3.1-pro-preview` |
+| `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-5` | `us.anthropic.claude-opus-5` |
+| `openai` | `gpt-5.6-luna` | `gpt-5.6-terra` | `gpt-5.6-sol` |
 
 ## Choosing a Model
 
@@ -35,8 +35,8 @@ pi's provider token is `amazon-bedrock`. Point Baloo at it with:
 AGENT_PROVIDER=amazon-bedrock
 AGENT_MODEL=sonnet
 # or a specific inference profile / ARN:
-# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
-# AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-4-6
+# AGENT_MODEL=us.anthropic.claude-sonnet-5
+# AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-5
 AWS_REGION=us-east-1
 ```
 
@@ -56,7 +56,7 @@ AGENT_PROVIDER=anthropic
 AGENT_MODEL=sonnet
 
 # Or a full provider/model string (escape hatch)
-AGENT_MODEL=anthropic/claude-sonnet-4-6
+AGENT_MODEL=anthropic/claude-sonnet-5
 
 # Premium model for highest quality
 AGENT_MODEL=opus

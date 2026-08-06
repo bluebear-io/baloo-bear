@@ -26,7 +26,7 @@ BASE_ENV: dict[str, str] = {
 # Default models — override per scenario or via BALOO_REGRESSION_MODEL env var.
 # Use haiku for cheap/fast scenarios, sonnet for those requiring deeper reasoning.
 _FAST_MODEL = "claude-haiku-4-5-20251001"
-_MAIN_MODEL = "claude-sonnet-4-6"
+_MAIN_MODEL = "claude-sonnet-5"
 
 SCENARIOS: list[dict] = [
     {
