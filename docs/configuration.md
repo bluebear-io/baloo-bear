@@ -133,7 +133,14 @@ If the database is disabled, behavior is unchanged: env vars only.
 | `REPO_CACHE_ENABLED` | `true` | Check out the PR repo at its head SHA so the agent's file tools read real code. Off = diff-only review. |
 | `REPO_CACHE_ROOT` | `/tmp/baloo-repo-cache` | Ephemeral root for cached bare clones + per-review worktrees (lost on redeploy). |
 | `REPO_CACHE_MAX_DISK_GB` | `10` | Total cache disk cap (GB). Least-recently-used caches are evicted above this. |
-| `REPO_SANDBOX_MODE` | `bwrap` | Filesystem sandbox for the agent subprocess (`bwrap` binds only the review worktree read-only; `off` disables). Requires bubblewrap + unprivileged user namespaces; falls back to `off` automatically when unavailable. |
+| `REPO_SANDBOX_MODE` | `bwrap` | Filesystem sandbox for the agent subprocess (`bwrap` binds only the review worktree read-only; `off` disables). Requires bubblewrap + unprivileged user namespaces. |
+
+The sandbox fails closed. When `REPO_SANDBOX_MODE` is not `off` and bubblewrap cannot actually run — the common case being a container started with the default Docker seccomp profile, which blocks the namespace operations bubblewrap needs — Baloo refuses to start rather than reviewing PRs with an unisolated agent. The startup error names both remedies: fix the host (`--security-opt seccomp=unconfined`, or a profile permitting `clone`/`unshare`/`mount`), or set `REPO_SANDBOX_MODE=off` to accept the risk explicitly.
+
+Two related guarantees hold regardless of the sandbox mode:
+
+- The agent subprocess is spawned with a scrubbed, allowlisted environment (model API key, `PATH`/`HOME`/locale, proxy and CA settings). It never inherits `GITHUB_PRIVATE_KEY`, `DATABASE_URL`, dashboard credentials, or anything else in Baloo's environment.
+- A review agent with file tools but no provisioned worktree (`REPO_CACHE_ENABLED=false`, or a checkout failure) is sandboxed against an empty scratch directory instead of Baloo's own working directory. The review is diff-only, as before, but the agent cannot read Baloo's source, `.env`, or key material.
 
 ## Documentation Drift
 

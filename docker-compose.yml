@@ -28,6 +28,13 @@ services:
         condition: service_healthy
     env_file:
       - ${BALOO_ENV_FILE:-.env}
+    # bubblewrap needs unprivileged user namespaces and mount, which Docker's
+    # default seccomp profile blocks. Without this the agent sandbox cannot run
+    # and Baloo (which fails closed) refuses to start. Replace with a narrower
+    # custom profile if your platform has one, or set REPO_SANDBOX_MODE=off to
+    # explicitly run the review agent unisolated.
+    security_opt:
+      - seccomp:unconfined
     volumes:
       - ./.secrets:/app/.secrets:ro
     environment:

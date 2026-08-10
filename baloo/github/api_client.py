@@ -263,11 +263,15 @@ class GitHubAPIClient:
             discussion_threads, general_comments
         )
 
-        head_sha = pr_data["head"]["sha"]
+        # Repo guidelines are read at the BASE commit, never at head. The agent
+        # treats them as policy ("flag violations"), so fetching the head version
+        # would let a fork PR ship its own review rules alongside the code being
+        # reviewed. base.sha is on the target repo and needs write access to move.
+        base_sha = pr_data["base"]["sha"]
         commits_url = f"{self.base_url}/repos/{repo_full_name}/pulls/{pr_number}/commits"
         agents_md, contributing_md, commits_data = await asyncio.gather(
-            self.get_file_content(repo_full_name, "AGENTS.md", ref=head_sha),
-            self.get_file_content(repo_full_name, "CONTRIBUTING.md", ref=head_sha),
+            self.get_file_content(repo_full_name, "AGENTS.md", ref=base_sha),
+            self.get_file_content(repo_full_name, "CONTRIBUTING.md", ref=base_sha),
             self._fetch_paginated_json(commits_url),
         )
         guidelines_parts = [c for c in [agents_md, contributing_md] if c]
@@ -285,6 +289,7 @@ class GitHubAPIClient:
             base_branch=pr_data["base"]["ref"],
             head_branch=pr_data["head"]["ref"],
             head_sha=pr_data["head"]["sha"],
+            base_sha=base_sha,
             files_changed=files_changed,
             repo_guidelines=repo_guidelines,
             commit_messages=commit_messages,

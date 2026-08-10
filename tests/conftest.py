@@ -18,6 +18,10 @@ os.environ.setdefault("REVIEW_MIN_SEVERITY", "MEDIUM")
 os.environ.setdefault("REVIEW_USE_CHECKS_API", "true")
 os.environ.setdefault("DASHBOARD_ENABLED", "true")
 os.environ.setdefault("FIDELITY_ENABLED", "true")
+# Agents refuse to run when a sandbox is configured but bubblewrap is unusable,
+# which is the normal state of a test runner. Tests that exercise sandboxing
+# patch the mode explicitly.
+os.environ.setdefault("REPO_SANDBOX_MODE", "off")
 
 
 @pytest.fixture(autouse=True)

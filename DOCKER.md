@@ -47,8 +47,11 @@ docker run -d \
   -p 8000:8000 \
   -v "$(pwd)/.secrets:/app/.secrets:ro" \
   --env-file .env \
+  --security-opt seccomp=unconfined \
   baloo:latest
 ```
+
+`--security-opt seccomp=unconfined` is required for the agent sandbox: bubblewrap needs unprivileged user namespaces and `mount`, which Docker's default seccomp profile blocks. Baloo fails closed on a broken sandbox, so without it the container exits at startup with an explanatory error. Use a narrower custom seccomp profile if your platform provides one, or set `REPO_SANDBOX_MODE=off` to run the review agent without filesystem isolation.
 
 ## Image Details
 

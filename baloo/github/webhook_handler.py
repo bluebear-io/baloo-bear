@@ -101,7 +101,13 @@ async def _run_review_command(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: initialize and tear down database."""
+    """Application lifespan: verify the agent sandbox, then init/tear down the DB."""
+    from baloo.agent.sandbox import assert_startup_sandbox
+
+    # Fail the boot, not the review: a container whose bwrap is blocked would
+    # otherwise serve every PR with an unisolated agent.
+    assert_startup_sandbox(settings.repo_sandbox_mode)
+
     if settings.database_enabled and settings.database_url:
         logger.info("Database enabled, initializing...")
         await init_db(settings.database_url)

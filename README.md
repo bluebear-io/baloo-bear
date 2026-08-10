@@ -169,7 +169,7 @@ Settings are configured via environment variables; allowlisted agent knobs can a
 | `DATABASE_ENABLED`            | `false`                   | Enable PostgreSQL review history                                                         |
 | `DASHBOARD_ENABLED`           | `true`                    | Enable review dashboard UI (needs `DATABASE_ENABLED` + credentials)                      |
 | `REPO_CACHE_ENABLED`          | `true`                    | Check out the PR repo so the agent reads real code, not just the diff                    |
-| `REPO_SANDBOX_MODE`           | `bwrap`                   | Sandbox the agent subprocess to the review worktree (falls back to `off` if unavailable) |
+| `REPO_SANDBOX_MODE`           | `bwrap`                   | Sandbox the agent subprocess to the review worktree (startup fails if unavailable)       |
 | `FIDELITY_ENABLED`            | `true`                    | Compare PRs against plan docs                                                            |
 | `DOCUMENTATION_DRIFT_ENABLED` | `false`                   | Enable PR-time documentation drift checks                                                |
 
@@ -212,7 +212,7 @@ CI checks this file against `uv export`, and the Docker image installs productio
 
 ### Local review (dry run)
 
-You can run the same review pipeline against your working tree before opening a PR. The script builds a synthetic pull request from a git diff (`base...head`), loads `AGENTS.md` / `CONTRIBUTING.md` from the head ref when present, and prints findings to stdout — nothing is posted to GitHub.
+You can run the same review pipeline against your working tree before opening a PR. The script builds a synthetic pull request from a git diff (`base...head`), loads `AGENTS.md` / `CONTRIBUTING.md` from the base ref when present, and prints findings to stdout — nothing is posted to GitHub.
 
 Requires the same LLM credentials as production (for example `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` in your environment).
 

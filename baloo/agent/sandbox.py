@@ -8,20 +8,37 @@ tenant's repo cache.
 Network is intentionally left shared — the agent must call the model API. Only
 the filesystem is restricted.
 
-When the sandbox engages, the subprocess is also spawned with a scrubbed,
-allowlisted environment (`build_subprocess_env`) so baloo's secrets (GitHub
-key, DB creds, etc.) are not exposed to a potentially prompt-injected agent
-that has open network access — filesystem isolation alone does not address
-exfiltration.
+The subprocess is always spawned with a scrubbed, allowlisted environment
+(`build_subprocess_env`) so baloo's secrets (GitHub key, DB creds, etc.) are
+never exposed to a potentially prompt-injected agent that has open network
+access — filesystem isolation alone does not address exfiltration, and the
+scrub must not depend on the sandbox engaging.
+
+The sandbox fails closed: when a non-off mode is configured but bubblewrap is
+not functional, callers raise `SandboxUnavailableError` rather than running the
+agent unisolated. `assert_startup_sandbox` runs the same check at process boot
+so a misconfigured container dies immediately instead of at the first review.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 _bwrap_works: bool | None = None  # cached runtime-probe result
+
+
+class SandboxUnavailableError(RuntimeError):
+    """Raised when a sandbox is required but bubblewrap cannot run.
+
+    Running the agent without isolation is not an acceptable fallback: the
+    subprocess reads attacker-authored PR content, so an unsandboxed run turns
+    a prompt injection into arbitrary reads of the host filesystem.
+    """
 
 
 # The probe must exercise the SAME privileged operations the real prefix does —
@@ -78,9 +95,53 @@ def sandbox_available(mode: str) -> bool:
         try:
             proc = subprocess.run(_PROBE_CMD, capture_output=True, timeout=5)
             _bwrap_works = proc.returncode == 0
-        except Exception:
+            if not _bwrap_works:
+                logger.error(
+                    "bwrap probe failed (exit %s): %s",
+                    proc.returncode,
+                    proc.stderr.decode("utf-8", errors="replace").strip()[:500],
+                )
+        except Exception as exc:  # noqa: BLE001 - any failure means "not usable"
+            logger.error("bwrap probe raised: %s", exc)
             _bwrap_works = False
     return _bwrap_works
+
+
+def reset_probe_cache() -> None:
+    """Forget the cached bwrap probe result (tests only)."""
+    global _bwrap_works
+    _bwrap_works = None
+
+
+def assert_startup_sandbox(mode: str) -> None:
+    """Abort process startup when the configured sandbox cannot actually run.
+
+    The failure mode this prevents is silent: bubblewrap is present in the image
+    but blocked at runtime (default Docker seccomp, hardened k8s), which used to
+    downgrade every review to an unisolated agent holding baloo's whole
+    environment. Crashing at boot makes the misconfiguration impossible to miss.
+
+    Raises:
+        SandboxUnavailableError: mode is not 'off' and the sandbox is unusable.
+    """
+    if mode == "off":
+        logger.warning(
+            "REPO_SANDBOX_MODE=off — the agent subprocess runs without filesystem "
+            "isolation. Only use this for local development."
+        )
+        return
+
+    if sandbox_available(mode):
+        logger.info("Sandbox check passed: repo_sandbox_mode=%s is functional", mode)
+        return
+
+    raise SandboxUnavailableError(
+        f"repo_sandbox_mode={mode!r} is configured but the sandbox is not usable in "
+        "this environment. Install bubblewrap and allow unprivileged user namespaces "
+        "(e.g. run the container with --security-opt seccomp=unconfined or a seccomp "
+        "profile that permits clone/unshare/mount), or set REPO_SANDBOX_MODE=off to "
+        "explicitly accept running the review agent without filesystem isolation."
+    )
 
 
 def build_sandbox_prefix(mode: str, worktree: str) -> list[str]:
@@ -149,9 +210,11 @@ def build_sandbox_prefix(mode: str, worktree: str) -> list[str]:
     ]
 
 
-# Env vars the sandboxed agent legitimately needs. Everything else (notably
+# Env vars the agent subprocess legitimately needs. Everything else (notably
 # baloo's GitHub/DB/dashboard secrets) is dropped so a prompt-injected agent
 # cannot read them from /proc/self/environ and exfiltrate over the open network.
+# This applies to every spawn, sandboxed or not — the scrub is the last line of
+# defence precisely when filesystem isolation is absent.
 _ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -186,7 +249,7 @@ _ENV_ALLOWLIST = frozenset(
 
 
 def build_subprocess_env(base_env: dict[str, str]) -> dict[str, str]:
-    """Return a minimal env (allowlist only) for the sandboxed subprocess.
+    """Return a minimal env (allowlist only) for the agent subprocess.
 
     Defaults HOME to /tmp so node/pi have a writable home inside the tmpfs even
     if the inherited HOME points at a path the sandbox does not bind writable.

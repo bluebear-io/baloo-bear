@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -902,7 +903,9 @@ class TestSandboxWiring:
         assert "--" in cmd
         assert cmd[cmd.index("--") + 1] == "pi"
 
-    def test_degrades_with_warning_when_binary_missing(self, caplog):
+    def test_refuses_to_run_when_sandbox_unavailable(self):
+        from baloo.agent.sandbox import SandboxUnavailableError
+
         agent = PIAgentBase(PIAgentOptions(cwd="/work/tree"))
         with (
             patch(
@@ -910,13 +913,23 @@ class TestSandboxWiring:
                 return_value=self._settings(repo_sandbox_mode="bwrap"),
             ),
             patch("baloo.agent.sandbox.sandbox_available", return_value=False),
+            pytest.raises(SandboxUnavailableError),
         ):
-            with caplog.at_level("WARNING"):
-                cmd = agent._build_pi_command()
-        assert cmd[0] == "pi"
-        assert any("sandbox" in r.message.lower() for r in caplog.records)
+            agent._build_pi_command()
 
-    def test_no_sandbox_when_cwd_unset(self):
+    def test_no_tools_agent_runs_without_sandbox(self):
+        agent = PIAgentBase(PIAgentOptions(cwd=None, no_tools=True))
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="bwrap"),
+            ),
+            patch("baloo.agent.sandbox.sandbox_available", return_value=False),
+        ):
+            cmd = agent._build_pi_command()
+        assert cmd[0] == "pi"
+
+    def test_sandbox_binds_provided_root_when_cwd_unset(self):
         agent = PIAgentBase(PIAgentOptions(cwd=None))
         with (
             patch(
@@ -925,8 +938,32 @@ class TestSandboxWiring:
             ),
             patch("baloo.agent.sandbox.sandbox_available", return_value=True),
         ):
-            cmd = agent._build_pi_command()
-        assert cmd[0] == "pi"
+            cmd = agent._build_pi_command(sandbox_root="/tmp/empty-root")
+        assert cmd[0] == "bwrap"
+        assert "/tmp/empty-root" in cmd
+
+    @staticmethod
+    def _mock_proc():
+        events = iter([json.dumps({"type": "agent_end"}).encode("utf-8") + b"\n"])
+
+        proc = AsyncMock()
+        proc.returncode = 0
+        proc.stdin = AsyncMock()
+        proc.stdin.write = MagicMock()
+        proc.stdin.drain = AsyncMock()
+        proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+        async def fake_readline():
+            try:
+                return next(events)
+            except StopIteration:
+                return b""
+
+        proc.stdout.readline = fake_readline
+        proc.stderr = AsyncMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        return proc
 
     @pytest.mark.asyncio
     async def test_spawn_uses_scrubbed_env_when_sandboxed(self, monkeypatch):
@@ -934,10 +971,6 @@ class TestSandboxWiring:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
 
         agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd="/work/tree"))
-
-        events = [
-            json.dumps({"type": "agent_end"}).encode("utf-8") + b"\n",
-        ]
 
         with (
             patch(
@@ -947,27 +980,7 @@ class TestSandboxWiring:
             patch("baloo.agent.sandbox.sandbox_available", return_value=True),
             patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
         ):
-            proc = AsyncMock()
-            proc.returncode = 0
-            proc.stdin = AsyncMock()
-            proc.stdin.write = MagicMock()
-            proc.stdin.drain = AsyncMock()
-            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
-
-            event_iter = iter(events)
-
-            async def fake_readline():
-                try:
-                    return next(event_iter)
-                except StopIteration:
-                    return b""
-
-            proc.stdout.readline = fake_readline
-            proc.stderr = AsyncMock()
-            proc.kill = MagicMock()
-            proc.wait = AsyncMock()
-            mock_exec.return_value = proc
-
+            mock_exec.return_value = self._mock_proc()
             # env is computed and passed at spawn time, before the session is
             # driven; a truncated mock stream may raise afterwards — irrelevant here.
             try:
@@ -979,3 +992,76 @@ class TestSandboxWiring:
         assert env is not None
         assert "GITHUB_PRIVATE_KEY" not in env
         assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+    @pytest.mark.asyncio
+    async def test_spawn_scrubs_env_when_sandbox_is_off(self, monkeypatch):
+        # The unsandboxed path is exactly where an inherited env leaks the most.
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+        monkeypatch.setenv("DATABASE_URL", "postgres://SECRET")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
+
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd="/work/tree"))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="off"),
+            ),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            try:
+                await agent.run_query("review")
+            except Exception:
+                pass
+
+        env = mock_exec.call_args.kwargs["env"]
+        assert env is not None
+        assert "GITHUB_PRIVATE_KEY" not in env
+        assert "DATABASE_URL" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+    @pytest.mark.asyncio
+    async def test_json_retry_spawn_scrubs_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6"))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="off"),
+            ),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            await agent._retry_json(raw_text="not json", proc_cwd=None)
+
+        env = mock_exec.call_args.kwargs["env"]
+        assert env is not None
+        assert "GITHUB_PRIVATE_KEY" not in env
+
+    @pytest.mark.asyncio
+    async def test_tool_agent_without_worktree_is_sandboxed_to_empty_dir(self):
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd=None))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="bwrap"),
+            ),
+            patch("baloo.agent.sandbox.sandbox_available", return_value=True),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            try:
+                await agent.run_query("review")
+            except Exception:
+                pass
+
+        cmd = mock_exec.call_args.args
+        scratch = mock_exec.call_args.kwargs["cwd"]
+        assert cmd[0] == "bwrap"
+        assert scratch is not None and "baloo-sandbox-" in scratch
+        # The scratch dir exists only for the run.
+        assert not os.path.exists(scratch)
