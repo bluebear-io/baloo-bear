@@ -1540,6 +1540,7 @@ async def process_pr_review(
                 decision_comments,
                 fidelity_result=fidelity_result,
                 general_findings=general_findings,
+                repo_full_name=repo_full_name,
             )
             awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
 

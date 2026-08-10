@@ -1,10 +1,24 @@
 """Tests for decision engine module."""
 
+from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
 from baloo.fidelity.models import FidelityResult
 from baloo.github.models import GeneralFinding, ReviewComment
-from baloo.processor.decision_engine import DecisionEngine
+from baloo.processor.decision_engine import DecisionEngine, auto_approve_allowed
+
+REPO = "org/repo"
+
+
+@contextmanager
+def _auto_approve(enabled: bool, repos: str = REPO):
+    """Configure the auto-approve master switch and per-repo allowlist."""
+    with ExitStack() as stack:
+        stack.enter_context(patch("baloo.config.settings.settings.review_auto_approve", enabled))
+        stack.enter_context(
+            patch("baloo.config.settings.settings.review_auto_approve_repos", repos)
+        )
+        yield
 
 
 def _make_comment(severity: str, category: str = "Quality") -> ReviewComment:
@@ -35,15 +49,15 @@ class TestMakeDecisionWithoutFidelity:
 
     def test_no_comments_with_auto_approve_enabled(self):
         """Empty comments list with auto_approve should approve."""
-        with patch("baloo.config.settings.settings.review_auto_approve", True):
-            approve, request_changes = DecisionEngine.make_decision([])
+        with _auto_approve(True):
+            approve, request_changes = DecisionEngine.make_decision([], repo_full_name=REPO)
             assert approve is True
             assert request_changes is False
 
     def test_no_comments_with_auto_approve_disabled(self):
         """Empty comments list without auto_approve should not approve."""
-        with patch("baloo.config.settings.settings.review_auto_approve", False):
-            approve, request_changes = DecisionEngine.make_decision([])
+        with _auto_approve(False):
+            approve, request_changes = DecisionEngine.make_decision([], repo_full_name=REPO)
             assert approve is False
             assert request_changes is False
 
@@ -64,7 +78,7 @@ class TestMakeDecisionWithoutFidelity:
     def test_medium_issues_no_blocking(self):
         """MEDIUM issues should not block (comments only)."""
         comments = [_make_comment("MEDIUM")]
-        with patch("baloo.config.settings.settings.review_auto_approve", False):
+        with _auto_approve(False):
             approve, request_changes = DecisionEngine.make_decision(comments)
             assert approve is False
             assert request_changes is False
@@ -72,7 +86,7 @@ class TestMakeDecisionWithoutFidelity:
     def test_low_issues_no_blocking(self):
         """LOW issues should not block (comments only)."""
         comments = [_make_comment("LOW")]
-        with patch("baloo.config.settings.settings.review_auto_approve", False):
+        with _auto_approve(False):
             approve, request_changes = DecisionEngine.make_decision(comments)
             assert approve is False
             assert request_changes is False
@@ -86,9 +100,12 @@ class TestMakeDecisionWithFidelity:
         comments = []  # No issues
         fidelity = _make_fidelity_result(95)
 
-        with patch("baloo.config.settings.settings.fidelity_approval_threshold", 90):
+        with (
+            patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
+            _auto_approve(True),
+        ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             assert approve is True
             assert request_changes is False
@@ -98,9 +115,12 @@ class TestMakeDecisionWithFidelity:
         comments = [_make_comment("LOW"), _make_comment("LOW")]
         fidelity = _make_fidelity_result(92)
 
-        with patch("baloo.config.settings.settings.fidelity_approval_threshold", 90):
+        with (
+            patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
+            _auto_approve(True),
+        ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             assert approve is True
             assert request_changes is False
@@ -110,9 +130,12 @@ class TestMakeDecisionWithFidelity:
         comments = [_make_comment("MEDIUM")]
         fidelity = _make_fidelity_result(95)
 
-        with patch("baloo.config.settings.settings.fidelity_approval_threshold", 90):
+        with (
+            patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
+            _auto_approve(True),
+        ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             assert approve is True
             assert request_changes is False
@@ -148,10 +171,10 @@ class TestMakeDecisionWithFidelity:
 
         with (
             patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
-            patch("baloo.config.settings.settings.review_auto_approve", False),
+            _auto_approve(False),
         ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             assert approve is False
             assert request_changes is False
@@ -161,9 +184,12 @@ class TestMakeDecisionWithFidelity:
         comments = []
         fidelity = _make_fidelity_result(90)  # Exactly at threshold
 
-        with patch("baloo.config.settings.settings.fidelity_approval_threshold", 90):
+        with (
+            patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
+            _auto_approve(True),
+        ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             assert approve is True
             assert request_changes is False
@@ -175,10 +201,10 @@ class TestMakeDecisionWithFidelity:
 
         with (
             patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
-            patch("baloo.config.settings.settings.review_auto_approve", True),
+            _auto_approve(True),
         ):
             approve, request_changes = DecisionEngine.make_decision(
-                comments, fidelity_result=fidelity
+                comments, fidelity_result=fidelity, repo_full_name=REPO
             )
             # Falls back to auto_approve setting
             assert approve is True
@@ -188,8 +214,10 @@ class TestMakeDecisionWithFidelity:
         """Without fidelity result, should use existing auto_approve logic."""
         comments = []
 
-        with patch("baloo.config.settings.settings.review_auto_approve", True):
-            approve, request_changes = DecisionEngine.make_decision(comments, fidelity_result=None)
+        with _auto_approve(True):
+            approve, request_changes = DecisionEngine.make_decision(
+                comments, fidelity_result=None, repo_full_name=REPO
+            )
             assert approve is True
             assert request_changes is False
 
@@ -241,10 +269,10 @@ class TestMakeDecisionWithGeneralFindings:
 
     def test_medium_general_finding_does_not_block(self):
         gf = GeneralFinding(body="Minor observation", severity="MEDIUM", category="Quality")
-        with patch("baloo.processor.decision_engine.get_settings") as mock_settings:
-            mock_settings.return_value.review_auto_approve = False
-            mock_settings.return_value.fidelity_approval_threshold = 80
-            approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
+        with _auto_approve(False):
+            approve, request_changes = DecisionEngine.make_decision(
+                [], general_findings=[gf], repo_full_name=REPO
+            )
         assert request_changes is False
 
     def test_inline_clean_general_high_still_blocks(self):
@@ -252,3 +280,48 @@ class TestMakeDecisionWithGeneralFindings:
         gf = GeneralFinding(body="No tests added", severity="HIGH", category="Guidelines")
         approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
         assert request_changes is True
+
+
+class TestAutoApproveOptIn:
+    """Approval is the outcome an injected review wants, so it is opt-in per repo."""
+
+    def test_denied_when_master_switch_is_off(self):
+        with _auto_approve(False):
+            assert auto_approve_allowed(REPO) is False
+
+    def test_denied_when_no_repo_has_opted_in(self):
+        with _auto_approve(True, repos=""):
+            assert auto_approve_allowed(REPO) is False
+
+    def test_denied_for_a_repo_that_is_not_listed(self):
+        with _auto_approve(True, repos="org/other"):
+            assert auto_approve_allowed(REPO) is False
+
+    def test_allowed_for_a_listed_repo_ignoring_case_and_spacing(self):
+        with _auto_approve(True, repos=" org/other , ORG/Repo "):
+            assert auto_approve_allowed(REPO) is True
+
+    def test_owner_wildcard_opts_in_a_whole_org(self):
+        with _auto_approve(True, repos="org/*"):
+            assert auto_approve_allowed(REPO) is True
+            assert auto_approve_allowed("other-org/repo") is False
+
+    def test_denied_when_repo_is_unknown(self):
+        with _auto_approve(True, repos="org/*"):
+            assert auto_approve_allowed(None) is False
+
+    def test_bare_wildcard_opts_in_every_repo(self):
+        with _auto_approve(True, repos="*"):
+            assert auto_approve_allowed("any-org/any-repo") is True
+
+    def test_high_fidelity_cannot_approve_a_repo_that_has_not_opted_in(self):
+        fidelity = _make_fidelity_result(100)
+        with (
+            patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
+            _auto_approve(True, repos="org/other"),
+        ):
+            approve, request_changes = DecisionEngine.make_decision(
+                [], fidelity_result=fidelity, repo_full_name=REPO
+            )
+        assert approve is False
+        assert request_changes is False

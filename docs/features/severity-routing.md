@@ -44,13 +44,17 @@ The agent assigns severity based on these guidelines:
 |---|---|---|
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post. Set to `LOW` to see everything, `HIGH` to reduce noise |
 | `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API. When `false`, MEDIUM findings go to review comments |
-| `REVIEW_AUTO_APPROVE` | `true` | Auto-approve PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE` | `false` | Master switch for auto-approving PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE_REPOS` | `` | Repositories allowed to be auto-approved (`owner/repo`, `owner/*`, or `*`). Empty means none |
 
 ## Approval Decision Logic
 
 ```
 CRITICAL or HIGH found (inline or general)  →  Request Changes
-No blocking issues + high fidelity score  →  Approve
-No blocking issues + auto-approve enabled  →  Approve
+No blocking issues + repo opted in + high fidelity score  →  Approve
+No blocking issues + repo opted in  →  Approve
 Otherwise  →  Comment only (no approval or rejection)
 ```
+
+"Repo opted in" means `REVIEW_AUTO_APPROVE` is on **and** the repository is listed in
+`REVIEW_AUTO_APPROVE_REPOS`. Without both, Baloo comments instead of approving.

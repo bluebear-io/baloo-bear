@@ -87,6 +87,8 @@ Fidelity score affects the approval decision:
 
 This means a high-fidelity PR with only MEDIUM issues can still be auto-approved.
 
+Both paths are subject to the same gate as any other approval: Baloo approves only when `REVIEW_AUTO_APPROVE` is on and the repository is listed in `REVIEW_AUTO_APPROVE_REPOS` (see [Configuration](../configuration.md#review-behavior)). The score is model output about a PR whose contents the author controls, so it cannot approve a repository that has not opted in.
+
 ## Configuration
 
 | Variable | Default | Description |

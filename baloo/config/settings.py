@@ -80,8 +80,14 @@ class Settings(BaseSettings):
         description="Prefix for ticket IDs (e.g., 'PROJ' for PROJ-123)",
     )
     review_auto_approve: bool = Field(
-        default=True,
-        description="Auto-approve PRs with no critical/high issues",
+        default=False,
+        description="Master switch for auto-approving PRs with no critical/high issues. "
+        "Approval also requires the repo to be listed in REVIEW_AUTO_APPROVE_REPOS",
+    )
+    review_auto_approve_repos: str = Field(
+        default="",
+        description="Comma-separated 'owner/repo' (or 'owner/*') entries allowed to be "
+        "auto-approved. Empty means no repository is; '*' means every repository",
     )
     review_min_severity: str = Field(
         default="MEDIUM",
