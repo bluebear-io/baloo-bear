@@ -561,7 +561,7 @@ class PIAgentBase:
             logger.error("%s: PI session error: %s", self.agent_name, exc)
             result.is_error = True
             result.error_message = str(exc)
-            # Re-raise so callers (e.g. fallback logic) can catch and retry
+            # Attach usage metadata before surfacing the provider failure.
             elapsed = time.time() - start_time
             result.duration_seconds = elapsed
             metadata = self._build_metadata(result)
