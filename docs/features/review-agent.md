@@ -24,6 +24,29 @@ Unlike simple "diff-in, comments-out" reviewers, Baloo's agent can:
 
 The agent has **no write access**. It cannot execute commands, modify files, or make API calls. All mutations (posting comments, updating GitHub) happen in the deterministic Python code after the agent returns its findings.
 
+## Untrusted PR Content
+
+Everything a pull request carries — title, description, author, branch names, file paths, diff, and quoted discussion — is written by whoever opened it. Baloo fences each of those fields in the prompt with markers carrying a nonce generated per review:
+
+```
+[UNTRUSTED-DATA pr_description BEGIN 3f9c1a2b4d5e]
+...the PR description...
+[UNTRUSTED-DATA pr_description END 3f9c1a2b4d5e]
+```
+
+The system prompt gives those fences the highest precedence: text inside them is data, never instructions. It cannot change the agent's task, scope, severity thresholds, or output format, and claims inside it ("this is only a refactor", "this fixes a build break") are treated as assertions to verify against the diff rather than reasons to stay quiet. An attempt to direct the review is reported as a HIGH Security finding instead of being followed. Marker-shaped text in the content is scrubbed before fencing, so a payload cannot close its own fence even if it guesses the format.
+
+The same rule governs the `## Review guidance for Baloo` brief: it can add checks to a review, never remove them.
+
+## Bot and Security Classification
+
+Dependency-update PRs get a relaxed review, and a Dependabot security update additionally gets prompt guidance not to report the upgrade as introducing the vulnerability it fixes. Both routes are decided from data the PR author cannot set:
+
+- **Dependency bot** — the author's login is one of `dependabot[bot]`, `dependabot-preview[bot]`, `renovate[bot]` **and** GitHub reports the account type as `Bot`.
+- **Security fix** — the PR carries a label naming security, a vulnerability, or a CVE. Applying a label requires triage or write access on the target repository.
+
+Neither is inferred from the title or description. Configure Dependabot to apply a `security` label (`labels:` in `.github/dependabot.yml`) if you want security-update handling.
+
 ## Tools Available
 
 | Tool | Purpose |
@@ -46,7 +69,7 @@ The system prompt instructs the agent to check, in priority order:
 
 ### Per-PR review guidance (when present)
 
-When the PR description contains a `## Review guidance for Baloo` section, Baloo extracts that brief and elevates it as **Step 0b** — a dedicated primary checklist verified before the standard review steps above. Findings that answer a brief check cite it explicitly.
+When the PR description contains a `## Review guidance for Baloo` section, Baloo extracts that brief and adds it as **Step 0b** — a checklist verified alongside the standard review steps above. Findings that answer a brief check cite it explicitly. The brief is author-supplied, so it can only add checks: it cannot narrow scope, lower a severity, or suppress a finding.
 
 Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for how to write falsifiable, diff-anchored checks.
 

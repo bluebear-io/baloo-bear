@@ -349,63 +349,44 @@ These checks are in addition to your normal review — never a replacement for a
     return section, task_step
 
 
+# Logins of the dependency bots whose PRs get the relaxed dependency-update
+# review. GitHub reserves the "[bot]" suffix for app accounts, so these cannot be
+# registered by a human, and each is cross-checked against the account type.
+_DEPENDENCY_BOT_LOGINS = frozenset(
+    {
+        "dependabot[bot]",
+        "dependabot-preview[bot]",
+        "renovate[bot]",
+    }
+)
+
+# Label names (normalized) that mark a PR as a security fix. Applying a label
+# needs triage or write access on the target repo, so a PR author cannot set one.
+_SECURITY_LABEL_TERMS = ("security", "vulnerability", "cve")
+
+
 def _is_dependabot_pr(pr_context: PRContext | dict[str, Any]) -> bool:
-    """Check if this PR is from Dependabot or similar dependency update bots."""
+    """Check if this PR is from a known dependency update bot.
+
+    Decided from GitHub's account metadata only. The previous version matched
+    the string "dependabot" anywhere in the title or description, so any PR
+    could route itself into the relaxed dependency review by naming the bot.
+    """
+    if not _ctx_get(pr_context, "author_is_bot", False):
+        return False
+
     author = (_ctx_get(pr_context, "author", "") or "").lower()
-    title = (_ctx_get(pr_context, "title", "") or "").lower()
-    description = (_ctx_get(pr_context, "description", "") or "").lower()
-
-    # Explicit Dependabot detection
-    if "dependabot" in author or "dependabot" in title or "dependabot" in description:
-        return True
-
-    # Known dependency update bots (whitelist)
-    dependency_bots = ["renovate[bot]", "dependabot[bot]", "dependabot-preview[bot]"]
-    if author in dependency_bots:
-        return True
-
-    # Bot with dependency-specific keywords (stricter check)
-    if author.endswith("[bot]"):
-        # More specific dependency-related keywords
-        dependency_keywords = ["bump", "upgrade"]
-        if any(kw in title for kw in dependency_keywords):
-            # Additional check: verify dependency files are being changed
-            changed_files = _ctx_get(pr_context, "changed_file_paths", [])
-            dep_file_patterns = [
-                "requirements.txt",
-                "package.json",
-                "package-lock.json",
-                "go.mod",
-                "go.sum",
-                "Gemfile",
-                "Gemfile.lock",
-                "pom.xml",
-                "build.gradle",
-                "yarn.lock",
-                "Cargo.toml",
-                "Cargo.lock",
-            ]
-            if any(
-                any(f.endswith(pattern) for pattern in dep_file_patterns) for f in changed_files
-            ):
-                return True
-
-    return False
+    return author in _DEPENDENCY_BOT_LOGINS
 
 
 def _is_security_patch(pr_context: PRContext | dict[str, Any]) -> bool:
-    """Check if this PR is a security patch."""
-    title = (_ctx_get(pr_context, "title", "") or "").lower()
-    description = (_ctx_get(pr_context, "description", "") or "").lower()
+    """Check whether maintainers have marked this PR as a security fix.
 
-    return (
-        "security" in title
-        or "security" in description
-        or "vulnerability" in title
-        or "vulnerability" in description
-        or "cve" in title
-        or "cve" in description
-    )
+    Read from the PR's labels, which require repo permissions to apply. Title
+    and description text is not evidence: writing "fixes CVE-2024-0001" is free.
+    """
+    labels = _ctx_get(pr_context, "labels", []) or []
+    return any(term in (label or "").lower() for label in labels for term in _SECURITY_LABEL_TERMS)
 
 
 def _build_simple_pr_review_prompt(

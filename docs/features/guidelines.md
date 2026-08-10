@@ -90,9 +90,9 @@ Examples:
 
 Standing guidelines catch convention violations. For high-signal reviews on a *specific* change, add a `## Review guidance for Baloo` section to the PR description with falsifiable, diff-anchored checks.
 
-When that heading is present, Baloo extracts the section from the PR body and elevates it into a dedicated checklist for the review (primary checks to verify and cite). Findings that answer a check should cite the brief.
+When that heading is present, Baloo extracts the section from the PR body into a dedicated checklist for the review (extra checks to verify and cite). Findings that answer a check should cite the brief. Because the brief is written by the PR author, it can only add checks — it never narrows scope, lowers a severity, or excuses a finding.
 
-If `CONTRIBUTING.md` requires that section on every PR, Baloo's guidelines rules also cover omissions — but the reliability win is putting a real brief in the PR body so it becomes the primary checklist.
+If `CONTRIBUTING.md` requires that section on every PR, Baloo's guidelines rules also cover omissions — but the reliability win is putting a real brief in the PR body so the review runs those checks explicitly.
 
 Full workflow and template: [How to Get the Most Out of Baloo](../how-to-get-the-most.md).
 

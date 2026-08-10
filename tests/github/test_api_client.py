@@ -47,7 +47,8 @@ def _pr_data() -> dict:
     return {
         "title": "My PR",
         "body": "PR description",
-        "user": {"login": "dev"},
+        "user": {"login": "dev", "type": "User"},
+        "labels": [{"name": "enhancement"}],
         "base": {"ref": "main", "sha": "basesha"},
         "head": {"ref": "feature", "sha": "headsha"},
     }
@@ -534,6 +535,10 @@ class TestGetPRContext:
         assert result.metadata.base_branch == "main"
         assert result.metadata.head_sha == "headsha"
         assert result.metadata.base_sha == "basesha"
+        # Bot routing and security routing read these, so they must come from
+        # GitHub's own account type and labels, not from PR text.
+        assert result.metadata.author_is_bot is False
+        assert result.metadata.labels == ["enhancement"]
         assert len(result.metadata.files_changed) == 1
         assert result.metadata.files_changed[0].filename == "src/foo.py"
         assert "new line" in result.diff

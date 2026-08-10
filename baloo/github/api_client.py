@@ -286,6 +286,8 @@ class GitHubAPIClient:
             title=pr_data["title"],
             description=pr_data.get("body"),
             author=pr_data["user"]["login"],
+            author_is_bot=pr_data["user"].get("type") == "Bot",
+            labels=[label["name"] for label in pr_data.get("labels") or [] if label.get("name")],
             base_branch=pr_data["base"]["ref"],
             head_branch=pr_data["head"]["ref"],
             head_sha=pr_data["head"]["sha"],
