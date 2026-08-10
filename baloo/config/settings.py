@@ -59,7 +59,10 @@ class Settings(BaseSettings):
         default="anthropic",
         description="LLM provider for all agents (anthropic, google, openai, amazon-bedrock)",
     )
-    agent_model: str = Field(default="claude-sonnet-4-6", description="Model to use for reviews")
+    agent_model: str = Field(
+        default="sonnet",
+        description="Model for reviews: tier short name or provider/model / bare model ID",
+    )
     agent_fallback_model: str = Field(
         default="google/gemini-2.5-flash",
         description="Fallback model (provider/model) if the primary fails. Empty to disable.",

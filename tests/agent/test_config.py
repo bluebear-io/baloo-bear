@@ -226,6 +226,26 @@ def test_bedrock_fp_and_thread_short_names_follow_provider(monkeypatch):
         assert opts.model.startswith("us.anthropic.claude-haiku")
 
 
+def test_default_agent_model_is_portable_across_providers(monkeypatch):
+    """Switching AGENT_PROVIDER alone must work for a deployment on the defaults.
+
+    A bare provider-specific default (e.g. "claude-sonnet-4-6") would be passed
+    through unchanged and rejected by Bedrock.
+    """
+    from baloo.agent.config import SHORT_NAME_TIERS
+    from baloo.config.settings import Settings
+
+    assert Settings().agent_model in SHORT_NAME_TIERS
+
+    monkeypatch.delenv("AGENT_MODEL", raising=False)
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    opts = get_agent_options()
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model.startswith("us.anthropic.")
+
+
 def test_resolve_short_name_helper():
     provider, model_id, max_turns = resolve_short_name("sonnet", "amazon-bedrock")
     assert provider == "amazon-bedrock"

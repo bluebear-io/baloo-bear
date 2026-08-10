@@ -72,7 +72,7 @@ Common optional settings:
 - `APP_PORT=8000`
 - `LOG_LEVEL=INFO`
 - `MAX_CONCURRENT_REVIEWS=3`
-- `AGENT_MODEL=claude-sonnet-4-6`
+- `AGENT_MODEL=sonnet`
 - `DATABASE_ENABLED=false`
 - `DASHBOARD_ENABLED=false`
 
