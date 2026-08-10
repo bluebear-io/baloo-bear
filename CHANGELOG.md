@@ -14,6 +14,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - A review agent with no provisioned worktree is sandboxed against an empty directory rather than running in Baloo's own working directory
 - Repository policy files (`AGENTS.md`, `CONTRIBUTING.md`, plan documents, and the documentation drift catalog) are read from the PR's base branch instead of its head, so a pull request can no longer supply the rules it will be judged by
 - Guidelines violations are no longer automatically elevated to HIGH; severity follows the impact of the violation
+- Attacker-controlled PR content (title, author, branch names, description, file paths, diff, quoted discussion) is fenced as untrusted data in the review prompt, with a per-prompt nonce and spotlighting rules that make it data rather than instructions
+- The `## Review guidance for Baloo` brief can only add checks to a review; it can no longer narrow scope, lower severity, or suppress findings, and the "be practical if the author says it's a fix" leniency clause is gone
+- Dependency-bot and security-patch handling is decided from GitHub's account type and PR labels instead of the words in the title and description
+- Posted review bodies are sanitized: secret-shaped strings are redacted and markdown links, images, and loading HTML tags are made inert
+- `REVIEW_AUTO_APPROVE` now defaults to `false`, and approval additionally requires the repository to be listed in the new `REVIEW_AUTO_APPROVE_REPOS`
 
 ### Changed
 

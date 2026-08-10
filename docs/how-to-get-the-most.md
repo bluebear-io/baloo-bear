@@ -30,7 +30,7 @@ See [Guidelines Enforcement](features/guidelines.md) for setup examples.
 
 ## The highest-leverage practice: per-PR review guidance
 
-Put a `## Review guidance for Baloo` section in the PR description. When that section exists, Baloo **extracts it from the PR body** and elevates it into a dedicated review checklist for that run — not buried in the rest of the description. Treat it as an **anti-bias review brief**: a list of checks to verify independently — not claims to trust.
+Put a `## Review guidance for Baloo` section in the PR description. When that section exists, Baloo **extracts it from the PR body** into a dedicated review checklist for that run — not buried in the rest of the description. Treat it as an **anti-bias review brief**: a list of checks to verify independently — not claims to trust. It only adds to the review; Baloo will not let a brief narrow scope, lower a severity, or suppress a finding.
 
 ### Why this works
 

@@ -46,9 +46,12 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Default | Description |
 |---|---|---|
-| `REVIEW_AUTO_APPROVE` | `true` | Auto-approve PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE` | `false` | Master switch for auto-approving PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE_REPOS` | `` | Comma-separated `owner/repo` (or `owner/*`) entries allowed to be auto-approved. Empty means none; `*` means every repository |
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 | `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API instead of review comments |
+
+Baloo posts an `APPROVE` event only when `REVIEW_AUTO_APPROVE` is on **and** the repository appears in `REVIEW_AUTO_APPROVE_REPOS`. An approval is the one review outcome an attacker actively wants out of a prompt injection, so it takes a deliberate per-repository decision rather than one flag covering every repo an installation serves. The same gate applies to the fidelity shortcut: a high [fidelity score](features/fidelity.md) can no longer approve a repository that has not opted in.
 
 ## FP Verification
 

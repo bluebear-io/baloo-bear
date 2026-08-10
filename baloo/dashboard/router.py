@@ -89,6 +89,7 @@ SETTING_CATEGORIES = {
     "Review": {
         "ticket_id_prefix",
         "review_auto_approve",
+        "review_auto_approve_repos",
         "review_min_severity",
         "review_use_checks_api",
     },

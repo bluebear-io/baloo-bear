@@ -107,7 +107,9 @@ class BalooAgent(PIAgentBase):
 
             # Make approval decision using centralized engine
             approve, request_changes = DecisionEngine.make_decision(
-                comments, general_findings=general_findings
+                comments,
+                general_findings=general_findings,
+                repo_full_name=pr_context.repo_full_name,
             )
 
             return ReviewResult(

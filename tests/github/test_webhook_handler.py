@@ -1094,7 +1094,7 @@ async def test_posts_approval_when_auto_approve_enabled():
 
 @pytest.mark.asyncio
 async def test_approves_clean_review_with_high_fidelity_score():
-    """Test that clean review with high fidelity score auto-approves even without auto_approve setting."""
+    """A high fidelity score approves a clean review even with MEDIUM findings present."""
 
     # Mock GitHub client
     mock_github_client = MagicMock()
@@ -1138,7 +1138,8 @@ async def test_approves_clean_review_with_high_fidelity_score():
     with (
         patch("baloo.review.orchestrator.GitHubAPIClient", return_value=mock_github_client),
         patch("baloo.agent.client.BalooAgent", return_value=mock_agent),
-        patch("baloo.config.settings.settings.review_auto_approve", False),
+        patch("baloo.config.settings.settings.review_auto_approve", True),
+        patch("baloo.config.settings.settings.review_auto_approve_repos", "test/repo"),
         patch("baloo.config.settings.settings.fidelity_enabled", True),
         patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),
         patch(
@@ -1159,7 +1160,6 @@ async def test_approves_clean_review_with_high_fidelity_score():
             notify_progress=True,
         )
 
-        # Verify approval review was posted even though auto_approve is False
         mock_github_client.post_review.assert_called_once()
         call_args = mock_github_client.post_review.call_args
         review_result = call_args[0][2]
@@ -1222,7 +1222,8 @@ async def test_approves_with_medium_issues_when_high_fidelity():
     with (
         patch("baloo.review.orchestrator.GitHubAPIClient", return_value=mock_github_client),
         patch("baloo.agent.client.BalooAgent", return_value=mock_agent),
-        patch("baloo.config.settings.settings.review_auto_approve", False),
+        patch("baloo.config.settings.settings.review_auto_approve", True),
+        patch("baloo.config.settings.settings.review_auto_approve_repos", "test/repo"),
         patch("baloo.config.settings.settings.review_min_severity", "MEDIUM"),
         patch("baloo.config.settings.settings.fidelity_enabled", True),
         patch("baloo.config.settings.settings.fidelity_approval_threshold", 90),

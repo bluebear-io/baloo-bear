@@ -163,7 +163,7 @@ All settings are environment variables. Key ones:
 | `GEMINI_API_KEY`              | —                         | Google Gemini API key (for fallback/multi-model)                   |
 | `AGENT_MODEL`                 | `sonnet`                  | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus` |
 | `AGENT_FALLBACK_MODEL`        | `google/gemini-2.5-flash` | Fallback on primary failure                                        |
-| `REVIEW_AUTO_APPROVE`         | `true`                    | Auto-approve PRs with no blocking findings                         |
+| `REVIEW_AUTO_APPROVE`         | `false`                   | Auto-approve PRs with no blocking findings (also needs `REVIEW_AUTO_APPROVE_REPOS`) |
 | `REVIEW_MIN_SEVERITY`         | `MEDIUM`                  | Minimum severity to post                                           |
 | `FP_VERIFICATION_ENABLED`     | `true`                    | Enable LLM false-positive verification                             |
 | `DATABASE_ENABLED`            | `false`                   | Enable PostgreSQL review history                                   |

@@ -8,6 +8,7 @@ import httpx
 
 from baloo.github.auth import GitHubAuth
 from baloo.github.models import ReviewComment
+from baloo.github.sanitize import sanitize_posted_body
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ class GitHubChecksClient:
             "head_sha": commit_sha,
             "status": "completed",
             "conclusion": conclusion,
-            "output": {"title": name, "summary": summary},
+            "output": {"title": name, "summary": sanitize_posted_body(summary)},
         }
 
         logger.debug(f"Creating check run: {name} for {repo_full_name}@{commit_sha[:7]}")
@@ -127,7 +128,7 @@ class GitHubChecksClient:
                 "start_line": finding.line,
                 "end_line": finding.line,
                 "annotation_level": "warning",  # Can be: notice, warning, failure
-                "message": f"{category}: {finding.body}",
+                "message": sanitize_posted_body(f"{category}: {finding.body}"),
                 "title": f"[{severity}] {category}",
             }
             annotations.append(annotation)

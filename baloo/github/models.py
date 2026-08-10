@@ -36,6 +36,14 @@ class User(BaseModel):
     id: int
     avatar_url: str
     html_url: str
+    # GitHub sets this ("User", "Bot", "Organization"); it is account metadata,
+    # not something a PR author can assert. Bot routing must key off this rather
+    # than off a login or title that merely reads like a bot's.
+    type: str = "User"
+
+    @property
+    def is_bot(self) -> bool:
+        return self.type == "Bot"
 
 
 class Repository(BaseModel):
@@ -139,6 +147,11 @@ class PRMetadata(BaseModel):
     # PR can rewrite anything at head, and those files steer the review.
     base_sha: str = ""
     files_changed: list[FileChange]
+    # GitHub's account type for the author, and the PR's labels. Both are
+    # signals the PR author cannot forge (labels need triage/write access on the
+    # target repo), unlike the title and description.
+    author_is_bot: bool = False
+    labels: list[str] = Field(default_factory=list)
     repo_guidelines: str | None = None
     ticket_scope: str | None = None
     commit_messages: list[str] = Field(default_factory=list)
@@ -180,6 +193,14 @@ class PRContext(BaseModel):
     @property
     def author(self) -> str:
         return self.metadata.author
+
+    @property
+    def author_is_bot(self) -> bool:
+        return self.metadata.author_is_bot
+
+    @property
+    def labels(self) -> list[str]:
+        return self.metadata.labels
 
     @property
     def base_branch(self) -> str:
