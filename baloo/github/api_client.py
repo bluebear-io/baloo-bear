@@ -26,6 +26,7 @@ from baloo.github.models import (
     ReviewComment,
     ReviewResult,
 )
+from baloo.github.sanitize import sanitize_posted_body
 
 logger = logging.getLogger(__name__)
 
@@ -449,15 +450,19 @@ class GitHubAPIClient:
         else:
             event = "COMMENT"
 
-        # Build review payload
+        # Build review payload. Every body is model-authored text derived from
+        # attacker-controlled PR content, so it is sanitized at the boundary
+        # rather than trusting each producer to have done it.
         review_payload = {
-            "body": review_result.summary,
+            "body": sanitize_posted_body(review_result.summary),
             "event": event,
             "comments": [
                 {
                     "path": comment.path,
                     "line": comment.line,
-                    "body": f"**[{comment.severity.value}] {comment.category.value}** - {comment.body}",
+                    "body": sanitize_posted_body(
+                        f"**[{comment.severity.value}] {comment.category.value}** - {comment.body}"
+                    ),
                 }
                 for comment in valid_comments
             ],
@@ -515,7 +520,7 @@ class GitHubAPIClient:
         response = await self._http.post(
             comment_url,
             headers=self._get_headers(),
-            json={"body": comment},
+            json={"body": sanitize_posted_body(comment)},
         )
         response.raise_for_status()
         return response.json()["id"]
@@ -533,7 +538,7 @@ class GitHubAPIClient:
         response = await self._http.patch(
             comment_url,
             headers=self._get_headers(),
-            json={"body": comment},
+            json={"body": sanitize_posted_body(comment)},
         )
         response.raise_for_status()
 
@@ -572,7 +577,7 @@ class GitHubAPIClient:
         response = await self._http.post(
             reply_url,
             headers=self._get_headers(),
-            json={"body": comment},
+            json={"body": sanitize_posted_body(comment)},
         )
         if response.status_code == 404:
             logger.warning(

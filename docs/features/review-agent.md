@@ -38,6 +38,15 @@ The system prompt gives those fences the highest precedence: text inside them is
 
 The same rule governs the `## Review guidance for Baloo` brief: it can add checks to a review, never remove them.
 
+## Posted Output Is Sanitized
+
+Every body Baloo posts — review summaries, inline comments, PR-level reports, thread replies, and Checks API output — passes through a sanitizer first:
+
+- **Secret-shaped strings are redacted**, including inside code fences. The patterns are anchored on issuer prefixes and shapes (GitHub, Anthropic, OpenAI, Google, AWS, Slack, GitLab tokens, JWTs, PEM private keys, credentials embedded in connection strings) rather than on entropy, so ordinary quoted code and commit SHAs pass through untouched.
+- **Markdown links and images are made inert.** `![](https://host/?data=…)` renders as an image request that every viewer's browser performs automatically, which is enough to exfiltrate anything the agent puts in the URL. Images become plain text, links keep their text with the target defanged (`https[://]…`), and HTML tags that can load or navigate are escaped.
+
+Fenced blocks and inline code spans are exempt from the markdown pass, since nothing renders there and rewriting would corrupt the code a review is quoting.
+
 ## Bot and Security Classification
 
 Dependency-update PRs get a relaxed review, and a Dependabot security update additionally gets prompt guidance not to report the upgrade as introducing the vulnerability it fixes. Both routes are decided from data the PR author cannot set:
