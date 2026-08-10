@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Security
+
+- The agent sandbox now fails closed. When `REPO_SANDBOX_MODE` is not `off` and bubblewrap cannot run, Baloo refuses to start and refuses to review, instead of logging a warning and running the agent unisolated with Baloo's full environment
+- The agent subprocess environment is scrubbed to an allowlist on every spawn, sandboxed or not, so it never inherits the GitHub App key, database URL, or dashboard credentials
+- A review agent with no provisioned worktree is sandboxed against an empty directory rather than running in Baloo's own working directory
+- Repository policy files (`AGENTS.md`, `CONTRIBUTING.md`, plan documents, and the documentation drift catalog) are read from the PR's base branch instead of its head, so a pull request can no longer supply the rules it will be judged by
+- Guidelines violations are no longer automatically elevated to HIGH; severity follows the impact of the violation
+
 ### Changed
 
 - Reworked public documentation for open source use
