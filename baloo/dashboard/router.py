@@ -80,7 +80,6 @@ SETTING_CATEGORIES = {
     "Agent": {
         "agent_provider",
         "agent_model",
-        "agent_fallback_model",
         "agent_max_tokens",
         "agent_temperature",
         "pi_binary_path",
@@ -249,7 +248,6 @@ def _models_in_use() -> list[dict[str, str]]:
     primary_ref = f"{primary.provider}/{primary.model}"
     primary_configured = str(resolve_setting("agent_model"))
 
-    fallback_configured = str(resolve_setting("agent_fallback_model") or "")
     fp_configured = str(resolve_setting("fp_verification_model"))
     thread_configured = str(resolve_setting("thread_agent_model"))
     docs_configured = str(resolve_setting("documentation_drift_model"))
@@ -261,13 +259,6 @@ def _models_in_use() -> list[dict[str, str]]:
             "configured": primary_configured,
             "resolved": primary_ref,
             "source": setting_source("agent_model"),
-        },
-        {
-            "role": "Fallback",
-            "setting": "AGENT_FALLBACK_MODEL",
-            "configured": fallback_configured or "(empty)",
-            "resolved": _resolve_model_ref(fallback_configured),
-            "source": setting_source("agent_fallback_model"),
         },
         {
             "role": "FP verification",

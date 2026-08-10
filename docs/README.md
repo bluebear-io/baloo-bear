@@ -14,7 +14,7 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 - **[Guidelines Enforcement](features/guidelines.md)** — How Baloo reads and enforces repo conventions
 - **[Fidelity Analysis](features/fidelity.md)** — Comparing PRs against design plan documents
 - **[Documentation Drift](features/documentation-drift.md)** — PR-time checks for stale mapped docs
-- **[Model Configuration](features/models.md)** — Supported models, fallback, and model selection
+- **[Model Configuration](features/models.md)** — Supported providers, models, tiers, and provider switching
 - **[Severity Routing](features/severity-routing.md)** — How findings are routed to reviews, Checks API, or filtered
 - **[Discussion Tracking](features/discussions.md)** — Thread follow-ups, duplicate detection, and conversation context
 - **[FP Verification](features/fp-verification.md)** — LLM-powered false-positive reduction (optional)

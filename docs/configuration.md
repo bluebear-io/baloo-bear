@@ -16,7 +16,7 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | ✅* | — | Anthropic API key (for Claude models) |
-| `GEMINI_API_KEY` | — | — | Google Gemini API key (for fallback / Gemini models) |
+| `GEMINI_API_KEY` | — | — | Google Gemini API key (when using the Google provider) |
 | `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
 
 \* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead).
@@ -74,7 +74,6 @@ AWS_SECRET_ACCESS_KEY=...
 |---|---|---|
 | `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock` |
 | `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback model (`provider/model`). Empty to disable |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Generation temperature |
 | `PI_BINARY_PATH` | `pi` | Path to PI binary |
@@ -134,7 +133,7 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 **Precedence:** DB overlay → environment variable → field default
 
-**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
+**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
 

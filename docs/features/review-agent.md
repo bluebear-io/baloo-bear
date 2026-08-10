@@ -55,7 +55,6 @@ Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for h
 | Variable | Default | Description |
 |---|---|---|
 | `AGENT_MODEL` | `sonnet` | Model to use (see [Models](models.md)) |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback if primary fails |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Temperature for generation |
 | `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high |

@@ -2,7 +2,7 @@
 
 Baloo supports multiple LLM providers. **`AGENT_PROVIDER` is global** — every Baloo agent (primary review, FP verification, thread replies, fidelity, documentation drift, sync scope) uses that backend. Short names select a **model tier** on the provider; they are not a way to pick a different provider.
 
-Use an explicit `provider/model` string only as an escape hatch (for example cross-provider fallback).
+Use an explicit `provider/model` string only when a specific provider model ID is required.
 
 ## Model tiers
 
@@ -45,9 +45,7 @@ AGENT_PROVIDER=amazon-bedrock
 
 **3. Add that provider's credentials** — see [API Keys](#api-keys).
 
-**4. Check the fallback.** `AGENT_FALLBACK_MODEL` is an explicit `provider/model` string and is deliberately *not* rewritten, so it can stay on a different backend for availability. If the customer has no credentials for the fallback provider, set it to empty (disables fallback) or to a model on the new provider.
-
-**5. Verify.** The **Models in use** table on the Settings page should show the new provider for every role, and **Test connection** should pass.
+**4. Verify.** The **Models in use** table on the Settings page should show the new provider for every role, and **Test connection** should pass.
 
 ## Amazon Bedrock
 
@@ -66,7 +64,7 @@ With `AGENT_PROVIDER=amazon-bedrock`, short names such as `haiku` (FP/thread def
 
 Auth (pick one): IAM access keys (+ optional session token), `AWS_BEARER_TOKEN_BEDROCK`, `AWS_PROFILE`, IRSA (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), or ECS/EC2 instance roles. Baloo allowlists these AWS env vars into the sandboxed pi subprocess and bind-mounts IRSA/credential files when their paths are set. See [Configuration](../configuration.md#amazon-bedrock).
 
-Cost estimation for Bedrock models currently falls back to whatever cost pi reports (Baloo's built-in pricing table is Anthropic-first-party only).
+Cost estimation for Bedrock models uses the cost pi reports (Baloo's built-in pricing table is Anthropic-first-party only).
 
 ## Configuration
 
@@ -84,22 +82,7 @@ AGENT_MODEL=anthropic/claude-sonnet-4-6
 AGENT_MODEL=opus
 ```
 
-When `DATABASE_ENABLED=true`, `AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, and `PI_THINKING_LEVEL` can also be changed at runtime from the dashboard Settings page without restarting. See [Runtime Overrides](../configuration.md#runtime-overrides-db).
-
-## Automatic Fallback
-
-If the primary model fails (rate limit, timeout, availability), Baloo automatically retries with a fallback model:
-
-```bash
-AGENT_FALLBACK_MODEL=google/gemini-2.5-flash
-```
-
-The default fallback uses an explicit `provider/model` string so it can stay on a different backend for availability. Set to empty to disable fallback.
-
-When fallback is used, the review metadata includes:
-- `fallback_used: true`
-- `primary_model` — which model failed
-- `primary_error` — why it failed
+When `DATABASE_ENABLED=true`, `AGENT_PROVIDER`, `AGENT_MODEL`, and `PI_THINKING_LEVEL` can also be changed at runtime from the dashboard Settings page without restarting. See [Runtime Overrides](../configuration.md#runtime-overrides-db).
 
 ## API Keys
 

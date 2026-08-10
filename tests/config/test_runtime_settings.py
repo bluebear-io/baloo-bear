@@ -21,7 +21,7 @@ from baloo.config.runtime_settings import (
     setting_source,
     validate_override,
 )
-from baloo.config.settings import reset_settings
+from baloo.config.settings import Settings, reset_settings
 from baloo.db.engine import reset_engine
 from baloo.db.models import Base, RuntimeSetting
 
@@ -53,7 +53,8 @@ async def runtime_db(monkeypatch):
 def test_mutable_keys_cover_agent_knobs():
     assert "agent_provider" in MUTABLE_KEYS
     assert "agent_model" in MUTABLE_KEYS
-    assert "agent_fallback_model" in MUTABLE_KEYS
+    assert "agent_fallback_model" not in MUTABLE_KEYS
+    assert "agent_fallback_model" not in Settings.model_fields
     assert "anthropic_api_key" not in MUTABLE_KEYS
     assert "database_url" not in MUTABLE_KEYS
 

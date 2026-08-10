@@ -10,7 +10,6 @@ import pytest
 os.environ.setdefault("BALOO_ENV_FILE", "/tmp/baloo-tests.env")
 os.environ.setdefault("APP_ENVIRONMENT", "test")
 os.environ.setdefault("AGENT_PROVIDER", "anthropic")
-os.environ.setdefault("AGENT_FALLBACK_MODEL", "google/gemini-2.5-flash")
 os.environ.setdefault("PI_BINARY_PATH", "pi")
 os.environ.setdefault("PI_THINKING_LEVEL", "medium")
 os.environ.setdefault("REVIEW_AUTO_APPROVE", "true")

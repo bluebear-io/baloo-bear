@@ -54,7 +54,6 @@ class ReviewCompleteDTO(BaseModel):
     fidelity_score: float | None = None
     error_message: str | None = None
     error_category: str | None = None
-    fallback_model: str | None = None
     findings: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -191,7 +190,6 @@ class ReviewService:
                     review.fidelity_score = data.fidelity_score
                     review.error_message = data.error_message
                     review.error_category = data.error_category
-                    review.fallback_model = data.fallback_model
 
                     if data.findings:
                         for f in data.findings:

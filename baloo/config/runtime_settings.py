@@ -20,7 +20,6 @@ MUTABLE_KEYS = frozenset(
     {
         "agent_provider",
         "agent_model",
-        "agent_fallback_model",
         "pi_thinking_level",
         "fp_verification_model",
         "thread_agent_model",
@@ -118,12 +117,6 @@ def validate_override(key: str, raw: str) -> str:
     }:
         if not isinstance(coerced, str) or not coerced.strip():
             raise RuntimeSettingsError(f"{key} must be a non-empty string")
-        return coerced.strip()
-
-    if key == "agent_fallback_model":
-        # Empty string disables fallback (matches Settings semantics).
-        if not isinstance(coerced, str):
-            raise RuntimeSettingsError(f"{key} must be a string")
         return coerced.strip()
 
     return str(coerced)

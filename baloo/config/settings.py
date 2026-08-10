@@ -63,10 +63,6 @@ class Settings(BaseSettings):
         default="sonnet",
         description="Model for reviews: tier short name or provider/model / bare model ID",
     )
-    agent_fallback_model: str = Field(
-        default="google/gemini-2.5-flash",
-        description="Fallback model (provider/model) if the primary fails. Empty to disable.",
-    )
     agent_max_tokens: int = Field(default=4096, description="Max tokens for agent responses")
     agent_temperature: float = Field(default=0.2, description="Temperature for agent responses")
     pi_binary_path: str = Field(

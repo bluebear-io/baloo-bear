@@ -1850,11 +1850,6 @@ async def process_pr_review(
                 agent_had_error = review_metadata.get("agent_error", False)
                 error_category = review_metadata.get("error_category")
                 error_detail = review_metadata.get("error_detail")
-                fallback_model = (
-                    review_metadata.get("primary_model")
-                    if review_metadata.get("fallback_used")
-                    else None
-                )
 
                 if agent_had_error:
                     review_status = "agent_error"
@@ -1882,7 +1877,6 @@ async def process_pr_review(
                     fidelity_score=(fidelity_result.fidelity_score if fidelity_result else None),
                     error_message=error_detail,
                     error_category=error_category,
-                    fallback_model=fallback_model,
                     findings=_build_db_findings(decision_comments, posted_review_result),
                 )
 
