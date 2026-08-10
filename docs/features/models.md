@@ -31,7 +31,7 @@ Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / 
 
 ## Switching Providers
 
-Because `AGENT_PROVIDER` applies to every agent and short names are tiers, moving an existing deployment (for example Anthropic → Bedrock) is normally a one-variable change.
+Provider selection is all-or-nothing: `AGENT_PROVIDER` applies to every agent, and short names are tiers on it. Moving an existing deployment (for example Anthropic → Bedrock) is normally a one-variable change.
 
 **1. Make sure your model settings are tier short names.** Anything set to a bare provider-specific ID (`claude-sonnet-4-6`) or an explicit `provider/model` string is passed through as-is and will not translate. Short names (`sonnet`, `haiku`, `opus`) travel across providers; the defaults already use them.
 
@@ -48,8 +48,6 @@ AGENT_PROVIDER=amazon-bedrock
 **4. Check the fallback.** `AGENT_FALLBACK_MODEL` is an explicit `provider/model` string and is deliberately *not* rewritten, so it can stay on a different backend for availability. If the customer has no credentials for the fallback provider, set it to empty (disables fallback) or to a model on the new provider.
 
 **5. Verify.** The **Models in use** table on the Settings page should show the new provider for every role, and **Test connection** should pass.
-
-To move only one role instead of the whole deployment, set that role's model to an explicit `provider/model` string — for example `FP_VERIFICATION_MODEL=anthropic/claude-haiku-4-5-20251001` keeps FP verification on direct Anthropic while everything else runs on Bedrock.
 
 ## Amazon Bedrock
 
