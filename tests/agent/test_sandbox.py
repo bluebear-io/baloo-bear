@@ -1,5 +1,7 @@
 """Tests for the agent filesystem sandbox command builder."""
 
+import pytest
+
 from baloo.agent import sandbox
 
 
@@ -80,6 +82,29 @@ def test_sandbox_available_probe_result_is_cached(monkeypatch):
     assert sandbox.sandbox_available("bwrap") is True
     assert sandbox.sandbox_available("bwrap") is True
     assert calls["n"] == 1
+
+
+def test_startup_assertion_passes_when_sandbox_works(monkeypatch):
+    monkeypatch.setattr(sandbox, "sandbox_available", lambda mode: True)
+    sandbox.assert_startup_sandbox("bwrap")
+
+
+def test_startup_assertion_allows_explicit_off(monkeypatch):
+    monkeypatch.setattr(sandbox, "sandbox_available", lambda mode: False)
+    sandbox.assert_startup_sandbox("off")
+
+
+def test_startup_assertion_raises_when_sandbox_configured_but_broken(monkeypatch):
+    monkeypatch.setattr(sandbox, "sandbox_available", lambda mode: False)
+    with pytest.raises(sandbox.SandboxUnavailableError) as exc:
+        sandbox.assert_startup_sandbox("bwrap")
+    assert "REPO_SANDBOX_MODE=off" in str(exc.value)
+
+
+def test_startup_assertion_rejects_unknown_mode(monkeypatch):
+    monkeypatch.setattr(sandbox, "_bwrap_works", True)
+    with pytest.raises(sandbox.SandboxUnavailableError):
+        sandbox.assert_startup_sandbox("nonsense")
 
 
 def test_build_subprocess_env_drops_secrets_keeps_runtime(monkeypatch):

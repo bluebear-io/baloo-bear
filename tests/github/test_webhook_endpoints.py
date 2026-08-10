@@ -316,6 +316,7 @@ class TestLifespan:
         ):
             mock_settings.database_enabled = True
             mock_settings.database_url = "postgresql+asyncpg://user:pass@localhost/db"
+            mock_settings.repo_sandbox_mode = "off"
             async with lifespan(app):
                 pass
 
@@ -331,6 +332,7 @@ class TestLifespan:
         ):
             mock_settings.database_enabled = True
             mock_settings.database_url = ""
+            mock_settings.repo_sandbox_mode = "off"
             async with lifespan(app):
                 pass
 
@@ -345,6 +347,7 @@ class TestLifespan:
         ):
             mock_settings.database_enabled = False
             mock_settings.database_url = ""
+            mock_settings.repo_sandbox_mode = "off"
             async with lifespan(app):
                 pass
 

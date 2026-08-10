@@ -12,6 +12,7 @@ def _make_mock_settings(**overrides):
     mock = MagicMock()
     mock.ast_tools_enabled = overrides.get("ast_tools_enabled", False)
     mock.pi_binary_path = overrides.get("pi_binary_path", None)
+    mock.repo_sandbox_mode = overrides.get("repo_sandbox_mode", "off")
     return mock
 
 

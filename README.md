@@ -169,7 +169,7 @@ Settings are configured via environment variables; allowlisted agent knobs can a
 | `DATABASE_ENABLED`            | `false`                   | Enable PostgreSQL review history                                                         |
 | `DASHBOARD_ENABLED`           | `true`                    | Enable review dashboard UI (needs `DATABASE_ENABLED` + credentials)                      |
 | `REPO_CACHE_ENABLED`          | `true`                    | Check out the PR repo so the agent reads real code, not just the diff                    |
-| `REPO_SANDBOX_MODE`           | `bwrap`                   | Sandbox the agent subprocess to the review worktree (falls back to `off` if unavailable) |
+| `REPO_SANDBOX_MODE`           | `bwrap`                   | Sandbox the agent subprocess to the review worktree (startup fails if unavailable)       |
 | `FIDELITY_ENABLED`            | `true`                    | Compare PRs against plan docs                                                            |
 | `DOCUMENTATION_DRIFT_ENABLED` | `false`                   | Enable PR-time documentation drift checks                                                |
 

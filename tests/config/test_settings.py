@@ -20,7 +20,10 @@ def test_repo_cache_enabled_reads_env(monkeypatch):
     assert Settings().repo_cache_enabled is False
 
 
-def test_repo_sandbox_mode_defaults_to_bwrap():
+def test_repo_sandbox_mode_defaults_to_bwrap(monkeypatch):
+    # conftest exports REPO_SANDBOX_MODE=off for the test run; the field default
+    # is what ships to production, so read it with the override removed.
+    monkeypatch.delenv("REPO_SANDBOX_MODE", raising=False)
     assert Settings().repo_sandbox_mode == "bwrap"
 
 
