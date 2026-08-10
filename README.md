@@ -212,7 +212,7 @@ CI checks this file against `uv export`, and the Docker image installs productio
 
 ### Local review (dry run)
 
-You can run the same review pipeline against your working tree before opening a PR. The script builds a synthetic pull request from a git diff (`base...head`), loads `AGENTS.md` / `CONTRIBUTING.md` from the head ref when present, and prints findings to stdout — nothing is posted to GitHub.
+You can run the same review pipeline against your working tree before opening a PR. The script builds a synthetic pull request from a git diff (`base...head`), loads `AGENTS.md` / `CONTRIBUTING.md` from the base ref when present, and prints findings to stdout — nothing is posted to GitHub.
 
 Requires the same LLM credentials as production (for example `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` in your environment).
 

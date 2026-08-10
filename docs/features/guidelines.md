@@ -11,9 +11,15 @@ When reviewing a PR, Baloo fetches these files from the target repository (if th
 
 The contents are injected into the review agent's prompt. The agent then flags any PR changes that contradict the documented conventions.
 
+### Guidelines are read from the base branch
+
+Both files are fetched at the PR's **base** commit, not at its head, and the agent is told not to read them out of the checkout. The rules a review is judged by must be the rules already merged into the target branch — otherwise a pull request (from a fork, by anyone who can open one) could rewrite `AGENTS.md` in the same commit as its code and instruct the reviewer to ignore what it changed.
+
+A practical consequence: changes to `AGENTS.md` or `CONTRIBUTING.md` do not take effect for the PR that makes them. They apply to every PR opened after the change merges. The same rule governs the other repo-owned files Baloo treats as policy — plan documents used by [fidelity analysis](fidelity.md) and the [documentation drift](documentation-drift.md) catalog.
+
 ## What Gets Flagged
 
-Guidelines violations are reported as **CRITICAL** severity with category **"Guidelines"**. Examples:
+Guidelines violations are reported with category **"Guidelines"** at a severity that reflects the impact of the violation. Examples:
 
 - Branch name missing required ticket ID (e.g., `fix/thing` when the repo requires `fix/PROJ-123/thing`)
 - Commit messages missing required ticket references

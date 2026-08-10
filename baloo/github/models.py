@@ -134,6 +134,10 @@ class PRMetadata(BaseModel):
     base_branch: str
     head_branch: str
     head_sha: str
+    # Tip of the base branch. Policy files (repo guidelines, plan/ticket files,
+    # the documentation catalog) are read at this ref, never at head_sha: a fork
+    # PR can rewrite anything at head, and those files steer the review.
+    base_sha: str = ""
     files_changed: list[FileChange]
     repo_guidelines: str | None = None
     ticket_scope: str | None = None
@@ -188,6 +192,10 @@ class PRContext(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.metadata.head_sha
+
+    @property
+    def base_sha(self) -> str:
+        return self.metadata.base_sha
 
     @property
     def files_changed(self) -> list[FileChange]:

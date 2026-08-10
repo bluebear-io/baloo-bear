@@ -35,6 +35,7 @@ def _make_pr_context(
     repo: str = "org/repo",
     pr_number: int = 1,
     head_sha: str = "abc123",
+    base_sha: str = "base123",
     diff: str = "+ code",
     threads: list | None = None,
     issue_comments: list | None = None,
@@ -43,6 +44,7 @@ def _make_pr_context(
     ctx.repo_full_name = repo
     ctx.pr_number = pr_number
     ctx.head_sha = head_sha
+    ctx.base_sha = base_sha
     ctx.head_branch = "feat/test"
     ctx.title = "Test PR"
     ctx.description = ""
@@ -797,7 +799,9 @@ class TestDocumentationDriftOrchestration:
 
         with (
             patch("baloo.review.orchestrator.settings.documentation_drift_enabled", False),
-            patch("baloo.review.orchestrator.load_documentation_catalog") as load_catalog,
+            patch(
+                "baloo.review.orchestrator.fetch_documentation_catalog", new=AsyncMock()
+            ) as load_catalog,
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
                 new=AsyncMock(),
@@ -820,7 +824,10 @@ class TestDocumentationDriftOrchestration:
 
         with (
             patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
-            patch("baloo.review.orchestrator.load_documentation_catalog", return_value=None),
+            patch(
+                "baloo.review.orchestrator.fetch_documentation_catalog",
+                new=AsyncMock(return_value=None),
+            ),
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
                 new=AsyncMock(),
@@ -836,6 +843,25 @@ class TestDocumentationDriftOrchestration:
         assert report == ""
         assert result is None
         analyze.assert_not_called()
+
+    async def test_catalog_is_fetched_from_the_base_commit(self):
+        from baloo.review.orchestrator import _run_documentation_drift_analysis
+
+        fetch = AsyncMock(return_value=None)
+        with (
+            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            patch("baloo.review.orchestrator.fetch_documentation_catalog", new=fetch),
+        ):
+            await _run_documentation_drift_analysis(
+                _make_github_client(),
+                "org/repo",
+                _make_pr_context(base_sha="base123"),
+                repo_path="/work/tree",
+            )
+
+        # The catalog decides which docs the PR owes; reading it from the PR head
+        # would let a PR delete its own documentation obligations.
+        assert fetch.await_args.kwargs["ref"] == "base123"
 
     async def test_enabled_feature_with_required_drift_posts_comment(self):
         from baloo.documentation.models import DocumentationDriftFinding, DocumentationDriftResult
@@ -959,7 +985,10 @@ class TestDocumentationDriftOrchestration:
 
         with (
             patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
-            patch("baloo.review.orchestrator.load_documentation_catalog", return_value=catalog),
+            patch(
+                "baloo.review.orchestrator.fetch_documentation_catalog",
+                new=AsyncMock(return_value=catalog),
+            ),
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
                 new=AsyncMock(side_effect=RuntimeError("model failed")),
@@ -1004,7 +1033,10 @@ class TestDocumentationDriftOrchestration:
             patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
             patch("baloo.review.orchestrator.settings.database_enabled", True),
             patch("baloo.review.orchestrator.settings.database_url", "db"),
-            patch("baloo.review.orchestrator.load_documentation_catalog", return_value=catalog),
+            patch(
+                "baloo.review.orchestrator.fetch_documentation_catalog",
+                new=AsyncMock(return_value=catalog),
+            ),
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
                 new=AsyncMock(return_value=DocumentationDriftResult(summary="ok")),
@@ -1114,6 +1146,26 @@ class TestDocumentationDriftOrchestration:
             )
 
         assert documentation.await_args.args[2] is pr_context
+
+
+class TestFidelityPolicyFileTrustBoundary:
+    """The plan a PR is scored against must not come from the PR itself."""
+
+    async def test_plan_is_fetched_from_the_base_commit(self):
+        from baloo.review.orchestrator import _run_fidelity_analysis
+
+        fetch_plan = AsyncMock(return_value=None)
+        with (
+            patch("baloo.review.orchestrator.extract_ticket_id", return_value="PER-42"),
+            patch("baloo.review.orchestrator.fetch_plan_content", new=fetch_plan),
+        ):
+            await _run_fidelity_analysis(
+                _make_github_client(),
+                "org/repo",
+                _make_pr_context(base_sha="base123"),
+            )
+
+        assert fetch_plan.await_args.kwargs["ref"] == "base123"
 
 
 class TestGeneralFindingsPosting:
