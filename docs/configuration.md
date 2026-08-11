@@ -23,6 +23,8 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 ## Amazon Bedrock
 
+For a step-by-step setup guide (auth methods, sandbox caveats, verification, troubleshooting) see [Amazon Bedrock Setup](features/bedrock.md).
+
 pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars through to the sandboxed pi subprocess.
 
 | Variable | Required | Default | Description |

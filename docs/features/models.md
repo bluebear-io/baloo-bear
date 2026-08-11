@@ -49,6 +49,8 @@ AGENT_PROVIDER=amazon-bedrock
 
 ## Amazon Bedrock
 
+For a full walkthrough (auth methods, sandbox caveats, verification, troubleshooting) see the [Amazon Bedrock Setup](bedrock.md) guide. In short:
+
 pi's provider token is `amazon-bedrock`. Point Baloo at it with:
 
 ```bash
