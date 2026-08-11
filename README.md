@@ -161,6 +161,7 @@ Settings are configured via environment variables; allowlisted agent knobs can a
 | `GITHUB_WEBHOOK_SECRET`       | —                         | Webhook signature secret                                                                 |
 | `ANTHROPIC_API_KEY`           | —                         | Anthropic API key                                                                        |
 | `GEMINI_API_KEY`              | —                         | Google Gemini API key (when using the Google provider)                                   |
+| `AGENT_PROVIDER`              | `anthropic`               | LLM provider for all agents: `anthropic`, `google`, `openai`, `amazon-bedrock`           |
 | `AGENT_MODEL`                 | `sonnet`                  | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus`                       |
 | `REVIEW_AUTO_APPROVE`         | `true`                    | Auto-approve PRs with no blocking findings                                               |
 | `REVIEW_MIN_SEVERITY`         | `MEDIUM`                  | Minimum severity to post                                                                 |

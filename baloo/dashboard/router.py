@@ -231,22 +231,26 @@ def _settings_rows() -> list[dict[str, Any]]:
 
 
 def _resolve_model_ref(configured: str) -> str:
-    """Resolve a short name or provider/model string to ``provider/model_id``."""
+    """Resolve a short name or provider/model string to ``provider/model_id``.
+
+    Misconfiguration is reported inline so the Settings page still renders and
+    the operator can see which role is broken.
+    """
     from baloo.agent.config import get_agent_options
 
     if not configured:
         return "(disabled)"
-    options = get_agent_options(configured)
+    try:
+        options = get_agent_options(configured)
+    except ValueError as exc:
+        return f"⚠ {exc}"
     return f"{options.provider}/{options.model}"
 
 
 def _models_in_use() -> list[dict[str, str]]:
     """Summarize each agent role and the model it will actually call."""
-    from baloo.agent.config import get_agent_options
-
-    primary = get_agent_options()
-    primary_ref = f"{primary.provider}/{primary.model}"
     primary_configured = str(resolve_setting("agent_model"))
+    primary_ref = _resolve_model_ref(primary_configured)
 
     fp_configured = str(resolve_setting("fp_verification_model"))
     thread_configured = str(resolve_setting("thread_agent_model"))

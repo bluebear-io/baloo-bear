@@ -9,7 +9,7 @@ Baloo runs the [PI](https://github.com/mariozechner/pi-coding-agent) coding agen
 Two consequences follow from the sandbox:
 
 - Only an allowlist of `AWS_*` environment variables is forwarded into the sandbox; everything else (including Baloo's own GitHub and database secrets) is stripped so a prompt-injected agent cannot read them.
-- The sandbox has its own filesystem view. Credential **files** are only visible if Baloo bind-mounts them, which it does for the file paths named in `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`.
+- The sandbox has its own filesystem view. Credential **files** are only visible if Baloo bind-mounts them, which it does for the paths named in `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, plus the default `~/.aws/credentials` and `~/.aws/config`.
 
 `AGENT_PROVIDER` is global: selecting `amazon-bedrock` routes the primary review, FP verification, thread agent, fidelity, documentation drift, and sync-scope agents through Bedrock. There is no per-agent provider override.
 
@@ -73,21 +73,21 @@ AWS_SECRET_ACCESS_KEY=...
 
 ### Shared profile (`AWS_PROFILE`)
 
-!!! warning "Profiles need an explicit, bind-mounted credentials file"
-    `AWS_PROFILE` alone is **not** sufficient when reviews run in the bwrap sandbox. The sandbox does not expose your home directory, so the default `~/.aws/credentials` and `~/.aws/config` are invisible to the agent even though the dashboard **Test connection** probe (which is not sandboxed) may still pass.
+```bash
+AGENT_PROVIDER=amazon-bedrock
+AGENT_MODEL=sonnet
+AWS_REGION=us-east-1
+AWS_PROFILE=bedrock
+```
 
-    To use a profile, point the SDK at explicit files and let Baloo bind-mount them:
+Baloo bind-mounts the default `~/.aws/credentials` and `~/.aws/config` read-only into the sandbox, so a profile works without extra configuration. If your credentials live elsewhere, name them explicitly and those paths are mounted instead:
 
-    ```bash
-    AGENT_PROVIDER=amazon-bedrock
-    AGENT_MODEL=sonnet
-    AWS_REGION=us-east-1
-    AWS_PROFILE=bedrock
-    AWS_SHARED_CREDENTIALS_FILE=/etc/baloo/aws/credentials
-    AWS_CONFIG_FILE=/etc/baloo/aws/config
-    ```
+```bash
+AWS_SHARED_CREDENTIALS_FILE=/etc/baloo/aws/credentials
+AWS_CONFIG_FILE=/etc/baloo/aws/config
+```
 
-    Prefer a role or bearer token where possible; they avoid this footgun entirely.
+Note that the whole file is visible to the agent, so a credentials file containing unrelated profiles exposes those too. On a shared machine, prefer a role, a bearer token, or a dedicated credentials file.
 
 ## Step 2 — Pick a model
 
@@ -124,7 +124,7 @@ AGENT_MODEL=arn:aws:bedrock:eu-central-1:<account-id>:application-inference-prof
 3. Open a small test PR and confirm the posted review's model is a Bedrock ID, then check `aws logs tail` (or your log sink) for `spawning PI process (model=us.anthropic.…)` lines across the primary and FP-verifier agents.
 
 !!! note "Test connection is not sandboxed"
-    The smoke test deliberately runs without the repo sandbox, so it validates credentials and endpoint wiring but **not** the sandbox's view of credential files. If **Test connection** passes but real reviews fail with auth errors, suspect a file-visibility issue — see the `AWS_PROFILE` warning above.
+    The smoke test deliberately runs without the repo sandbox, so it validates credentials and endpoint wiring but not the sandbox's view of credential files. If **Test connection** passes while real reviews fail with auth errors, suspect a credential file that lives outside the mounted paths listed above.
 
 ## Optional Bedrock tuning
 
@@ -141,7 +141,9 @@ These map directly to PI / AWS SDK behavior and are only needed for proxies or a
 
 | Symptom | Likely cause |
 |---|---|
-| Every review fails auth, but **Test connection** passes | Credentials live in a file the sandbox can't see (default `~/.aws`). Use a role/bearer token, or set `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE`. |
+| Every review fails auth, but **Test connection** passes | Credentials live in a file outside the mounted paths. Set `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` explicitly, or use a role/bearer token. |
+| `Model '<provider>/...' selects provider ... but AGENT_PROVIDER is ...` | A per-agent model setting names a different provider. The provider is global; use a tier short name or a model ID for the configured provider. |
+| `Provider '...' has no model tiers` | `AGENT_PROVIDER` is misspelled. Use `anthropic`, `google`, `openai`, or `amazon-bedrock`. |
 | `AccessDeniedException` for a model ID | Model access not enabled in the account/region, or the IAM policy lacks `bedrock:InvokeModel` on that inference profile. |
 | Model-not-found / validation error | The `us.` prefix isn't valid in your region. Set `AGENT_MODEL` to the correct regional profile or ARN. |
 | Dashboard shows `anthropic/...` after switching | The provider change didn't take effect — a hardcoded `AGENT_MODEL`/`AGENT_PROVIDER` in the Compose `environment:` block overrides `env_file`. Check **Models in use**. |

@@ -152,6 +152,30 @@ def test_aws_ro_bind_args_includes_irsa_and_credential_files(tmp_path):
     assert str(creds.resolve()) in args
 
 
+def test_aws_ro_bind_args_includes_default_home_credentials(tmp_path):
+    """AWS_PROFILE relies on ~/.aws, which is invisible unless bind-mounted."""
+    home = tmp_path / "home"
+    (home / ".aws").mkdir(parents=True)
+    (home / ".aws" / "credentials").write_text("[bedrock]\n")
+    (home / ".aws" / "config").write_text("[profile bedrock]\n")
+
+    args = sandbox._aws_ro_bind_args({"HOME": str(home), "AWS_PROFILE": "bedrock"})
+
+    assert str((home / ".aws" / "credentials").resolve()) in args
+    assert str((home / ".aws" / "config").resolve()) in args
+
+
+def test_aws_ro_bind_args_does_not_duplicate_explicit_paths(tmp_path):
+    home = tmp_path / "home"
+    (home / ".aws").mkdir(parents=True)
+    creds = home / ".aws" / "credentials"
+    creds.write_text("[default]\n")
+
+    args = sandbox._aws_ro_bind_args({"HOME": str(home), "AWS_SHARED_CREDENTIALS_FILE": str(creds)})
+
+    assert args.count(str(creds.resolve())) == 2  # one --ro-bind-try src/dest pair
+
+
 def test_bwrap_prefix_binds_aws_credential_files(tmp_path, monkeypatch):
     wt = tmp_path / "wt"
     wt.mkdir()

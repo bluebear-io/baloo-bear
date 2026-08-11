@@ -9,7 +9,9 @@ import pytest
 # Keep tests independent from the developer's local .env file.
 os.environ.setdefault("BALOO_ENV_FILE", "/tmp/baloo-tests.env")
 os.environ.setdefault("APP_ENVIRONMENT", "test")
-os.environ.setdefault("AGENT_PROVIDER", "anthropic")
+# Hard-assigned: model resolution now depends on the provider, so an exported
+# AGENT_PROVIDER would otherwise flip expected model IDs in unrelated tests.
+os.environ["AGENT_PROVIDER"] = "anthropic"
 os.environ.setdefault("PI_BINARY_PATH", "pi")
 os.environ.setdefault("PI_THINKING_LEVEL", "medium")
 os.environ.setdefault("REVIEW_AUTO_APPROVE", "true")

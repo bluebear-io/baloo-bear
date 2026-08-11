@@ -1,5 +1,7 @@
 """Tests for PI agent configuration helpers."""
 
+import pytest
+
 from baloo.agent.config import get_agent_options, resolve_short_name
 from baloo.config.settings import reset_settings
 
@@ -52,14 +54,18 @@ class TestGetAgentOptions:
         assert options.provider == "anthropic"
         assert options.model == "claude-haiku-4-5-20251001"
 
-    # --- Explicit provider/model ---
+    # --- Explicit provider/model (must match AGENT_PROVIDER) ---
 
-    def test_get_options_with_provider_slash_model(self):
+    def test_get_options_with_provider_slash_model(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "google")
+        reset_settings()
         options = get_agent_options("google/gemini-3.5-flash-lite")
         assert options.model == "gemini-3.5-flash-lite"
         assert options.provider == "google"
 
-    def test_get_options_with_anthropic_slash_model(self):
+    def test_get_options_with_anthropic_slash_model(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+        reset_settings()
         options = get_agent_options("anthropic/claude-opus-4-6")
         assert options.model == "claude-opus-4-6"
         assert options.provider == "anthropic"
@@ -161,9 +167,11 @@ def test_openai_tier_short_names(monkeypatch):
     assert get_agent_options("sonnet").provider == "openai"
 
 
-def test_bedrock_provider_model_string():
+def test_bedrock_provider_model_string(monkeypatch):
     from baloo.agent.config import get_agent_options
 
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
     opts = get_agent_options("amazon-bedrock/us.anthropic.claude-sonnet-4-6")
     assert opts.provider == "amazon-bedrock"
     assert opts.model == "us.anthropic.claude-sonnet-4-6"
@@ -244,6 +252,39 @@ def test_default_agent_model_is_portable_across_providers(monkeypatch):
     opts = get_agent_options()
     assert opts.provider == "amazon-bedrock"
     assert opts.model.startswith("us.anthropic.")
+
+
+def test_cross_provider_model_string_is_rejected(monkeypatch):
+    """Provider is all-or-nothing: a mismatched prefix must not silently win."""
+    from baloo.agent.config import ProviderConfigError
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    with pytest.raises(ProviderConfigError, match="AGENT_PROVIDER"):
+        get_agent_options("anthropic/claude-haiku-4-5-20251001")
+
+
+def test_bedrock_inference_profile_arn_is_not_treated_as_provider_prefix(monkeypatch):
+    """ARNs contain '/' but must pass through as a model ID, not a provider."""
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    arn = "arn:aws:bedrock:eu-central-1:123456789012:application-inference-profile/abc123"
+    opts = get_agent_options(arn)
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == arn
+
+
+def test_unknown_provider_short_name_raises(monkeypatch):
+    """A typo'd provider must fail loudly, not resolve to Anthropic model IDs."""
+    from baloo.agent.config import ProviderConfigError
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrok")
+    reset_settings()
+
+    with pytest.raises(ProviderConfigError, match="no model tiers"):
+        get_agent_options("sonnet")
 
 
 def test_resolve_short_name_helper():

@@ -34,7 +34,7 @@ pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars th
 | `AWS_SESSION_TOKEN` | — | — | Session token for temporary credentials |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | — | SDK default (`us-east-1`) | Bedrock region |
 | `AWS_BEARER_TOKEN_BEDROCK` | —* | — | Bearer-token auth alternative to IAM keys |
-| `AWS_PROFILE` | —* | — | Named profile (needs credentials file visible to the sandbox) |
+| `AWS_PROFILE` | —* | — | Named profile (`~/.aws` files are mounted into the sandbox automatically) |
 | `AWS_WEB_IDENTITY_TOKEN_FILE` | —* | — | IRSA / web-identity token path (bound into the sandbox when set) |
 | `AWS_ROLE_ARN` | — | — | Role ARN for IRSA / assume-role |
 | `AWS_ENDPOINT_URL_BEDROCK_RUNTIME` | — | — | Bedrock proxy endpoint |

@@ -2,7 +2,7 @@
 
 Baloo supports multiple LLM providers. **`AGENT_PROVIDER` is global** — every Baloo agent (primary review, FP verification, thread replies, fidelity, documentation drift, sync scope) uses that backend. Short names select a **model tier** on the provider; they are not a way to pick a different provider.
 
-Use an explicit `provider/model` string only when a specific provider model ID is required.
+A `provider/model` string is accepted, but its provider **must match** `AGENT_PROVIDER`; a mismatch is rejected with a configuration error rather than silently overriding the provider for that agent. Bare model IDs (including Bedrock inference-profile IDs and ARNs) always run on the configured provider.
 
 ## Model tiers
 
@@ -77,7 +77,7 @@ AGENT_PROVIDER=anthropic
 # Primary review tier (short name on that provider)
 AGENT_MODEL=sonnet
 
-# Or a full provider/model string (escape hatch)
+# Or a full provider/model string (provider must match AGENT_PROVIDER)
 AGENT_MODEL=anthropic/claude-sonnet-4-6
 
 # Premium model for highest quality

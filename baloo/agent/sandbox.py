@@ -220,26 +220,43 @@ _AWS_FILE_ENV_VARS = (
     "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
 )
 
+# Default shared-credentials locations the SDK reads when the *_FILE vars are
+# unset. AWS_PROFILE is useless without them: the sandbox does not expose HOME,
+# so ~/.aws would otherwise be invisible to the agent.
+_AWS_DEFAULT_FILES = ("credentials", "config")
+
 
 def _aws_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
     """Return ``--ro-bind-try`` pairs for AWS credential files referenced in env.
 
-    Without these, IRSA / explicit credential files are invisible inside bwrap
-    even though the corresponding env vars survive the scrub — the SDK would
-    then fail Bedrock auth while Anthropic/Gemini keys still work.
+    Covers both explicit paths (IRSA token, ``AWS_SHARED_CREDENTIALS_FILE``,
+    ``AWS_CONFIG_FILE``) and the default ``~/.aws`` files. Without these, the
+    corresponding env vars survive the scrub but the files they point at do
+    not exist inside bwrap, so Bedrock auth fails while Anthropic/Gemini keys
+    still work. Paths are bound at their host location because HOME is passed
+    through unchanged.
     """
     source = env if env is not None else os.environ
     args: list[str] = []
     seen: set[str] = set()
-    for var in _AWS_FILE_ENV_VARS:
-        raw = source.get(var)
+
+    def _add(raw: str | None) -> None:
         if not raw:
-            continue
-        path = str(Path(raw).resolve())
+            return
+        path = str(Path(raw).expanduser().resolve())
         if path in seen:
-            continue
+            return
         seen.add(path)
         args.extend(["--ro-bind-try", path, path])
+
+    for var in _AWS_FILE_ENV_VARS:
+        _add(source.get(var))
+
+    home = source.get("HOME")
+    if home:
+        for name in _AWS_DEFAULT_FILES:
+            _add(str(Path(home) / ".aws" / name))
+
     return args
 
 

@@ -54,6 +54,7 @@ Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for h
 
 | Variable | Default | Description |
 |---|---|---|
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for all agents (see [Models](models.md)) |
 | `AGENT_MODEL` | `sonnet` | Model to use (see [Models](models.md)) |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Temperature for generation |

@@ -69,18 +69,28 @@ MODEL_MAP = {name: spec[1] for name, spec in MODEL_REGISTRY.items()}
 MAX_TURNS = {name: spec[2] for name, spec in MODEL_REGISTRY.items()}
 
 
+class ProviderConfigError(ValueError):
+    """Raised when model settings contradict the configured provider."""
+
+
 def resolve_short_name(name: str, provider: str | None = None) -> tuple[str, str, int]:
     """Resolve a tier short name against the effective provider.
 
-    Returns ``(provider, model_id, max_turns)``. Unknown providers fall back to
-    the Anthropic tier catalog (model IDs) while keeping the requested provider
-    string so explicit/custom providers can still be selected with bare IDs.
+    Returns ``(provider, model_id, max_turns)``. Raises ``ProviderConfigError``
+    for a provider with no tier catalog: guessing another provider's model IDs
+    would surface later as an opaque API error instead of a config mistake.
     """
     if name not in SHORT_NAME_TIERS:
         raise KeyError(name)
     effective = provider or resolve_setting("agent_provider")
     tier, max_turns = SHORT_NAME_TIERS[name]
-    catalog = PROVIDER_TIER_MODELS.get(effective) or PROVIDER_TIER_MODELS["anthropic"]
+    catalog = PROVIDER_TIER_MODELS.get(effective)
+    if catalog is None:
+        raise ProviderConfigError(
+            f"Provider {effective!r} has no model tiers, so the short name {name!r} "
+            f"cannot be resolved. Set an explicit model ID for this provider, or use "
+            f"AGENT_PROVIDER from: {', '.join(sorted(PROVIDER_TIER_MODELS))}."
+        )
     return effective, catalog[tier], max_turns
 
 
@@ -125,16 +135,24 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
             max_turns=max_turns,
         )
 
-    # 2. Explicit "provider/model" string (cross-provider escape hatch)
-    if model and "/" in model:
-        provider, model_id = model.split("/", 1)
-        return PIAgentOptions(
-            model=model_id,
-            provider=provider,
-            system_prompt=system_prompt,
-            thinking_level=level,
-            max_turns=20,
-        )
+    # 2. "provider/model" string. Only a real provider token counts as a prefix,
+    #    so model IDs that contain slashes (Bedrock ARNs) fall through to 3.
+    if model:
+        prefix, _, remainder = model.partition("/")
+        if remainder and (prefix in PROVIDER_TIER_MODELS or prefix == effective_provider):
+            if prefix != effective_provider:
+                raise ProviderConfigError(
+                    f"Model {model!r} selects provider {prefix!r}, but AGENT_PROVIDER is "
+                    f"{effective_provider!r}. The provider applies to every agent; set the "
+                    f"model to a tier short name or a {effective_provider!r} model ID."
+                )
+            return PIAgentOptions(
+                model=remainder,
+                provider=effective_provider,
+                system_prompt=system_prompt,
+                thinking_level=level,
+                max_turns=20,
+            )
 
     # 3. Full model ID passthrough on the effective provider
     if model:
