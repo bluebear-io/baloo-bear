@@ -47,7 +47,6 @@ class Review(Base):
     fidelity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    fallback_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     installation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     findings: Mapped[list["Finding"]] = relationship(

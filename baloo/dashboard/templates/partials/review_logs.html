@@ -10,7 +10,7 @@
     <!-- Event badge -->
     {% if log.event_type in ["agent_error", "json_parse_failed", "json_retry_failed"] %}
       <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap">{{ log.event_type }}</span>
-    {% elif log.event_type in ["fallback_triggered", "json_retry_started"] %}
+    {% elif log.event_type == "json_retry_started" %}
       <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 whitespace-nowrap">{{ log.event_type }}</span>
     {% elif log.event_type == "agent_completed" %}
       <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">{{ log.event_type }}</span>

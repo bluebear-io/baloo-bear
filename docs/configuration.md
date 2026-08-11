@@ -15,8 +15,48 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | ✅ | — | Anthropic API key (for Claude models) |
-| `GEMINI_API_KEY` | — | — | Google Gemini API key (for fallback / Gemini models) |
+| `ANTHROPIC_API_KEY` | ✅* | — | Anthropic API key (for Claude models) |
+| `GEMINI_API_KEY` | — | — | Google Gemini API key (when using the Google provider) |
+| `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
+
+\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead).
+
+## Amazon Bedrock
+
+For a step-by-step setup guide (auth methods, sandbox caveats, verification, troubleshooting) see [Amazon Bedrock Setup](features/bedrock.md).
+
+pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars through to the sandboxed pi subprocess.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AWS_ACCESS_KEY_ID` | —* | — | IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | —* | — | IAM secret key |
+| `AWS_SESSION_TOKEN` | — | — | Session token for temporary credentials |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | — | SDK default (`us-east-1`) | Bedrock region |
+| `AWS_BEARER_TOKEN_BEDROCK` | —* | — | Bearer-token auth alternative to IAM keys |
+| `AWS_PROFILE` | —* | — | Named profile (`~/.aws` files are mounted into the sandbox automatically) |
+| `AWS_WEB_IDENTITY_TOKEN_FILE` | —* | — | IRSA / web-identity token path (bound into the sandbox when set) |
+| `AWS_ROLE_ARN` | — | — | Role ARN for IRSA / assume-role |
+| `AWS_ENDPOINT_URL_BEDROCK_RUNTIME` | — | — | Bedrock proxy endpoint |
+| `AWS_BEDROCK_FORCE_CACHE` | — | — | Force prompt caching for application inference profile ARNs |
+| `AWS_BEDROCK_SKIP_AUTH` | — | — | Skip auth for unauthenticated Bedrock proxies |
+| `AWS_BEDROCK_FORCE_HTTP1` | — | — | Force HTTP/1.1 for Bedrock proxies |
+
+\* Pick one auth path: static keys, bearer token, profile, IRSA, ECS task role, or EC2 instance role. ECS/EC2 instance metadata works over the shared network without extra env vars beyond what the AWS SDK already sets.
+
+Example:
+
+```bash
+AGENT_PROVIDER=amazon-bedrock
+AGENT_MODEL=sonnet
+# or a specific Bedrock ID / ARN:
+# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+`AGENT_PROVIDER` applies to all agents. Short names (`haiku` / `sonnet` / `opus`) resolve to Bedrock tier IDs automatically. Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
 
 ## Application
 
@@ -34,9 +74,8 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider: `anthropic`, `google` |
-| `AGENT_MODEL` | `sonnet` | Model short name or `provider/model` string. See [Models](features/models.md) |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback model (`provider/model`). Empty to disable |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock` |
+| `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Generation temperature |
 | `PI_BINARY_PATH` | `pi` | Path to PI binary |
@@ -96,7 +135,7 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 **Precedence:** DB overlay → environment variable → field default
 
-**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
+**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
 

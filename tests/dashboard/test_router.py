@@ -142,6 +142,7 @@ def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
     reset_runtime_settings_cache()
 
     by_role = {row["role"]: row for row in _models_in_use()}
+    assert "Fallback" not in by_role
     assert by_role["Primary review"]["configured"] == "sonnet"
     assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
     assert by_role["FP verification"]["configured"] == "haiku"
@@ -169,6 +170,7 @@ def test_dashboard_settings_shows_models_in_use(monkeypatch) -> None:
     assert "Models in use" in response.text
     assert "FP verification" in response.text
     assert "Thread agent" in response.text
+    assert "AGENT_FALLBACK_MODEL" not in response.text
     assert "haiku" in response.text
     assert "claude-haiku-4-5-20251001" in response.text
 
@@ -181,6 +183,41 @@ def test_settings_rows_mark_mutable_keys() -> None:
     for key in MUTABLE_KEYS:
         assert by_name[key]["mutable"] is True
     assert by_name["database_url"]["mutable"] is False
+
+
+def test_agent_provider_row_has_labeled_selector_choices() -> None:
+    from baloo.dashboard.router import _settings_rows
+
+    provider = next(row for row in _settings_rows() if row["name"] == "agent_provider")
+    assert provider["choices"] == (
+        ("anthropic", "Anthropic (direct API)"),
+        ("amazon-bedrock", "Amazon Bedrock"),
+        ("google", "Google Gemini"),
+        ("openai", "OpenAI"),
+    )
+
+
+def test_dashboard_settings_renders_provider_selector(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        response = TestClient(app).get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "<select" in response.text
+    assert 'name="value"' in response.text
+    assert 'aria-label="AGENT_PROVIDER"' in response.text
+    assert '<option value="anthropic" selected>Anthropic (direct API)</option>' in response.text
+    assert '<option value="amazon-bedrock" >Amazon Bedrock</option>' in response.text
+    assert "Applies to all Baloo agents" in response.text
 
 
 def test_dashboard_settings_post_sets_override(monkeypatch) -> None:

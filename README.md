@@ -57,7 +57,7 @@ Inline comments appear on the exact lines:
 | Feature                   | Description                                                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
-| **Multi-model**           | Supports Claude (Sonnet, Haiku, Opus) and Gemini (Flash, Pro) with automatic fallback                                             |
+| **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, or OpenAI provider                                     |
 | **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered                                                  |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
 | **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
@@ -160,9 +160,9 @@ Settings are configured via environment variables; allowlisted agent knobs can a
 | `GITHUB_PRIVATE_KEY`          | —                         | Path to `.pem` file or inline PEM                                                        |
 | `GITHUB_WEBHOOK_SECRET`       | —                         | Webhook signature secret                                                                 |
 | `ANTHROPIC_API_KEY`           | —                         | Anthropic API key                                                                        |
-| `GEMINI_API_KEY`              | —                         | Google Gemini API key (for fallback/multi-model)                                         |
+| `GEMINI_API_KEY`              | —                         | Google Gemini API key (when using the Google provider)                                   |
+| `AGENT_PROVIDER`              | `anthropic`               | LLM provider for all agents: `anthropic`, `google`, `openai`, `amazon-bedrock`           |
 | `AGENT_MODEL`                 | `sonnet`                  | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus`                       |
-| `AGENT_FALLBACK_MODEL`        | `google/gemini-2.5-flash` | Fallback on primary failure                                                              |
 | `REVIEW_AUTO_APPROVE`         | `true`                    | Auto-approve PRs with no blocking findings                                               |
 | `REVIEW_MIN_SEVERITY`         | `MEDIUM`                  | Minimum severity to post                                                                 |
 | `FP_VERIFICATION_ENABLED`     | `true`                    | Enable LLM false-positive verification                                                   |
@@ -186,7 +186,7 @@ Feature guides:
 - [Guidelines Enforcement](docs/features/guidelines.md) — Repo convention checking
 - [Fidelity Analysis](docs/features/fidelity.md) — Plan-vs-implementation scoring
 - [Documentation Drift](docs/features/documentation-drift.md) — PR-time stale docs detection
-- [Models](docs/features/models.md) — Supported models and fallback
+- [Models](docs/features/models.md) — Supported providers, models, and tiers
 - [Severity Routing](docs/features/severity-routing.md) — How findings reach developers
 - [Discussion Tracking](docs/features/discussions.md) — Thread follow-ups across iterations
 - [FP Verification](docs/features/fp-verification.md) — False-positive reduction
@@ -239,7 +239,7 @@ No. Baloo does not require a Baloo-hosted backend. The running service reads rep
 
 ### Which models does Baloo support?
 
-Baloo supports Claude models through Anthropic and Gemini models through Google, including fallback model configuration. See [docs/features/models.md](docs/features/models.md).
+Baloo supports Anthropic, Amazon Bedrock, Google, and OpenAI providers. The selected provider applies to every agent. See [docs/features/models.md](docs/features/models.md).
 
 ### Is Baloo a replacement for CodeQL, Semgrep, Ruff, or other static analysis tools?
 

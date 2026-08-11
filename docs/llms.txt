@@ -17,7 +17,8 @@ Canonical website: https://www.bluebear.io
 
 - [Review Agent](https://blue-bear-security.github.io/baloo-bear/features/review-agent/): How Baloo performs agentic PR review.
 - [Guidelines Enforcement](https://blue-bear-security.github.io/baloo-bear/features/guidelines/): How Baloo reads `AGENTS.md` and `CONTRIBUTING.md`.
-- [Model Configuration](https://blue-bear-security.github.io/baloo-bear/features/models/): Supported Claude and Gemini model options.
+- [Model Configuration](https://blue-bear-security.github.io/baloo-bear/features/models/): Supported providers (Anthropic, Amazon Bedrock, Google, OpenAI), model tiers, and provider switching.
+- [Amazon Bedrock Setup](https://blue-bear-security.github.io/baloo-bear/features/bedrock/): Step-by-step guide to run Baloo on Amazon Bedrock, including auth methods and sandbox caveats.
 - [Severity Routing](https://blue-bear-security.github.io/baloo-bear/features/severity-routing/): How findings map to review comments, Checks API annotations, and approval decisions.
 
 ## Security and Operations

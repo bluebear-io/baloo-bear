@@ -161,7 +161,7 @@ class TestBalooAgentErrorHandling:
         """When PI hits its turn limit, error_category must be max_turns_reached not no_output."""
         with patch.object(
             BalooAgent,
-            "_run_with_fallback",
+            "run_query",
             new=AsyncMock(return_value=(None, {"max_turns_reached": True, "num_turns": 20})),
         ):
             agent = BalooAgent()
@@ -178,7 +178,7 @@ class TestBalooAgentErrorHandling:
         """
         sentinel = object()
         fake_run = AsyncMock(return_value=(None, {"num_turns": 0}))
-        with patch.object(BalooAgent, "_run_with_fallback", new=fake_run):
+        with patch.object(BalooAgent, "run_query", new=fake_run):
             agent = BalooAgent()
             await agent.review_pr(sample_pr_context, review_logger=sentinel)
 
@@ -402,13 +402,12 @@ class TestBalooAgentSeveritySummary:
             assert "🔵" in result.summary
 
 
-class TestBalooAgentFallback:
-    """Tests for model fallback behavior."""
+class TestBalooAgentFailure:
+    """Tests for provider failure behavior."""
 
     @pytest.mark.asyncio
-    async def test_fallback_to_secondary_model(self, sample_pr_context):
-        """Test that primary failure triggers fallback to secondary model."""
-        # Primary model fails
+    async def test_provider_failure_is_reported_without_retry(self, sample_pr_context):
+        """A provider failure is surfaced and must not call another provider."""
         fail_events = [
             json.dumps(
                 {"type": "response", "command": "set_thinking_level", "success": True}
@@ -424,56 +423,18 @@ class TestBalooAgentFallback:
             ).encode()
             + b"\n",
         ]
-        # Fallback model succeeds
-        success_events = _make_pi_events({"findings": [], "summary": {}})
-
         agent = BalooAgent()
-        call_count = 0
 
         with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
-
-            def side_effect(*args, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    return _mock_pi_process(fail_events)
-                return _mock_pi_process(success_events)
-
-            mock_exec.side_effect = side_effect
+            mock_exec.return_value = _mock_pi_process(fail_events)
 
             result = await agent.review_pr(sample_pr_context)
 
-            # Should succeed via fallback
-            assert result.approve is True
-            assert result.metadata.get("fallback_used") is True
-            assert "primary_error" in result.metadata
-
-    @pytest.mark.asyncio
-    async def test_no_fallback_when_same_model(self, sample_pr_context):
-        """Test that fallback is skipped when it's the same as primary."""
-        fail_events = [
-            json.dumps(
-                {"type": "response", "command": "set_thinking_level", "success": True}
-            ).encode()
-            + b"\n",
-            json.dumps(
-                {"type": "response", "command": "prompt", "success": False, "error": "API error"}
-            ).encode()
-            + b"\n",
-        ]
-
-        agent = BalooAgent()
-        # Set fallback to same as primary
-        with patch(
-            "baloo.config.settings.settings.agent_fallback_model",
-            f"{agent.options.provider}/{agent.options.model}",
-        ):
-            with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
-                mock_exec.return_value = _mock_pi_process(fail_events)
-                result = await agent.review_pr(sample_pr_context)
-
-                # Should fail (no fallback attempted)
-                assert "error" in result.summary.lower() or "failed" in result.summary.lower()
+            assert result.approve is False
+            assert result.request_changes is False
+            assert result.metadata["agent_error"] is True
+            assert "invalid" in result.metadata["error_detail"].lower()
+            assert mock_exec.call_count == 1
 
 
 class TestBalooAgentMetadata:

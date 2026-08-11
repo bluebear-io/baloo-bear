@@ -80,7 +80,6 @@ SETTING_CATEGORIES = {
     "Agent": {
         "agent_provider",
         "agent_model",
-        "agent_fallback_model",
         "agent_max_tokens",
         "agent_temperature",
         "pi_binary_path",
@@ -132,6 +131,13 @@ SETTING_CATEGORIES = {
         "documentation_drift_model",
     },
 }
+
+AGENT_PROVIDER_CHOICES = (
+    ("anthropic", "Anthropic (direct API)"),
+    ("amazon-bedrock", "Amazon Bedrock"),
+    ("google", "Google Gemini"),
+    ("openai", "OpenAI"),
+)
 
 
 def _sanitize_database_query(query: str) -> str:
@@ -218,30 +224,34 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "description": field.description or "",
                 "mutable": mutable,
                 "source": source,
+                "choices": AGENT_PROVIDER_CHOICES if name == "agent_provider" else None,
             }
         )
     return rows
 
 
 def _resolve_model_ref(configured: str) -> str:
-    """Resolve a short name or provider/model string to ``provider/model_id``."""
+    """Resolve a short name or provider/model string to ``provider/model_id``.
+
+    Misconfiguration is reported inline so the Settings page still renders and
+    the operator can see which role is broken.
+    """
     from baloo.agent.config import get_agent_options
 
     if not configured:
         return "(disabled)"
-    options = get_agent_options(configured)
+    try:
+        options = get_agent_options(configured)
+    except ValueError as exc:
+        return f"⚠ {exc}"
     return f"{options.provider}/{options.model}"
 
 
 def _models_in_use() -> list[dict[str, str]]:
     """Summarize each agent role and the model it will actually call."""
-    from baloo.agent.config import get_agent_options
-
-    primary = get_agent_options()
-    primary_ref = f"{primary.provider}/{primary.model}"
     primary_configured = str(resolve_setting("agent_model"))
+    primary_ref = _resolve_model_ref(primary_configured)
 
-    fallback_configured = str(resolve_setting("agent_fallback_model") or "")
     fp_configured = str(resolve_setting("fp_verification_model"))
     thread_configured = str(resolve_setting("thread_agent_model"))
     docs_configured = str(resolve_setting("documentation_drift_model"))
@@ -253,13 +263,6 @@ def _models_in_use() -> list[dict[str, str]]:
             "configured": primary_configured,
             "resolved": primary_ref,
             "source": setting_source("agent_model"),
-        },
-        {
-            "role": "Fallback",
-            "setting": "AGENT_FALLBACK_MODEL",
-            "configured": fallback_configured or "(empty)",
-            "resolved": _resolve_model_ref(fallback_configured),
-            "source": setting_source("agent_fallback_model"),
         },
         {
             "role": "FP verification",

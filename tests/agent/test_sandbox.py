@@ -90,6 +90,13 @@ def test_build_subprocess_env_drops_secrets_keeps_runtime(monkeypatch):
         "ANTHROPIC_API_KEY": "sk-keep",
         "GEMINI_API_KEY": "g-keep",
         "OPENAI_API_KEY": "oa-keep",
+        "AWS_ACCESS_KEY_ID": "AKIAKEEP",
+        "AWS_SECRET_ACCESS_KEY": "secret-keep",
+        "AWS_SESSION_TOKEN": "session-keep",
+        "AWS_REGION": "us-west-2",
+        "AWS_BEARER_TOKEN_BEDROCK": "bearer-keep",
+        "AWS_WEB_IDENTITY_TOKEN_FILE": "/var/run/secrets/eks.amazonaws.com/serviceaccount/token",
+        "AWS_ROLE_ARN": "arn:aws:iam::123:role/baloo",
         "HTTPS_PROXY": "http://proxy.corp:8080",
         "https_proxy": "http://proxy.corp:8080",
         "NO_PROXY": "localhost",
@@ -105,6 +112,13 @@ def test_build_subprocess_env_drops_secrets_keeps_runtime(monkeypatch):
     assert env["ANTHROPIC_API_KEY"] == "sk-keep"
     assert env["GEMINI_API_KEY"] == "g-keep"
     assert env["OPENAI_API_KEY"] == "oa-keep"
+    assert env["AWS_ACCESS_KEY_ID"] == "AKIAKEEP"
+    assert env["AWS_SECRET_ACCESS_KEY"] == "secret-keep"
+    assert env["AWS_SESSION_TOKEN"] == "session-keep"
+    assert env["AWS_REGION"] == "us-west-2"
+    assert env["AWS_BEARER_TOKEN_BEDROCK"] == "bearer-keep"
+    assert env["AWS_WEB_IDENTITY_TOKEN_FILE"].endswith("/token")
+    assert env["AWS_ROLE_ARN"].endswith("/baloo")
     assert env["HTTPS_PROXY"] == "http://proxy.corp:8080"
     assert env["https_proxy"] == "http://proxy.corp:8080"
     assert env["NO_PROXY"] == "localhost"
@@ -119,3 +133,62 @@ def test_build_subprocess_env_drops_secrets_keeps_runtime(monkeypatch):
         "DASHBOARD_PASSWORD",
     ):
         assert leaked not in env
+
+
+def test_aws_ro_bind_args_includes_irsa_and_credential_files(tmp_path):
+    token = tmp_path / "token"
+    creds = tmp_path / "credentials"
+    token.write_text("jwt")
+    creds.write_text("[default]\n")
+    args = sandbox._aws_ro_bind_args(
+        {
+            "AWS_WEB_IDENTITY_TOKEN_FILE": str(token),
+            "AWS_SHARED_CREDENTIALS_FILE": str(creds),
+            "AWS_CONFIG_FILE": "",  # ignored
+        }
+    )
+    assert args.count("--ro-bind-try") == 2
+    assert str(token.resolve()) in args
+    assert str(creds.resolve()) in args
+
+
+def test_aws_ro_bind_args_includes_default_home_credentials(tmp_path):
+    """AWS_PROFILE relies on ~/.aws, which is invisible unless bind-mounted."""
+    home = tmp_path / "home"
+    (home / ".aws").mkdir(parents=True)
+    (home / ".aws" / "credentials").write_text("[bedrock]\n")
+    (home / ".aws" / "config").write_text("[profile bedrock]\n")
+
+    args = sandbox._aws_ro_bind_args({"HOME": str(home), "AWS_PROFILE": "bedrock"})
+
+    assert str((home / ".aws" / "credentials").resolve()) in args
+    assert str((home / ".aws" / "config").resolve()) in args
+
+
+def test_aws_ro_bind_args_does_not_duplicate_explicit_paths(tmp_path):
+    home = tmp_path / "home"
+    (home / ".aws").mkdir(parents=True)
+    creds = home / ".aws" / "credentials"
+    creds.write_text("[default]\n")
+
+    args = sandbox._aws_ro_bind_args({"HOME": str(home), "AWS_SHARED_CREDENTIALS_FILE": str(creds)})
+
+    assert args.count(str(creds.resolve())) == 2  # one --ro-bind-try src/dest pair
+
+
+def test_bwrap_prefix_binds_aws_credential_files(tmp_path, monkeypatch):
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    token = tmp_path / "eks-token"
+    token.write_text("jwt")
+    monkeypatch.setenv("AWS_WEB_IDENTITY_TOKEN_FILE", str(token))
+    monkeypatch.delenv("AWS_SHARED_CREDENTIALS_FILE", raising=False)
+    monkeypatch.delenv("AWS_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", raising=False)
+
+    prefix = sandbox.build_sandbox_prefix("bwrap", str(wt))
+    token_path = str(token.resolve())
+    assert "--ro-bind-try" in prefix
+    idx = prefix.index(token_path)
+    assert prefix[idx - 1] == "--ro-bind-try"
+    assert prefix[idx + 1] == token_path

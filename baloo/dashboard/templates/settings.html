@@ -105,12 +105,24 @@
               {% if row.mutable and database_enabled %}
               <form method="post" action="/dashboard/settings" class="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="key" value="{{ row.name }}" />
+                {% if row.choices %}
+                <select
+                  name="value"
+                  class="font-mono text-sm border border-gray-300 rounded px-2 py-1 min-w-48 max-w-md"
+                  aria-label="{{ row.env_var }}"
+                >
+                  {% for choice_value, choice_label in row.choices %}
+                  <option value="{{ choice_value }}" {% if row.raw_value == choice_value %}selected{% endif %}>{{ choice_label }}</option>
+                  {% endfor %}
+                </select>
+                {% else %}
                 <input
                   type="text"
                   name="value"
                   value="{{ row.raw_value }}"
                   class="font-mono text-sm border border-gray-300 rounded px-2 py-1 min-w-48 max-w-md"
                 />
+                {% endif %}
                 <button type="submit" name="action" value="save" class="text-xs bg-gray-900 text-white px-2 py-1 rounded hover:bg-gray-700">Save</button>
                 {% if row.source == "db" %}
                 <button type="submit" name="action" value="clear" class="text-xs border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-100">Revert to env</button>
@@ -132,7 +144,12 @@
               {% endif %}
             </td>
             <td class="px-4 py-3 text-sm font-mono text-gray-500 max-w-sm break-all">{{ row.default }}</td>
-            <td class="px-4 py-3 text-sm text-gray-600 min-w-64">{{ row.description }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600 min-w-64">
+              {{ row.description }}
+              {% if row.name == "agent_provider" %}
+              <span class="block mt-1 text-xs text-gray-500">Applies to all Baloo agents. Short names (<code class="font-mono">haiku</code>/<code class="font-mono">sonnet</code>/<code class="font-mono">opus</code>) resolve to that provider's tier models; override with a bare model ID when needed.</span>
+              {% endif %}
+            </td>
           </tr>
 {% endfor %}
 {% if settings_rows %}

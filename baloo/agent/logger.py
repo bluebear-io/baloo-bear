@@ -111,17 +111,6 @@ class ReviewLogger:
             raw_text=raw_text,
         )
 
-    async def fallback_triggered(self, primary_model: str, fallback_model: str, error: str) -> None:
-        await self._log(
-            "fallback_triggered",
-            f"Falling back from {primary_model} to {fallback_model}: {error[:200]}",
-            metadata={
-                "primary_model": primary_model,
-                "fallback_model": fallback_model,
-                "error": error[:500],
-            },
-        )
-
     async def agent_completed(
         self, tokens_in: int, tokens_out: int, cost: float, duration: float
     ) -> None:

@@ -75,8 +75,8 @@ class BalooAgent(PIAgentBase):
                         installation_id=settings.installation_id,
                     )
 
-            # Run agent using base class
-            structured_data, metadata = await self._run_with_fallback(
+            # Run agent using the provider selected for this deployment.
+            structured_data, metadata = await self.run_query(
                 review_query, review_logger=review_logger
             )
 
@@ -161,59 +161,3 @@ class BalooAgent(PIAgentBase):
         if "authentication" in msg or "401" in msg or "403" in msg:
             return "auth_error"
         return "agent_error"
-
-    async def _run_with_fallback(self, query: str, review_logger: Any = None):
-        """Run query with automatic fallback to secondary model on failure."""
-        from baloo.config.runtime_settings import resolve_setting
-
-        try:
-            return await self.run_query(query, review_logger=review_logger)
-        except Exception as primary_err:
-            fallback = resolve_setting("agent_fallback_model")
-            if not fallback or "/" not in fallback:
-                raise  # No valid fallback configured
-
-            fallback_provider, fallback_model = fallback.split("/", 1)
-
-            # Don't fallback to the same provider/model we just failed with
-            if fallback_provider == self.options.provider and fallback_model == self.options.model:
-                raise
-
-            logger.warning(
-                "Primary model %s/%s failed (%s), falling back to %s",
-                self.options.provider,
-                self.options.model,
-                primary_err,
-                fallback,
-            )
-
-            if review_logger:
-                await review_logger.fallback_triggered(
-                    primary_model=f"{self.options.provider}/{self.options.model}",
-                    fallback_model=fallback,
-                    error=str(primary_err),
-                )
-
-            # Swap to fallback model
-            original_provider = self.options.provider
-            original_model = self.options.model
-            self.options.provider = fallback_provider
-            self.options.model = fallback_model
-
-            try:
-                result = await self.run_query(query, review_logger=review_logger)
-                # Tag metadata so callers know fallback was used
-                result[1]["fallback_used"] = True
-                result[1]["primary_model"] = f"{original_provider}/{original_model}"
-                result[1]["primary_error"] = str(primary_err)
-                return result
-            except Exception as fallback_err:
-                logger.error("Fallback model %s also failed: %s", fallback, fallback_err)
-                # Restore original model info on the exception metadata
-                if hasattr(primary_err, "metadata"):
-                    raise primary_err from fallback_err
-                raise primary_err from fallback_err
-            finally:
-                # Restore original options
-                self.options.provider = original_provider
-                self.options.model = original_model
