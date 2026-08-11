@@ -80,7 +80,22 @@ AWS_REGION=us-east-1
 AWS_PROFILE=bedrock
 ```
 
-Baloo bind-mounts the default `~/.aws/credentials` and `~/.aws/config` read-only into the sandbox, so a profile works without extra configuration. If your credentials live elsewhere, name them explicitly and those paths are mounted instead:
+Baloo bind-mounts the default `~/.aws/credentials` and `~/.aws/config` read-only from the **Baloo process's filesystem** into the inner bwrap sandbox. If Baloo runs directly on a host and those files exist in its `HOME`, a profile works without extra configuration.
+
+For Docker, the host files are outside the container and must first be mounted into it. A dedicated file is safer than mounting your whole personal `~/.aws` directory:
+
+```yaml
+services:
+  baloo:
+    volumes:
+      - /opt/baloo/aws:/etc/baloo/aws:ro
+    environment:
+      AWS_PROFILE: bedrock
+      AWS_SHARED_CREDENTIALS_FILE: /etc/baloo/aws/credentials
+      AWS_CONFIG_FILE: /etc/baloo/aws/config
+```
+
+The paths in `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` are then mounted through the second boundary into bwrap:
 
 ```bash
 AWS_SHARED_CREDENTIALS_FILE=/etc/baloo/aws/credentials
@@ -141,7 +156,7 @@ These map directly to PI / AWS SDK behavior and are only needed for proxies or a
 
 | Symptom | Likely cause |
 |---|---|
-| Every review fails auth, but **Test connection** passes | Credentials live in a file outside the mounted paths. Set `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE` explicitly, or use a role/bearer token. |
+| Every review fails auth, but **Test connection** passes | Credentials live outside the container or bwrap-mounted paths. For Docker, mount the host file into the container first; then set `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE`, or use a role/bearer token. |
 | `Model '<provider>/...' selects provider ... but AGENT_PROVIDER is ...` | A per-agent model setting names a different provider. The provider is global; use a tier short name or a model ID for the configured provider. |
 | `Provider '...' has no model tiers` | `AGENT_PROVIDER` is misspelled. Use `anthropic`, `google`, `openai`, or `amazon-bedrock`. |
 | `AccessDeniedException` for a model ID | Model access not enabled in the account/region, or the IAM policy lacks `bedrock:InvokeModel` on that inference profile. |
