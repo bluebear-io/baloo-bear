@@ -182,6 +182,64 @@ class TestPIAgentBaseRunQuery:
         return [json.dumps(e).encode("utf-8") + b"\n" for e in events]
 
     @pytest.mark.asyncio
+    async def test_error_stop_reason_surfaces_provider_detail(self):
+        """A provider error (auth/access/throttle) must reach metadata, not be dropped."""
+        events = [
+            json.dumps({"type": "response", "command": "set_thinking_level", "success": True}),
+            json.dumps({"type": "response", "command": "prompt", "success": True}),
+            json.dumps({"type": "agent_start"}),
+            json.dumps({"type": "turn_start"}),
+            json.dumps(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "model": "us.anthropic.claude-sonnet-4-6",
+                        "usage": {},
+                        "stopReason": "error",
+                        "errorMessage": (
+                            "AccessDeniedException: You don't have access to the model "
+                            "with the specified model ID."
+                        ),
+                    },
+                }
+            ),
+            json.dumps({"type": "turn_end"}),
+            json.dumps({"type": "agent_end"}),
+        ]
+        events = [e.encode("utf-8") + b"\n" for e in events]
+
+        agent = PIAgentBase(PIAgentOptions(model="us.anthropic.claude-sonnet-4-6"))
+
+        with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            _, metadata = await agent.run_query("Review")
+
+        assert metadata["is_error"] is True
+        assert "AccessDeniedException" in metadata["error_message"]
+
+    @pytest.mark.asyncio
     async def test_successful_review(self):
         """Test a complete successful review flow."""
         structured = {"findings": [{"file": "a.py", "line": 1, "severity": "HIGH"}], "summary": {}}

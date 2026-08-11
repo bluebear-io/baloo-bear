@@ -100,8 +100,11 @@ async def smoke_test_provider(
 
     elapsed = time.monotonic() - start
     if metadata.get("is_error"):
-        err = "PI agent reported an error (check server logs for details)"
+        err = str(metadata.get("error_message") or "PI agent reported an error (see server logs)")[
+            :500
+        ]
         msg = f"Smoke test failed for {provider}/{model_id}: {err}"
+        logger.warning(msg)
         return SmokeResult(
             ok=False,
             provider=provider,

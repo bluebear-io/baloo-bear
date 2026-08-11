@@ -369,6 +369,24 @@ def _reverse_scan_json(text: str) -> dict | None:
     return None
 
 
+def _provider_error_detail(msg: dict[str, Any]) -> str:
+    """Pull the provider's error text out of a PI error message, if present.
+
+    PI has used a few shapes for this across versions, so check the known keys
+    rather than assuming one.
+    """
+    for key in ("errorMessage", "error", "errorDetail"):
+        value = msg.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for nested_key in ("message", "error", "detail"):
+                nested = value.get(nested_key)
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+    return ""
+
+
 class PIAgentBase:
     """Base class for agents using PI's RPC subprocess protocol.
 
@@ -426,6 +444,7 @@ class PIAgentBase:
             "num_turns": result.num_turns,
             "duration_seconds": result.duration_seconds,
             "is_error": result.is_error,
+            "error_message": result.error_message,
             "max_turns_reached": result.max_turns_reached,
         }
 
@@ -915,7 +934,16 @@ Serialized payload:
                     stop_reason = msg.get("stopReason", "")
                     if stop_reason == "error":
                         result.is_error = True
-                        result.error_message = "Agent returned error stop reason"
+                        # PI carries the provider's error (auth, access, throttling)
+                        # here. Without it the operator only sees "error stop
+                        # reason" and has no way to tell an expired key from a
+                        # model they lack access to.
+                        detail = _provider_error_detail(msg) or "\n".join(text_parts).strip()
+                        result.error_message = (
+                            f"Agent returned error stop reason: {detail}"
+                            if detail
+                            else "Agent returned error stop reason"
+                        )
 
             elif etype == "tool_execution_start":
                 tool = event.get("toolName", "?")
