@@ -182,7 +182,7 @@ wheels = [
 
 [[package]]
 name = "baloo"
-version = "0.1.0"
+version = "2.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
