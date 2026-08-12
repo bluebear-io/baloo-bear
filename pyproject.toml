@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.1"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,7 +13,7 @@ authors = [
     {name = "BlueBear Security"}
 ]
 dependencies = [
-    "fastapi>=0.138.0",
+    "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.1",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
