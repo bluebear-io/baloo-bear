@@ -1160,3 +1160,30 @@ class TestGeneralFindingsPosting:
             else posted_blocking[0].kwargs.get("review_result")
         )
         assert result_arg.comments == []
+
+
+# ---------------------------------------------------------------------------
+# Agent failure must never look like an approval
+# ---------------------------------------------------------------------------
+
+
+class TestAgentErrorSuppressesApproval:
+    @pytest.mark.asyncio
+    async def test_agent_error_posts_no_approval_and_flags_failure(self):
+        gc = _make_github_client()
+        agent = _make_agent(
+            comments=[],
+            approve=True,
+            request_changes=False,
+            metadata={"agent_error": True, "error_category": "no_output"},
+        )
+
+        with patch("baloo.config.settings.settings.review_auto_approve", True):
+            await _run_review(gc, agent, notify_progress=True)
+
+        for call in gc.post_review.call_args_list:
+            result_arg = call.args[2] if len(call.args) >= 3 else call.kwargs.get("review_result")
+            assert not (result_arg and result_arg.approve), "Must not approve a failed review"
+
+        body = gc.edit_comment.call_args.args[2]
+        assert "failed" in body and "not reviewed" in body

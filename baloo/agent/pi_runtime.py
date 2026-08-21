@@ -939,6 +939,15 @@ Serialized payload:
                         # reason" and has no way to tell an expired key from a
                         # model they lack access to.
                         detail = _provider_error_detail(msg) or "\n".join(text_parts).strip()
+                        if not detail:
+                            # ponytail: dump the raw message so an unknown PI error
+                            # shape is still diagnosable; narrow it in
+                            # _provider_error_detail once we've seen the payload.
+                            logger.error(
+                                "%s: error stop reason with no extractable detail; raw message: %s",
+                                self.agent_name,
+                                json.dumps(msg, default=str)[:2000],
+                            )
                         result.error_message = (
                             f"Agent returned error stop reason: {detail}"
                             if detail
