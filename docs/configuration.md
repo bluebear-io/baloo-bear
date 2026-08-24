@@ -157,9 +157,19 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 **Precedence:** DB overlay → environment variable → field default
 
-**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
+**Mutable keys**
+
+| Group | Keys | Control |
+|---|---|---|
+| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL` | select / text |
+| Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
+| Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS` | select / number |
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
+
+`LOG_RETENTION_DAYS` is read once at startup, so a change to it takes effect on the next restart rather than within the cache TTL. Every other mutable key takes effect on the next review.
+
+The Settings page validates each field against its type and bounds before writing, and a batch save is all-or-nothing: if any field in the batch is invalid, nothing is written.
 
 After changing `AGENT_PROVIDER` or `AGENT_MODEL` (or clicking **Test connection**), Baloo runs a short PI smoke call with the effective provider/model to confirm credentials and endpoint wiring. A failure is shown on the Settings page; the override is still saved so you can fix auth and retry.
 
