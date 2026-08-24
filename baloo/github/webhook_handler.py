@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import settings
 from baloo.db.engine import close_db, init_db
 from baloo.github.api_client import GitHubAPIClient
@@ -347,7 +348,7 @@ async def handle_webhook(
         if action != "created":
             return {"status": "ignored", "event": event, "reason": f"action={action}"}
 
-        if not settings.thread_agent_enabled:
+        if not resolve_setting("thread_agent_enabled"):
             return {"status": "ignored", "event": event, "reason": "thread agent disabled"}
 
         comment_data = payload.get("comment", {})

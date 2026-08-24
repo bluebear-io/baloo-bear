@@ -6,7 +6,6 @@ from baloo.agent.databricks import DATABRICKS_PROVIDER, DATABRICKS_TIER_MODELS
 from baloo.agent.pi_runtime import PIAgentOptions
 from baloo.agent.prompts import AST_TOOLS_PROMPT_SECTION, REVIEW_SYSTEM_PROMPT
 from baloo.config.runtime_settings import resolve_setting
-from baloo.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ def resolve_short_name(name: str, provider: str | None = None) -> tuple[str, str
 def _build_system_prompt() -> str:
     """Build the system prompt, conditionally including the AST tools section."""
     prompt = REVIEW_SYSTEM_PROMPT
-    if settings.ast_tools_enabled:
+    if resolve_setting("ast_tools_enabled"):
         prompt += AST_TOOLS_PROMPT_SECTION
     return prompt
 
@@ -121,7 +120,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
                Accepts short names ("flash", "haiku", "sonnet", "gemini-pro", "opus")
                or full "provider/model" strings (e.g. "google/gemini-2.5-flash").
         thinking_level: Thinking level (off, minimal, low, medium, high).
-                        Defaults to settings.pi_thinking_level.
+                        Defaults to PI_THINKING_LEVEL.
 
     Returns:
         PIAgentOptions configured for read-only code review

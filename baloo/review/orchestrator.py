@@ -495,7 +495,7 @@ async def _reverify_awaiting_threads(
     if not awaiting_threads:
         return 0
 
-    if not settings.fp_verification_enabled:
+    if not resolve_setting("fp_verification_enabled"):
         logger.debug("FP verification disabled — skipping awaiting thread re-verification")
         return 0
 
@@ -894,7 +894,7 @@ async def _run_documentation_drift_analysis(
 ) -> tuple[str, DocumentationDriftResult | None]:
     """Run PR-time documentation drift analysis as an isolated side report."""
     try:
-        if not settings.documentation_drift_enabled:
+        if not resolve_setting("documentation_drift_enabled"):
             return "", None
 
         catalog = load_documentation_catalog(
@@ -1047,7 +1047,7 @@ async def _process_thread_reply(
 
                 # Check escalation cap
                 baloo_message_count = sum(1 for c in thread_comments if c.is_baloo)
-                if baloo_message_count >= settings.thread_agent_max_replies:
+                if baloo_message_count >= resolve_setting("thread_agent_max_replies"):
                     logger.info(
                         "Thread %s hit escalation cap (%d Baloo messages), skipping",
                         in_reply_to_id,
@@ -1218,7 +1218,7 @@ async def process_pr_review(
 
             # Fetch feedback signals for this repo
             feedback_signals = []
-            if settings.feedback_signals_enabled and settings.database_enabled:
+            if resolve_setting("feedback_signals_enabled") and settings.database_enabled:
                 try:
                     from baloo.db.feedback_service import FeedbackService
 
@@ -1361,7 +1361,7 @@ async def process_pr_review(
                         repo_path=repo_path,
                         db_review_id=db_review_id,
                     )
-                    if settings.fidelity_enabled
+                    if resolve_setting("fidelity_enabled")
                     else _skip_fidelity()
                 )
                 documentation_task = (
@@ -1372,7 +1372,7 @@ async def process_pr_review(
                         repo_path=repo_path,
                         db_review_id=db_review_id,
                     )
-                    if settings.documentation_drift_enabled
+                    if resolve_setting("documentation_drift_enabled")
                     else _skip_documentation()
                 )
 
@@ -1486,7 +1486,7 @@ async def process_pr_review(
                 comments: list[ReviewComment],
             ) -> list[ReviewComment]:
                 """Run FP verifier on new findings; returns verified list."""
-                if not (settings.fp_verification_enabled and comments):
+                if not (resolve_setting("fp_verification_enabled") and comments):
                     return comments
                 verifier = FPVerifier()
                 fp_result = await verifier.verify(comments, pr_context)
@@ -1651,7 +1651,7 @@ async def process_pr_review(
             )
 
             # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
-            if routed["checks"] and settings.review_use_checks_api:
+            if routed["checks"] and resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
                     from baloo.github.checks_api import GitHubChecksClient

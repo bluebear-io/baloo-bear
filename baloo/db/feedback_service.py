@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import get_settings
 from baloo.db.engine import get_session_factory
 from baloo.db.models import FeedbackSignal
@@ -32,7 +33,7 @@ class FeedbackService:
         No-op if feedback signals or the database are disabled.
         """
         settings = get_settings()
-        if not settings.feedback_signals_enabled or not settings.database_enabled:
+        if not resolve_setting("feedback_signals_enabled") or not settings.database_enabled:
             return
 
         from sqlalchemy import select
@@ -87,7 +88,7 @@ class FeedbackService:
         Returns an empty list if feedback signals or the database are disabled.
         """
         settings = get_settings()
-        if not settings.feedback_signals_enabled or not settings.database_enabled:
+        if not resolve_setting("feedback_signals_enabled") or not settings.database_enabled:
             return []
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=settings.feedback_signals_ttl_days)

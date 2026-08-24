@@ -123,7 +123,10 @@ class Settings(BaseSettings):
     dashboard_username: str = Field(default="", description="Dashboard basic auth username")
     dashboard_password: str = Field(default="", description="Dashboard basic auth password")
     log_retention_days: int = Field(
-        default=30, description="Days to retain execution logs (0 to disable cleanup)"
+        default=30,
+        ge=0,
+        le=3650,
+        description="Days to retain execution logs (0 to disable cleanup)",
     )
 
     # FP Verification Configuration
@@ -155,6 +158,8 @@ class Settings(BaseSettings):
     )
     thread_agent_max_replies: int = Field(
         default=3,
+        ge=0,
+        le=50,
         description="Max total Baloo messages per thread (original + replies) before escalation",
     )
     thread_agent_max_concurrent: int = Field(
@@ -223,6 +228,8 @@ class Settings(BaseSettings):
     )
     fidelity_approval_threshold: int = Field(
         default=90,
+        ge=0,
+        le=100,
         description="Minimum fidelity score (0-100) required for auto-approval with clean review",
     )
 

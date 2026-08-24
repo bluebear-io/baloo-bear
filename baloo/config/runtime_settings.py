@@ -18,12 +18,27 @@ logger = logging.getLogger(__name__)
 
 MUTABLE_KEYS = frozenset(
     {
+        # Agent selection
         "agent_provider",
         "agent_model",
         "pi_thinking_level",
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
+        # Feature toggles
+        "review_auto_approve",
+        "review_use_checks_api",
+        "fp_verification_enabled",
+        "thread_agent_enabled",
+        "documentation_drift_enabled",
+        "fidelity_enabled",
+        "ast_tools_enabled",
+        "feedback_signals_enabled",
+        # Tuning
+        "review_min_severity",
+        "thread_agent_max_replies",
+        "fidelity_approval_threshold",
+        "log_retention_days",
     }
 )
 

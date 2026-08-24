@@ -22,6 +22,7 @@ from typing import Any
 
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -508,7 +509,7 @@ class PIAgentBase:
             cmd.extend(["--tools", "read,grep,find,ls"])
 
             # Load AST tools extension when enabled
-            if s.ast_tools_enabled:
+            if resolve_setting("ast_tools_enabled"):
                 ext_path = (
                     Path(__file__).resolve().parent.parent.parent
                     / "extensions"
