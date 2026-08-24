@@ -117,3 +117,16 @@ def test_immutable_key_is_rejected() -> None:
 
     assert response.status_code == 303
     set_override.assert_not_awaited()
+
+
+def test_categories_are_contiguous() -> None:
+    """Each category renders as one card, not several.
+
+    Settings fields are not declared contiguously by category, so the rows must
+    be grouped before the template walks them.
+    """
+    seen: list[str] = []
+    for row in _settings_rows():
+        if not seen or seen[-1] != row["category"]:
+            seen.append(row["category"])
+    assert len(seen) == len(set(seen)), f"category split across cards: {seen}"

@@ -284,6 +284,11 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "bool_value": bool(effective) if control == "toggle" else None,
             }
         )
+
+    # Group by category. Fields are not declared contiguously by category, so
+    # without this a category renders as several separate cards.
+    order = {name: index for index, name in enumerate(SETTING_CATEGORIES)}
+    rows.sort(key=lambda row: order.get(row["category"], len(order)))
     return rows
 
 
