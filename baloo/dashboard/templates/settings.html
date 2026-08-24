@@ -1,169 +1,160 @@
 {% extends "base.html" %}
 {% set active_page = "settings" %}
+{% set page_title = "Settings" %}
+{% set page_subtitle = "Effective runtime configuration. Allowlisted values can be overridden in the database without redeploying." %}
 
 {% block title %}Settings - Baloo Dashboard{% endblock %}
 
+{% block page_actions %}
+<form method="post" action="/dashboard/settings">
+  <input type="hidden" name="key" value="agent_model">
+  <input type="hidden" name="value" value="">
+  <button type="submit" name="action" value="test_connection" class="btn btn--ghost">Test connection</button>
+</form>
+{% endblock %}
+
 {% block content %}
-<div class="flex items-start justify-between mb-6 gap-4 flex-wrap">
-  <div>
-    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-    <p class="mt-1 text-sm text-gray-500">Effective runtime configuration for this Baloo instance. Allowlisted agent knobs can be overridden in the database without redeploying.</p>
-  </div>
-  <form method="post" action="/dashboard/settings">
-    <input type="hidden" name="key" value="agent_model" />
-    <input type="hidden" name="value" value="" />
-    <button type="submit" name="action" value="test_connection" class="text-sm bg-white border border-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-50">
-      Test connection
-    </button>
-  </form>
-</div>
+<div class="stack">
 
-{% if message %}
-<div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{{ message }}</div>
-{% endif %}
-{% if error %}
-<div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ error }}</div>
-{% endif %}
-{% if smoke_message %}
-  {% if smoke_ok == "1" %}
-  <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{{ smoke_message }}</div>
-  {% else %}
-  <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ smoke_message }}</div>
+  {% if message %}<div class="alert alert--ok">{{ message }}</div>{% endif %}
+  {% if error %}<div class="alert alert--danger">{{ error }}</div>{% endif %}
+  {% if smoke_message %}
+  <div class="alert {% if smoke_ok == '1' %}alert--ok{% else %}alert--danger{% endif %}">{{ smoke_message }}</div>
   {% endif %}
-{% endif %}
-{% if not database_enabled %}
-<div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Runtime overrides require the database. Set <code class="font-mono">DATABASE_ENABLED=true</code> and <code class="font-mono">DATABASE_URL</code>.</div>
-{% endif %}
-
-<div class="bg-white rounded-lg shadow overflow-hidden mb-8">
-  <div class="px-5 py-4 border-b border-gray-200">
-    <h2 class="text-lg font-semibold text-gray-900">Models in use</h2>
-    <p class="mt-1 text-sm text-gray-500">Each Baloo agent role and the model it will call with the current effective settings (short names like <code class="font-mono">haiku</code> are resolved to provider/model).</p>
+  {% if not database_enabled %}
+  <div class="alert alert--warn">
+    Runtime overrides require the database. Set <span class="chip">DATABASE_ENABLED=true</span>
+    and <span class="chip">DATABASE_URL</span>.
   </div>
-  <div class="overflow-x-auto">
-    <table class="min-w-full divide-y divide-gray-200">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Setting</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Configured</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resolved</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-200">
-        {% for row in models_in_use %}
-        <tr class="hover:bg-gray-50">
-          <td class="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{{ row.role }}</td>
-          <td class="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{{ row.setting }}</td>
-          <td class="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{{ row.configured }}</td>
-          <td class="px-4 py-3 text-sm font-mono text-gray-900 whitespace-nowrap">{{ row.resolved }}</td>
-          <td class="px-4 py-3 text-sm whitespace-nowrap">
-            {% if row.source == "db" %}
-            <span class="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">db</span>
-            {% else %}
-            <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">env</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+  {% endif %}
 
-{% set ns = namespace(category="") %}
-{% for row in settings_rows %}
-  {% if row.category != ns.category %}
-    {% if not loop.first %}
-      </tbody>
-      </table>
-      </div>
-      </div>
-    {% endif %}
-    {% set ns.category = row.category %}
-    <div class="bg-white rounded-lg shadow overflow-hidden mb-8">
-      <div class="px-5 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900">{{ row.category }}</h2>
-      </div>
-      <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
+  <div class="card">
+    <div class="card-head">
+      <h2>Models in use</h2>
+      <p>Each agent role and the model it will call with the current effective settings.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Role</th><th>Setting</th><th>Configured</th><th>Resolved</th><th>Source</th></tr></thead>
+        <tbody>
+          {% for row in models_in_use %}
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Variable</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+            <td>{{ row.role }}</td>
+            <td class="mono">{{ row.setting }}</td>
+            <td class="mono">{{ row.configured }}</td>
+            <td class="mono">{{ row.resolved }}</td>
+            <td><span class="badge {% if row.source == 'db' %}badge--accent{% endif %}">{{ row.source }}</span></td>
           </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-200">
-  {% endif %}
-          <tr class="hover:bg-gray-50">
-            <td class="px-4 py-3 text-sm font-mono text-gray-900 whitespace-nowrap">{{ row.env_var }}</td>
-            <td class="px-4 py-3 text-sm text-gray-700 max-w-md">
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <input class="field" type="search" id="settings-search"
+         placeholder="Filter settings by name, variable, or description"
+         aria-label="Filter settings" style="width:100%">
+
+  <form method="post" action="/dashboard/settings" id="settings-form">
+    <div class="settings-layout">
+      <nav class="settings-rail" aria-label="Setting categories">
+        {% set ns_nav = namespace(seen=[], index=0) %}
+        {% for row in settings_rows %}
+          {% if row.category not in ns_nav.seen %}
+            {% if ns_nav.seen.append(row.category) %}{% endif %}
+            {% set ns_nav.index = ns_nav.index + 1 %}
+            <a href="#cat-{{ ns_nav.index }}">{{ row.category }}</a>
+          {% endif %}
+        {% endfor %}
+      </nav>
+
+      <div class="stack" style="min-width:0">
+        {% set ns = namespace(category="", index=0) %}
+        {% for row in settings_rows %}
+          {% if row.category != ns.category %}
+            {% if not loop.first %}</div></div>{% endif %}
+            {% set ns.category = row.category %}
+            {% set ns.index = ns.index + 1 %}
+            <div class="card" id="cat-{{ ns.index }}">
+              <div class="card-head"><h2>{{ row.category }}</h2></div>
+              <div>
+          {% endif %}
+
+          <div class="setting-row"
+               data-search="{{ (row.env_var ~ ' ' ~ row.name ~ ' ' ~ row.description) | lower }}">
+            <div>
+              <div class="setting-name">{{ row.env_var }}</div>
+              <div class="setting-desc">{{ row.description }}</div>
+              {% if row.name == "agent_provider" %}
+              <div class="setting-desc" style="font-size:var(--text-xs)">
+                Applies to all Baloo agents. Short names (<span class="chip">haiku</span>,
+                <span class="chip">sonnet</span>, <span class="chip">opus</span>) resolve to that
+                provider's tier models; override with a bare model ID when needed.
+              </div>
+              {% endif %}
+              {% if not row.mutable %}
+              <div class="setting-desc" style="font-size:var(--text-xs)">
+                Set <span class="chip">{{ row.env_var }}</span> in the environment and restart to
+                apply; it cannot be changed from this page.
+              </div>
+              {% endif %}
+              <div class="setting-meta">
+                {% if row.mutable %}
+                <span class="badge {% if row.source == 'db' %}badge--accent{% endif %}">{{ row.source }}</span>
+                {% else %}
+                <span class="badge" title="Set through the environment, then restart. Not editable from the dashboard.">env only</span>
+                {% endif %}
+                <span class="chip">default: {{ row.default }}</span>
+              </div>
+            </div>
+
+            <div class="setting-control">
               {% if row.mutable and database_enabled %}
-              <form method="post" action="/dashboard/settings" class="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="key" value="{{ row.name }}" />
-                {% if row.choices %}
-                <select
-                  name="value"
-                  class="font-mono text-sm border border-gray-300 rounded px-2 py-1 min-w-48 max-w-md"
-                  aria-label="{{ row.env_var }}"
-                >
+                <input type="hidden" name="key" value="{{ row.name }}">
+                {% if row.control == "toggle" %}
+                <label class="toggle">
+                  <input type="checkbox" data-bool="1" {% if row.bool_value %}checked{% endif %}
+                         aria-label="{{ row.env_var }}">
+                  <span class="toggle-track"></span>
+                  <span class="toggle-label" style="font-size:var(--text-sm)">{{ "Enabled" if row.bool_value else "Disabled" }}</span>
+                </label>
+                <input type="hidden" name="value" value="{{ 'true' if row.bool_value else 'false' }}">
+                {% elif row.control == "number" %}
+                <input class="field num" type="number" name="value" value="{{ row.raw_value }}"
+                       {% if row.minimum is not none %}min="{{ row.minimum }}"{% endif %}
+                       {% if row.maximum is not none %}max="{{ row.maximum }}"{% endif %}
+                       aria-label="{{ row.env_var }}">
+                {% elif row.control == "select" %}
+                <select class="field" name="value" aria-label="{{ row.env_var }}">
                   {% for choice_value, choice_label in row.choices %}
                   <option value="{{ choice_value }}" {% if row.raw_value == choice_value %}selected{% endif %}>{{ choice_label }}</option>
                   {% endfor %}
                 </select>
                 {% else %}
-                <input
-                  type="text"
-                  name="value"
-                  value="{{ row.raw_value }}"
-                  class="font-mono text-sm border border-gray-300 rounded px-2 py-1 min-w-48 max-w-md"
-                />
-                {% endif %}
-                <button type="submit" name="action" value="save" class="text-xs bg-gray-900 text-white px-2 py-1 rounded hover:bg-gray-700">Save</button>
-                {% if row.source == "db" %}
-                <button type="submit" name="action" value="clear" class="text-xs border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-100">Revert to env</button>
-                {% endif %}
-              </form>
-              {% else %}
-              <span class="font-mono break-all">{{ row.value }}</span>
-              {% endif %}
-            </td>
-            <td class="px-4 py-3 text-sm whitespace-nowrap">
-              {% if row.mutable %}
-                {% if row.source == "db" %}
-                <span class="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">db</span>
-                {% else %}
-                <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">env</span>
+                <input class="field mono" type="text" name="value" value="{{ row.raw_value }}"
+                       aria-label="{{ row.env_var }}">
                 {% endif %}
               {% else %}
-              <span
-                class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
-                title="Set through the environment, then restart. Not editable from the dashboard."
-              >env only</span>
+                <span class="mono" style="word-break:break-all;color:var(--text-muted)">{{ row.value }}</span>
               {% endif %}
-            </td>
-            <td class="px-4 py-3 text-sm font-mono text-gray-500 max-w-sm break-all">{{ row.default }}</td>
-            <td class="px-4 py-3 text-sm text-gray-600 min-w-64">
-              {{ row.description }}
-              {% if not row.mutable %}
-              <span class="block mt-1 text-xs text-gray-500">Set <code class="font-mono">{{ row.env_var }}</code> in the environment and restart to apply; it cannot be changed from this page.</span>
-              {% endif %}
-              {% if row.name == "agent_provider" %}
-              <span class="block mt-1 text-xs text-gray-500">Applies to all Baloo agents. Short names (<code class="font-mono">haiku</code>/<code class="font-mono">sonnet</code>/<code class="font-mono">opus</code>) resolve to that provider's tier models; override with a bare model ID when needed.</span>
-              {% endif %}
-            </td>
-          </tr>
-{% endfor %}
-{% if settings_rows %}
-        </tbody>
-      </table>
+            </div>
+          </div>
+        {% endfor %}
+        {% if settings_rows %}
+          </div></div>
+        {% else %}
+          <div class="card"><div class="empty">No settings available</div></div>
+        {% endif %}
       </div>
     </div>
-{% else %}
-<div class="bg-white rounded-lg shadow p-8 text-center text-gray-400">No settings available</div>
-{% endif %}
+
+    <div class="save-bar" id="save-bar" role="status">
+      <span id="save-count" class="num">0 changes</span>
+      <button type="submit" name="action" value="save" class="btn">Save</button>
+      <button type="button" class="btn btn--ghost" id="discard">Discard</button>
+    </div>
+  </form>
+</div>
+
+<script src="/dashboard-static/settings.js" defer></script>
 {% endblock %}
