@@ -552,4 +552,31 @@ input.field {
   .main {
     padding: var(--space-4);
   }
+
+  .table--stack thead {
+    display: none;
+  }
+
+  .table--stack tr {
+    display: block;
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table--stack td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    border: 0;
+    padding: var(--space-1) 0;
+  }
+
+  .table--stack td::before {
+    content: attr(data-label);
+    font-size: var(--text-xs);
+    font-weight: 550;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
 }
