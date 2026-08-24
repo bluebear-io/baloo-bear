@@ -19,7 +19,7 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 | `GEMINI_API_KEY` | — | — | Google Gemini API key (when using the Google provider) |
 | `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
 
-\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead).
+\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead) or `AGENT_PROVIDER=databricks` (use `DATABRICKS_TOKEN`).
 
 ## Amazon Bedrock
 
@@ -58,6 +58,30 @@ AWS_SECRET_ACCESS_KEY=...
 
 `AGENT_PROVIDER` applies to all agents. Short names (`haiku` / `sonnet` / `opus`) resolve to Bedrock tier IDs automatically. Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
 
+## Databricks
+
+For a step-by-step setup guide (token scopes, model availability, sandbox caveats, troubleshooting) see [Databricks Setup](features/databricks.md).
+
+pi has no native Databricks provider, so Baloo generates a `models.json` registering one against the workspace's AI Gateway and points the pi subprocess at it.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABRICKS_HOST` | Yes | — | Workspace URL, e.g. `https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`. A trailing `/ai-gateway/anthropic` is accepted and stripped |
+| `DATABRICKS_TOKEN` | Yes | — | Workspace PAT (`dapi...`). Read by pi at request time; never written to the generated config |
+
+Example:
+
+```bash
+AGENT_PROVIDER=databricks
+AGENT_MODEL=sonnet
+# or a specific Unity Catalog model service:
+# AGENT_MODEL=system.ai.claude-sonnet-4-6
+DATABRICKS_HOST=https://dbc-xxxxxxxx-xxxx.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+```
+
+Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Cost reporting is `$0` for this provider** — see [Databricks Setup](features/databricks.md#cost-reporting).
+
 ## Application
 
 | Variable | Default | Description |
@@ -74,7 +98,7 @@ AWS_SECRET_ACCESS_KEY=...
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock` |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks` |
 | `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
 | `AGENT_TEMPERATURE` | `0.2` | Generation temperature |

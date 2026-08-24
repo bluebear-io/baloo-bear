@@ -194,6 +194,7 @@ def test_agent_provider_row_has_labeled_selector_choices() -> None:
         ("amazon-bedrock", "Amazon Bedrock"),
         ("google", "Google Gemini"),
         ("openai", "OpenAI"),
+        ("databricks", "Databricks AI Gateway"),
     )
 
 

@@ -57,7 +57,16 @@ class Settings(BaseSettings):
     # Agent Configuration
     agent_provider: str = Field(
         default="anthropic",
-        description="LLM provider for all agents (anthropic, google, openai, amazon-bedrock)",
+        description=(
+            "LLM provider for all agents " "(anthropic, google, openai, amazon-bedrock, databricks)"
+        ),
+    )
+    databricks_host: str = Field(
+        default="",
+        description=(
+            "Databricks workspace URL, e.g. https://dbc-xxxxxxxx-xxxx.cloud.databricks.com. "
+            "Required when AGENT_PROVIDER=databricks; pair with a DATABRICKS_TOKEN PAT."
+        ),
     )
     agent_model: str = Field(
         default="sonnet",

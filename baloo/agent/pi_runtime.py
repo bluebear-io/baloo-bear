@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from baloo.agent.costs import normalize_usage
+from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
 from baloo.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -448,6 +449,23 @@ class PIAgentBase:
             "max_turns_reached": result.max_turns_reached,
         }
 
+    def _with_provider_env(self, base: dict[str, str] | None) -> dict[str, str] | None:
+        """Add any provider-specific env the PI subprocess needs.
+
+        Databricks is not a native PI provider: it is registered through a
+        generated models.json that PI only finds via ``PI_CODING_AGENT_DIR``.
+        Every spawn site must go through here — a subprocess started without it
+        fails with ``Unknown provider "databricks"``.
+
+        ``base`` of ``None`` means "inherit the parent env", which is preserved
+        for providers that need nothing extra.
+        """
+        if self.options.provider != DATABRICKS_PROVIDER:
+            return base
+        env = dict(base) if base is not None else dict(os.environ)
+        env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
+        return env
+
     def _build_pi_command(self, sandbox_decision: tuple[str, bool] | None = None) -> list[str]:
         """Build the PI CLI command list.
 
@@ -556,6 +574,8 @@ class PIAgentBase:
             from baloo.agent import sandbox
 
             proc_env = sandbox.build_subprocess_env(dict(os.environ))
+
+        proc_env = self._with_provider_env(proc_env)
 
         logger.info(
             "%s: spawning PI process (model=%s, thinking=%s)",
@@ -783,6 +803,7 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
+                env=self._with_provider_env(None),
             )
 
             # Temporarily swap options for the retry

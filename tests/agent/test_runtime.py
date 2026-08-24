@@ -1037,3 +1037,107 @@ class TestSandboxWiring:
         assert env is not None
         assert "GITHUB_PRIVATE_KEY" not in env
         assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+
+class TestDatabricksWiring:
+    """run_query points PI at the generated models.json for the databricks provider."""
+
+    def _events(self) -> list[bytes]:
+        """Mirror the handshake TestPIAgentBaseRunQuery._make_events produces."""
+        events = [
+            {"type": "response", "command": "set_thinking_level", "success": True},
+            {"type": "response", "command": "prompt", "success": True},
+            {"type": "agent_start"},
+            {"type": "turn_start"},
+            {"type": "message_start", "message": {"role": "assistant"}},
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": '{"findings": [], "summary": {}}'}],
+                    "usage": {"input": 1, "output": 1},
+                    "stopReason": "stop",
+                },
+            },
+            {"type": "turn_end"},
+            {"type": "agent_end"},
+        ]
+        return [json.dumps(e).encode("utf-8") + b"\n" for e in events]
+
+    async def _env_for(self, provider: str, tmp_path):
+        agent = PIAgentBase(PIAgentOptions(provider=provider, model="m"))
+        events = self._events()
+
+        with (
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+            patch(
+                "baloo.agent.pi_runtime.ensure_agent_dir",
+                return_value=tmp_path / "pi-databricks",
+            ),
+        ):
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            await agent.run_query("Review")
+
+        return mock_exec.call_args.kwargs["env"]
+
+    @pytest.mark.asyncio
+    async def test_databricks_sets_agent_dir(self, tmp_path):
+        env = await self._env_for("databricks", tmp_path)
+        assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
+
+    @pytest.mark.asyncio
+    async def test_other_providers_inherit_env_untouched(self, tmp_path):
+        # env=None preserves the inherit-everything behaviour on the
+        # unsandboxed path; only databricks needs an explicit env.
+        assert await self._env_for("anthropic", tmp_path) is None
+
+    @pytest.mark.asyncio
+    async def test_json_retry_spawn_also_gets_agent_dir(self, tmp_path):
+        # The JSON-retry path spawns its own subprocess. Without the provider
+        # env it dies with `Unknown provider "databricks"` while the main
+        # review succeeds, so the failure is easy to miss.
+        agent = PIAgentBase(PIAgentOptions(provider="databricks", model="m"))
+        with patch(
+            "baloo.agent.pi_runtime.ensure_agent_dir",
+            return_value=tmp_path / "pi-databricks",
+        ):
+            env = agent._with_provider_env(None)
+        assert env is not None
+        assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
+
+    def test_with_provider_env_leaves_other_providers_inheriting(self):
+        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
+        assert agent._with_provider_env(None) is None
+
+    def test_with_provider_env_preserves_scrubbed_sandbox_env(self, tmp_path):
+        agent = PIAgentBase(PIAgentOptions(provider="databricks", model="m"))
+        with patch(
+            "baloo.agent.pi_runtime.ensure_agent_dir",
+            return_value=tmp_path / "pi-databricks",
+        ):
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
+        # Must extend the allowlisted env, not replace it with os.environ.
+        assert env == {
+            "PATH": "/usr/bin",
+            "PI_CODING_AGENT_DIR": str(tmp_path / "pi-databricks"),
+        }

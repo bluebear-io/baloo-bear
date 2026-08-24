@@ -84,6 +84,7 @@ SETTING_CATEGORIES = {
         "agent_temperature",
         "pi_binary_path",
         "pi_thinking_level",
+        "databricks_host",
     },
     "Review": {
         "ticket_id_prefix",
@@ -137,6 +138,7 @@ AGENT_PROVIDER_CHOICES = (
     ("amazon-bedrock", "Amazon Bedrock"),
     ("google", "Google Gemini"),
     ("openai", "OpenAI"),
+    ("databricks", "Databricks AI Gateway"),
 )
 
 

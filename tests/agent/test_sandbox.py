@@ -192,3 +192,42 @@ def test_bwrap_prefix_binds_aws_credential_files(tmp_path, monkeypatch):
     idx = prefix.index(token_path)
     assert prefix[idx - 1] == "--ro-bind-try"
     assert prefix[idx + 1] == token_path
+
+
+def test_databricks_ro_bind_args_binds_the_generated_agent_dir():
+    args = sandbox._databricks_ro_bind_args({"HOME": "/home/baloo"})
+    path = "/home/baloo/.baloo/pi-databricks"
+    # --ro-bind-try, so this is a harmless no-op for every other provider.
+    assert args == ["--ro-bind-try", path, path]
+
+
+def test_databricks_ro_bind_args_without_home():
+    assert sandbox._databricks_ro_bind_args({}) == []
+
+
+def test_bwrap_prefix_binds_the_databricks_agent_dir(tmp_path, monkeypatch):
+    # PI_CODING_AGENT_DIR survives the env scrub, but the directory it names
+    # lives on the host and is invisible inside bwrap unless bound.
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    monkeypatch.setenv("HOME", "/home/baloo")
+
+    prefix = sandbox.build_sandbox_prefix("bwrap", str(wt))
+    path = "/home/baloo/.baloo/pi-databricks"
+    idx = prefix.index(path)
+    assert prefix[idx - 1] == "--ro-bind-try"
+    assert prefix[idx + 1] == path
+
+
+def test_build_subprocess_env_keeps_databricks_credentials():
+    base = {
+        "PATH": "/usr/bin",
+        "DATABRICKS_TOKEN": "dapi-keep",
+        "PI_CODING_AGENT_DIR": "/home/baloo/.baloo/pi-databricks",
+        "GITHUB_PRIVATE_KEY": "SECRET",
+    }
+    env = sandbox.build_subprocess_env(base)
+
+    assert env["DATABRICKS_TOKEN"] == "dapi-keep"
+    assert env["PI_CODING_AGENT_DIR"] == "/home/baloo/.baloo/pi-databricks"
+    assert "GITHUB_PRIVATE_KEY" not in env

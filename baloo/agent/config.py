@@ -2,6 +2,7 @@
 
 import logging
 
+from baloo.agent.databricks import DATABRICKS_PROVIDER, DATABRICKS_TIER_MODELS
 from baloo.agent.pi_runtime import PIAgentOptions
 from baloo.agent.prompts import AST_TOOLS_PROMPT_SECTION, REVIEW_SYSTEM_PROMPT
 from baloo.config.runtime_settings import resolve_setting
@@ -49,6 +50,8 @@ PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
         "standard": "gpt-5.6-terra",
         "premium": "gpt-5.6-sol",
     },
+    # Registered with PI via a generated models.json — see baloo/agent/databricks.py.
+    DATABRICKS_PROVIDER: dict(DATABRICKS_TIER_MODELS),
 }
 
 # Backward-compat: short name -> (provider, model_id, max_turns) using the
