@@ -149,7 +149,6 @@ def test_settings_renders() -> None:
     assert "Settings" in response.text
 
 
-@pytest.mark.xfail(reason="CDN tags removed in Task 2 of the redesign", strict=True)
 def test_no_cdn_references() -> None:
     """After the redesign, every asset is served from dashboard-static."""
     templates = Path("baloo/dashboard/templates")
