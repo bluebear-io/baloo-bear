@@ -159,3 +159,10 @@ def test_no_cdn_references() -> None:
         if needle in path.read_text()
     ]
     assert offenders == [], f"CDN references remain in: {offenders}"
+
+
+def test_dead_settings_are_gone() -> None:
+    from baloo.config.settings import Settings
+
+    for name in ("agent_max_tokens", "agent_temperature"):
+        assert name not in Settings.model_fields, f"{name} is dead config; remove it"

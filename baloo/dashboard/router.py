@@ -80,8 +80,6 @@ SETTING_CATEGORIES = {
     "Agent": {
         "agent_provider",
         "agent_model",
-        "agent_max_tokens",
-        "agent_temperature",
         "pi_binary_path",
         "pi_thinking_level",
         "databricks_host",

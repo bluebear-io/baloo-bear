@@ -72,8 +72,6 @@ class Settings(BaseSettings):
         default="sonnet",
         description="Model for reviews: tier short name or provider/model / bare model ID",
     )
-    agent_max_tokens: int = Field(default=4096, description="Max tokens for agent responses")
-    agent_temperature: float = Field(default=0.2, description="Temperature for agent responses")
     pi_binary_path: str = Field(
         default="pi",
         description="Path to the pi binary (or just 'pi' if on PATH)",
