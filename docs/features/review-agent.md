@@ -50,6 +50,15 @@ When the PR description contains a `## Review guidance for Baloo` section, Baloo
 
 Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for how to write falsifiable, diff-anchored checks.
 
+## Failure Handling
+
+When the agent terminates with an error stop reason or returns no structured
+output, Baloo sets `agent_error` in the review metadata, logs the raw PI message
+(so unknown error shapes stay diagnosable), records the review as `agent_error`
+in the database, and suppresses the approval decision — the PR gets a ⚠️ comment
+saying it was not reviewed, never an approval. See
+[severity-routing](severity-routing.md#approval-decision-logic).
+
 ## Configuration
 
 | Variable | Default | Description |

@@ -1541,6 +1541,21 @@ async def process_pr_review(
             if awaiting_threads and not request_changes and not decision_comments:
                 request_changes = True
 
+            # A failed agent returns zero findings, which is indistinguishable
+            # from a clean PR here — that is how Baloo kept approving PRs while
+            # it was actually down. Never green-light a review that did not run.
+            agent_had_error = bool(agent_metadata.get("agent_error"))
+            if agent_had_error:
+                logger.error(
+                    "Agent failed for %s#%s (category=%s, detail=%s) - suppressing approval",
+                    repo_full_name,
+                    pr_number,
+                    agent_metadata.get("error_category"),
+                    agent_metadata.get("error_detail"),
+                )
+                approve = False
+                request_changes = False
+
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
             summary_text = CommentFormatter.format_summary(
@@ -1728,7 +1743,14 @@ async def process_pr_review(
             # Update progress comment with completion status
             review_duration = int(time.time() - review_start_time)
             if progress_comment_id:
-                if has_new_feedback or (routed["review"] or follow_up_comments):
+                if agent_had_error:
+                    completion_msg = (
+                        f"⚠️ Baloo review failed after {review_duration}s "
+                        f"({agent_metadata.get('error_category') or 'agent_error'}). "
+                        "**This PR was not reviewed** - do not read the absence of "
+                        "findings as an approval."
+                    )
+                elif has_new_feedback or (routed["review"] or follow_up_comments):
                     # Review posted findings - update with summary
                     counts = count_by_severity(decision_comments)
                     completion_msg = (
@@ -1845,9 +1867,6 @@ async def process_pr_review(
                     documentation_metadata,
                 )
 
-                # Detect agent soft-failures: agent caught an error
-                # internally and returned 0 findings
-                agent_had_error = review_metadata.get("agent_error", False)
                 error_category = review_metadata.get("error_category")
                 error_detail = review_metadata.get("error_detail")
 
