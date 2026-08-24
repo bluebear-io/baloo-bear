@@ -269,7 +269,7 @@ def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
                 follow = client.get(location)
 
     assert resolve_setting("agent_provider") == "amazon-bedrock"
-    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Updated 1 setting" in follow.text
     assert "Smoke test passed" in follow.text
 
 
@@ -435,7 +435,7 @@ def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
                 assert location.startswith("/dashboard/settings?flash=")
                 follow = client.get(location)
 
-    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Updated 1 setting" in follow.text
     assert "Smoke test failed for amazon-bedrock" in follow.text
 
 

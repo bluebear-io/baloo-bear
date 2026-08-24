@@ -8,18 +8,20 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from baloo.config.runtime_settings import (
     MUTABLE_KEYS,
     RuntimeSettingsError,
+    _unwrap_optional,
     clear_override,
     ensure_fresh_cache,
     resolve_setting,
     set_override,
     setting_source,
+    validate_override,
 )
 from baloo.config.settings import Settings, get_settings
 from baloo.dashboard.auth import verify_credentials
@@ -200,6 +202,55 @@ def _setting_category(name: str) -> str:
     return "Other"
 
 
+SECRET_PATTERNS = ("_key", "_secret", "_password", "_token")
+
+REVIEW_SEVERITY_CHOICES = (
+    ("critical", "Critical only"),
+    ("high", "High and above"),
+    ("medium", "Medium and above"),
+    ("low", "Low and above"),
+)
+
+THINKING_LEVEL_CHOICES = (
+    ("off", "Off"),
+    ("minimal", "Minimal"),
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+)
+
+_EXPLICIT_CHOICES = {
+    "agent_provider": AGENT_PROVIDER_CHOICES,
+    "review_min_severity": REVIEW_SEVERITY_CHOICES,
+    "pi_thinking_level": THINKING_LEVEL_CHOICES,
+}
+
+
+def _field_bounds(field: Any) -> tuple[Any, Any]:
+    """Pull ge/le out of a pydantic field's metadata, if present."""
+    minimum = maximum = None
+    for item in getattr(field, "metadata", ()):
+        minimum = getattr(item, "ge", minimum)
+        maximum = getattr(item, "le", maximum)
+    return minimum, maximum
+
+
+def _derive_control(name: str, field: Any, mutable: bool) -> str:
+    """Pick the input control for a setting from its pydantic annotation."""
+    if any(pattern in name for pattern in SECRET_PATTERNS) or name == "database_url":
+        return "masked"
+    if not mutable:
+        return "text"
+    if name in _EXPLICIT_CHOICES:
+        return "select"
+    annotation = _unwrap_optional(field.annotation)
+    if annotation is bool:
+        return "toggle"
+    if annotation in (int, float):
+        return "number"
+    return "text"
+
+
 def _settings_rows() -> list[dict[str, Any]]:
     settings = get_settings()
     rows = []
@@ -213,6 +264,8 @@ def _settings_rows() -> list[dict[str, Any]]:
             effective = env_value
             source = "env"
         default = field.default
+        minimum, maximum = _field_bounds(field)
+        control = _derive_control(name, field, mutable)
         rows.append(
             {
                 "category": _setting_category(name),
@@ -224,7 +277,11 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "description": field.description or "",
                 "mutable": mutable,
                 "source": source,
-                "choices": AGENT_PROVIDER_CHOICES if name == "agent_provider" else None,
+                "choices": _EXPLICIT_CHOICES.get(name),
+                "control": control,
+                "minimum": minimum,
+                "maximum": maximum,
+                "bool_value": bool(effective) if control == "toggle" else None,
             }
         )
     return rows
@@ -449,13 +506,19 @@ def _settings_redirect(**flash: Any) -> RedirectResponse:
 
 @router.post("/settings")
 async def update_settings(
-    key: str = Form(...),
-    value: str = Form(""),
-    action: str = Form("save"),
+    request: Request,
     username: str = Depends(verify_credentials),
 ):
-    """Set or clear an allowlisted runtime override, or run a provider smoke test."""
+    """Set or clear allowlisted runtime overrides, or run a provider smoke test.
+
+    Accepts one or many key/value pairs. Every pair is validated before
+    anything is written, so a single bad field cannot leave the batch
+    half-applied.
+    """
     from baloo.agent.provider_smoke import SMOKE_TRIGGER_KEYS, smoke_test_provider
+
+    form = await request.form()
+    action = str(form.get("action", "save"))
 
     if action == "test_connection":
         result = await smoke_test_provider()
@@ -465,20 +528,43 @@ async def update_settings(
             smoke_message=result.message,
         )
 
-    try:
-        if action == "clear":
-            await clear_override(key)
-            msg = f"Cleared override for {key.upper()}; using env default."
-        elif action == "save":
-            await set_override(key, value, updated_by=username)
-            msg = f"Updated {key.upper()}."
-        else:
-            return _settings_redirect(error="Unknown action.")
-    except RuntimeSettingsError as exc:
-        return _settings_redirect(error=str(exc))
+    keys = [str(k) for k in form.getlist("key")]
+    values = [str(v) for v in form.getlist("value")]
+    if len(keys) != len(values):
+        return _settings_redirect(error="Malformed settings submission.")
+    if not keys:
+        return _settings_redirect(error="No settings submitted.")
 
-    flash: dict[str, Any] = {"message": msg}
-    if key in SMOKE_TRIGGER_KEYS:
+    if action == "clear":
+        try:
+            for key in keys:
+                await clear_override(key)
+        except RuntimeSettingsError as exc:
+            return _settings_redirect(error=str(exc))
+        plural = "" if len(keys) == 1 else "s"
+        return _settings_redirect(
+            message=f"Cleared {len(keys)} override{plural}; using env default{plural}."
+        )
+
+    if action != "save":
+        return _settings_redirect(error="Unknown action.")
+
+    # Validate everything first — all or nothing.
+    errors: list[str] = []
+    for key, value in zip(keys, values):
+        try:
+            validate_override(key, value)
+        except RuntimeSettingsError as exc:
+            errors.append(f"{key.upper()}: {exc}")
+    if errors:
+        return _settings_redirect(error=" · ".join(errors))
+
+    for key, value in zip(keys, values):
+        await set_override(key, value, updated_by=username)
+
+    plural = "" if len(keys) == 1 else "s"
+    flash: dict[str, Any] = {"message": f"Updated {len(keys)} setting{plural}."}
+    if any(key in SMOKE_TRIGGER_KEYS for key in keys):
         result = await smoke_test_provider()
         flash["smoke_ok"] = "1" if result.ok else "0"
         flash["smoke_message"] = result.message
