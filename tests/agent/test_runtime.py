@@ -1141,3 +1141,21 @@ class TestDatabricksWiring:
             "PATH": "/usr/bin",
             "PI_CODING_AGENT_DIR": str(tmp_path / "pi-databricks"),
         }
+
+    def test_retry_spawn_env_is_scrubbed_when_sandboxed(self, monkeypatch):
+        # The retry subprocess runs --no-tools but keeps network access. If it
+        # inherited the full env it would hold baloo's secrets in
+        # /proc/self/environ, which the sandbox scrub exists to prevent.
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
+        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
+
+        env = agent._subprocess_env(sandbox_active=True)
+
+        assert env is not None
+        assert "GITHUB_PRIVATE_KEY" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+    def test_unsandboxed_spawn_still_inherits(self):
+        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
+        assert agent._subprocess_env(sandbox_active=False) is None

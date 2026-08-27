@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -129,9 +130,28 @@ def ensure_agent_dir(host: str, base_dir: str | os.PathLike[str] | None = None) 
     config_path = agent_dir / "models.json"
     payload = json.dumps(build_models_config(host), indent=2) + "\n"
 
-    # Rewrite only on change so concurrent reviews don't race on the file.
-    if not config_path.exists() or config_path.read_text(encoding="utf-8") != payload:
-        config_path.write_text(payload, encoding="utf-8")
-        logger.info("wrote Databricks provider config to %s", config_path)
+    # Skip the write when the content already matches, so the steady state is a
+    # pure read and concurrent reviews don't touch the file at all.
+    try:
+        if config_path.read_text(encoding="utf-8") == payload:
+            return agent_dir
+    except FileNotFoundError:
+        pass
+
+    # Write via a uniquely-named temp file in the same directory, then rename.
+    # os.replace is atomic on POSIX, so a PI subprocess reading models.json
+    # concurrently sees either the old file or the new one, never a truncated
+    # one. The temp name must be unique: a shared name would let two concurrent
+    # first-run writers interleave into the same file and rename the mess into
+    # place, reintroducing the race this avoids.
+    fd, tmp_name = tempfile.mkstemp(dir=agent_dir, prefix=".models-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.replace(tmp_name, config_path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+    logger.info("wrote Databricks provider config to %s", config_path)
 
     return agent_dir

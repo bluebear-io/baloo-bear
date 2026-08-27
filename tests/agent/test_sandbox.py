@@ -201,8 +201,16 @@ def test_databricks_ro_bind_args_binds_the_generated_agent_dir():
     assert args == ["--ro-bind-try", path, path]
 
 
-def test_databricks_ro_bind_args_without_home():
-    assert sandbox._databricks_ro_bind_args({}) == []
+def test_databricks_ro_bind_args_falls_back_to_path_home(monkeypatch):
+    # ensure_agent_dir() uses Path.home(), which falls back to the passwd entry
+    # when HOME is unset. Bailing out here instead would write the config but
+    # never bind it, and PI would fail with Unknown provider "databricks".
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: Path("/home/frompasswd")))
+    args = sandbox._databricks_ro_bind_args({})
+    path = "/home/frompasswd/.baloo/pi-databricks"
+    assert args == ["--ro-bind-try", path, path]
 
 
 def test_bwrap_prefix_binds_the_databricks_agent_dir(tmp_path, monkeypatch):

@@ -1,6 +1,9 @@
 """Tests for the Databricks AI Gateway provider config."""
 
 import json
+import os
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -103,11 +106,58 @@ def test_ensure_agent_dir_rewrites_when_host_changes(tmp_path):
     ensure_agent_dir(WORKSPACE, base_dir=tmp_path)
     agent_dir = ensure_agent_dir("https://other.cloud.databricks.com", base_dir=tmp_path)
     payload = json.loads((agent_dir / "models.json").read_text())
-    assert payload["providers"][DATABRICKS_PROVIDER]["baseUrl"].startswith(
-        "https://other.cloud.databricks.com"
+    # Exact match, not startswith: a prefix check would also pass for a host
+    # like other.cloud.databricks.com.evil.tld, and CodeQL flags the pattern.
+    assert payload["providers"][DATABRICKS_PROVIDER]["baseUrl"] == (
+        "https://other.cloud.databricks.com/ai-gateway/anthropic"
     )
 
 
-def test_agent_dir_is_not_under_tmp(tmp_path):
-    # The sandbox mounts a fresh tmpfs over /tmp, which would hide the config.
-    assert not str(ensure_agent_dir(WORKSPACE, base_dir=tmp_path)).startswith("/tmp/")
+def test_agent_dir_defaults_to_home_not_a_temp_dir(tmp_path, monkeypatch):
+    # The sandbox mounts a fresh tmpfs over /tmp, which would hide the config,
+    # so the production path must derive from HOME. Asserting on an injected
+    # base_dir would be meaningless: pytest's tmp_path is itself under /tmp on
+    # Linux, which is exactly how the previous version of this test passed on
+    # macOS and failed in CI.
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+
+    assert ensure_agent_dir(WORKSPACE) == fake_home / ".baloo" / "pi-databricks"
+
+
+def test_ensure_agent_dir_never_publishes_a_partial_file(tmp_path, monkeypatch):
+    # write_text truncates in place, so a concurrent reader could see a partial
+    # file. Publication must go through an atomic rename instead.
+    seen: list[str] = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(str(dst))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(databricks.os, "replace", spy)
+    agent_dir = ensure_agent_dir(WORKSPACE, base_dir=tmp_path)
+
+    assert seen == [str(agent_dir / "models.json")]
+    # No temp files left behind.
+    assert [p.name for p in agent_dir.iterdir()] == ["models.json"]
+
+
+def test_concurrent_writers_do_not_share_a_temp_filename(tmp_path):
+    # A fixed temp name (e.g. models.tmp) would let two first-run writers
+    # interleave into the same file and rename the mess into place.
+    names: list[str] = []
+    real_mkstemp = databricks.tempfile.mkstemp
+
+    def spy(*args, **kwargs):
+        fd, name = real_mkstemp(*args, **kwargs)
+        names.append(name)
+        return fd, name
+
+    with patch.object(databricks.tempfile, "mkstemp", spy):
+        ensure_agent_dir(WORKSPACE, base_dir=tmp_path)
+        ensure_agent_dir("https://other.databricks.com", base_dir=tmp_path)
+
+    assert len(names) == 2
+    assert names[0] != names[1]

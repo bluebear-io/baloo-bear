@@ -278,11 +278,15 @@ def _databricks_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
 
     ``--ro-bind-try`` makes this a no-op for every other provider, so the path
     is bound unconditionally rather than threading the provider down here.
+
+    The fallback must match ``databricks.ensure_agent_dir``, which uses
+    ``Path.home()``. That falls back to the passwd entry when HOME is unset, so
+    bailing out here would silently drop the bind in a container that strips
+    HOME — the file would be written but invisible inside bwrap, and PI would
+    fail with ``Unknown provider "databricks"``.
     """
     source = env if env is not None else os.environ
-    home = source.get("HOME")
-    if not home:
-        return []
+    home = source.get("HOME") or str(Path.home())
     path = str(Path(home) / ".baloo" / "pi-databricks")
     return ["--ro-bind-try", path, path]
 
