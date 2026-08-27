@@ -87,8 +87,9 @@ class Settings(BaseSettings):
         description="Prefix for ticket IDs (e.g., 'PROJ' for PROJ-123)",
     )
     review_auto_approve: bool = Field(
-        default=True,
-        description="Auto-approve PRs with no critical/high issues",
+        default=False,
+        description="Auto-approve PRs with no critical/high issues (opt-in: Baloo "
+        "comments without approving unless this is enabled)",
     )
     review_min_severity: str = Field(
         default="MEDIUM",

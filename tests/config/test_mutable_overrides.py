@@ -113,3 +113,13 @@ def test_no_call_site_reads_a_mutable_key_directly() -> None:
         "These read a mutable setting directly, so DB overrides are ignored. "
         "Use resolve_setting():\n" + "\n".join(offenders)
     )
+
+
+def test_auto_approve_is_opt_in() -> None:
+    """Baloo must not approve PRs until an operator opts in.
+
+    Approving is a write action on someone's repository, so the default is off.
+    """
+    from baloo.config.settings import Settings
+
+    assert Settings.model_fields["review_auto_approve"].default is False
