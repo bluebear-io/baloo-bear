@@ -123,3 +123,17 @@ def test_auto_approve_is_opt_in() -> None:
     from baloo.config.settings import Settings
 
     assert Settings.model_fields["review_auto_approve"].default is False
+
+
+def test_databricks_host_override_resolves(overlay) -> None:
+    """AGENT_PROVIDER is switchable from the dashboard, so its paired workspace
+    URL must be too — otherwise switching to Databricks needs a redeploy."""
+    overlay({"databricks_host": "https://dbc-override.cloud.databricks.com"})
+    assert resolve_setting("databricks_host") == "https://dbc-override.cloud.databricks.com"
+
+
+def test_databricks_token_is_never_a_setting() -> None:
+    """The PAT stays an env var passed through the sandbox, never DB-overridable."""
+    from baloo.config.settings import Settings
+
+    assert "databricks_token" not in Settings.model_fields

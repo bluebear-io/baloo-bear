@@ -21,6 +21,10 @@ MUTABLE_KEYS = frozenset(
         # Agent selection
         "agent_provider",
         "agent_model",
+        # Paired with agent_provider="databricks": switching provider from the
+        # dashboard is useless if the workspace URL needs a redeploy. The PAT
+        # stays env-only (DATABRICKS_TOKEN is not a Settings field).
+        "databricks_host",
         "pi_thinking_level",
         "fp_verification_model",
         "thread_agent_model",

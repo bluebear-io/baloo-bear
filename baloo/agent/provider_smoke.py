@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 SMOKE_TIMEOUT_SECONDS = 30.0
 
 # Keys whose save/clear should auto-run a primary-provider smoke check.
-SMOKE_TRIGGER_KEYS = frozenset({"agent_provider", "agent_model"})
+SMOKE_TRIGGER_KEYS = frozenset({"agent_provider", "agent_model", "databricks_host"})
 
 _SMOKE_SYSTEM_PROMPT = (
     "You are a connectivity probe for Baloo. " "Respond with only the requested JSON object."

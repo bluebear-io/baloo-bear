@@ -491,7 +491,7 @@ class PIAgentBase:
         if self.options.provider != DATABRICKS_PROVIDER:
             return base
         env = dict(base) if base is not None else dict(os.environ)
-        env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
+        env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(resolve_setting("databricks_host")))
         return env
 
     def _build_pi_command(self, sandbox_decision: tuple[str, bool] | None = None) -> list[str]:
