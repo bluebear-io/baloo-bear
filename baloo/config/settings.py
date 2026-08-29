@@ -3,7 +3,7 @@
 import logging
 import os
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -234,6 +234,27 @@ class Settings(BaseSettings):
         default="https://api.linear.app/graphql",
         description="Linear GraphQL API endpoint",
     )
+
+    @model_validator(mode="after")
+    def check_provider_credentials(self) -> "Settings":
+        """Reject a provider selection whose required settings are missing.
+
+        Without this, ``AGENT_PROVIDER=databricks`` with no ``DATABRICKS_HOST``
+        starts cleanly and then fails *every* review with an ``agent_error``,
+        one PR at a time. Failing at settings load surfaces it once, at deploy.
+
+        Only the environment-configured provider is checked. A provider chosen
+        at runtime from the dashboard never reaches here; that path is covered
+        by the smoke test the dashboard runs after the override is saved.
+        """
+        if self.agent_provider == "databricks" and not self.databricks_host.strip():
+            raise ValueError(
+                "AGENT_PROVIDER=databricks requires DATABRICKS_HOST. Set it to your "
+                "workspace URL, e.g. https://dbc-xxxxxxxx-xxxx.cloud.databricks.com "
+                "(DATABRICKS_HOST is environment-only and cannot be set from the "
+                "dashboard). See docs/features/databricks.md."
+            )
+        return self
 
     @property
     def github_private_key_bytes(self) -> bytes:

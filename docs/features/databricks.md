@@ -39,6 +39,12 @@ DATABRICKS_TOKEN=dapi...
 
 `DATABRICKS_HOST` is the workspace URL. A trailing `/ai-gateway/anthropic` is accepted and stripped, so pasting the gateway URL from Databricks' own snippets works.
 
+Both are **environment-only**. `DATABRICKS_HOST` is deliberately not runtime-mutable and shows as `env only` on the dashboard Settings page: if it could be changed from a web form, anyone with dashboard access could repoint the gateway at a host they control and Baloo would send `Authorization: Bearer $DATABRICKS_TOKEN` to it.
+
+Setting `AGENT_PROVIDER=databricks` without `DATABRICKS_HOST` **fails at startup** with a message naming the missing variable, rather than starting and failing every review one PR at a time.
+
+Selecting `databricks` from the dashboard provider selector is a separate path: the override is saved and the smoke test Baloo runs afterwards reports the same misconfiguration on the Settings page.
+
 ## Step 2 — Verify
 
 Use **Test connection** on the dashboard Settings page after switching. It runs a short PI smoke call with the effective provider and model.
@@ -103,3 +109,4 @@ When `REPO_SANDBOX_MODE` is active, the agent runs under bwrap with a scrubbed e
 | `501 NOT_IMPLEMENTED ... Use Unity Catalog model services` | A flat `databricks-claude-*` model ID. Use `system.ai.claude-*`. |
 | Review hangs, then fails as `agent_error` with no detail | The `supportsEagerToolInputStreaming` compat flag is missing from `models.json`. Delete `~/.baloo/pi-databricks/models.json` so Baloo regenerates it. |
 | `403 ... rate limit of 0` | The model service is not enabled for your workspace. See [Model availability](#model-availability). |
+| App refuses to start: `AGENT_PROVIDER=databricks requires DATABRICKS_HOST` | The provider is selected but the host is unset. Set `DATABRICKS_HOST` in the environment and restart; it cannot be set from the dashboard. |
