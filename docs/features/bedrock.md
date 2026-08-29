@@ -158,7 +158,7 @@ These map directly to PI / AWS SDK behavior and are only needed for proxies or a
 |---|---|
 | Every review fails auth, but **Test connection** passes | Credentials live outside the container or bwrap-mounted paths. For Docker, mount the host file into the container first; then set `AWS_SHARED_CREDENTIALS_FILE` / `AWS_CONFIG_FILE`, or use a role/bearer token. |
 | `Model '<provider>/...' selects provider ... but AGENT_PROVIDER is ...` | A per-agent model setting names a different provider. The provider is global; use a tier short name or a model ID for the configured provider. |
-| `Provider '...' has no model tiers` | `AGENT_PROVIDER` is misspelled. Use `anthropic`, `google`, `openai`, or `amazon-bedrock`. |
+| `Provider '...' has no model tiers` | `AGENT_PROVIDER` is misspelled. Use `anthropic`, `google`, `openai`, `amazon-bedrock`, or `databricks`. |
 | `AccessDeniedException` for a model ID | Model access not enabled in the account/region, or the IAM policy lacks `bedrock:InvokeModel` on that inference profile. |
 | Model-not-found / validation error | The `us.` prefix isn't valid in your region. Set `AGENT_MODEL` to the correct regional profile or ARN. |
 | Dashboard shows `anthropic/...` after switching | The provider change didn't take effect — a hardcoded `AGENT_MODEL`/`AGENT_PROVIDER` in the Compose `environment:` block overrides `env_file`. Check **Models in use**. |
