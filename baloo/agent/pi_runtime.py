@@ -22,8 +22,15 @@ from typing import Any
 
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
+from baloo.agent.tiers import AGENT_MAX_TURNS, PROVIDER_TIER_MODELS
 from baloo.config.runtime_settings import resolve_setting
-from baloo.config.settings import get_settings
+from baloo.config.settings import Settings, get_settings
+
+
+def _settings_default(name: str) -> Any:
+    """Field default from Settings, so this module doesn't restate config."""
+    return Settings.model_fields[name].default
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +39,15 @@ logger = logging.getLogger(__name__)
 class PIAgentOptions:
     """Configuration for a PI agent session."""
 
-    model: str = "claude-sonnet-4-6"
-    provider: str = "anthropic"
+    # Defaults mirror the config layer rather than restating it: the provider
+    # and thinking level come from the Settings fields, the model from that
+    # provider's standard tier. get_agent_options() sets all of these
+    # explicitly, so these only apply to bare construction.
+    model: str = PROVIDER_TIER_MODELS[_settings_default("agent_provider")]["standard"]
+    provider: str = _settings_default("agent_provider")
     system_prompt: str = ""
-    thinking_level: str = "medium"
-    max_turns: int = 20
+    thinking_level: str = _settings_default("pi_thinking_level")
+    max_turns: int = AGENT_MAX_TURNS
     # Working directory for the agent (where it can read files)
     cwd: str | None = None
     # When True, launch PI with --no-tools (no file read/grep/etc).
