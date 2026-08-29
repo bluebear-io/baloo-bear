@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from baloo.agent.costs import normalize_usage
+from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
 from baloo.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -448,6 +449,39 @@ class PIAgentBase:
             "max_turns_reached": result.max_turns_reached,
         }
 
+    def _subprocess_env(self, sandbox_active: bool) -> dict[str, str] | None:
+        """Build the environment for a PI subprocess.
+
+        Every PI spawn must go through here. When the sandbox engages the env is
+        scrubbed to an allowlist so a prompt-injected agent (which keeps network
+        access for the model API) cannot read baloo's secrets from
+        /proc/self/environ and exfiltrate them. ``None`` means inherit, which
+        preserves the unsandboxed/dev behaviour.
+        """
+        env: dict[str, str] | None = None
+        if sandbox_active:
+            from baloo.agent import sandbox
+
+            env = sandbox.build_subprocess_env(dict(os.environ))
+        return self._with_provider_env(env)
+
+    def _with_provider_env(self, base: dict[str, str] | None) -> dict[str, str] | None:
+        """Add any provider-specific env the PI subprocess needs.
+
+        Databricks is not a native PI provider: it is registered through a
+        generated models.json that PI only finds via ``PI_CODING_AGENT_DIR``.
+        Every spawn site must go through here — a subprocess started without it
+        fails with ``Unknown provider "databricks"``.
+
+        ``base`` of ``None`` means "inherit the parent env", which is preserved
+        for providers that need nothing extra.
+        """
+        if self.options.provider != DATABRICKS_PROVIDER:
+            return base
+        env = dict(base) if base is not None else dict(os.environ)
+        env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
+        return env
+
     def _build_pi_command(self, sandbox_decision: tuple[str, bool] | None = None) -> list[str]:
         """Build the PI CLI command list.
 
@@ -545,17 +579,8 @@ class PIAgentBase:
         cmd = self._build_pi_command(sandbox_decision)
         cwd = self.options.cwd or None
 
-        # When the sandbox engages, also scrub the subprocess environment to an
-        # allowlist so a prompt-injected agent (which keeps network access for
-        # the model API) cannot read baloo's secrets from /proc/self/environ and
-        # exfiltrate them. env=None preserves today's inherit-everything behavior
-        # on the unsandboxed/dev path.
-        proc_env = None
         _, sandbox_active = sandbox_decision
-        if sandbox_active:
-            from baloo.agent import sandbox
-
-            proc_env = sandbox.build_subprocess_env(dict(os.environ))
+        proc_env = self._subprocess_env(sandbox_active)
 
         logger.info(
             "%s: spawning PI process (model=%s, thinking=%s)",
@@ -783,6 +808,10 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
+                # Mirror the main spawn's scrub. The retry runs --no-tools but
+                # keeps network access, so an unscrubbed env would hand baloo's
+                # secrets to a subprocess the sandbox was meant to contain.
+                env=self._subprocess_env(self._sandbox_decision()[1]),
             )
 
             # Temporarily swap options for the retry

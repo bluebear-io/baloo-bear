@@ -132,6 +132,9 @@ def build_sandbox_prefix(mode: str, worktree: str) -> list[str]:
         # AWS credential files (IRSA token, explicit shared credentials/config)
         # so Bedrock auth still works under the scrubbed sandbox env.
         *_aws_ro_bind_args(),
+        # Generated models.json registering the Databricks provider, without
+        # which PI cannot resolve `databricks/...` models inside the sandbox.
+        *_databricks_ro_bind_args(),
         "--proc",
         "/proc",
         "--dev",
@@ -169,6 +172,11 @@ _ENV_ALLOWLIST = frozenset(
         "ANTHROPIC_API_KEY",
         "GEMINI_API_KEY",
         "OPENAI_API_KEY",
+        # Databricks AI Gateway (pi provider token: databricks). The PAT is read
+        # by PI at request time via the apiKey env-var reference in models.json;
+        # PI_CODING_AGENT_DIR points PI at that generated file.
+        "DATABRICKS_TOKEN",
+        "PI_CODING_AGENT_DIR",
         # AWS / Amazon Bedrock (pi provider token: amazon-bedrock). Static keys,
         # temporary session tokens, bearer auth, profiles, ECS task roles, and
         # IRSA are all recognized by the AWS SDK that pi bundles.
@@ -258,6 +266,29 @@ def _aws_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
             _add(str(Path(home) / ".aws" / name))
 
     return args
+
+
+def _databricks_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
+    """Return a ``--ro-bind-try`` pair for the generated Databricks agent dir.
+
+    ``PI_CODING_AGENT_DIR`` survives the env scrub, but the directory it names
+    lives on the host and would otherwise be invisible inside bwrap. Bound
+    read-only: PI only reads models.json there, and ``--no-session`` plus
+    ``HOME=/tmp`` cover anything it wants to write.
+
+    ``--ro-bind-try`` makes this a no-op for every other provider, so the path
+    is bound unconditionally rather than threading the provider down here.
+
+    The fallback must match ``databricks.ensure_agent_dir``, which uses
+    ``Path.home()``. That falls back to the passwd entry when HOME is unset, so
+    bailing out here would silently drop the bind in a container that strips
+    HOME — the file would be written but invisible inside bwrap, and PI would
+    fail with ``Unknown provider "databricks"``.
+    """
+    source = env if env is not None else os.environ
+    home = source.get("HOME") or str(Path.home())
+    path = str(Path(home) / ".baloo" / "pi-databricks")
+    return ["--ro-bind-try", path, path]
 
 
 def build_subprocess_env(base_env: dict[str, str]) -> dict[str, str]:

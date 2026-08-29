@@ -20,6 +20,7 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 | `google` | `gemini-3.5-flash-lite` | `gemini-3.6-flash` | `gemini-3.1-pro-preview` |
 | `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-4-6` | `us.anthropic.claude-opus-4-6-v1` |
 | `openai` | `gpt-5.6-luna` | `gpt-5.6-terra` | `gpt-5.6-sol` |
+| `databricks` | `system.ai.claude-haiku-4-5` | `system.ai.claude-sonnet-4-6` | `system.ai.claude-opus-4-6` |
 
 Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — the set Baloo already runs in production. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
 
@@ -67,6 +68,25 @@ With `AGENT_PROVIDER=amazon-bedrock`, short names such as `haiku` (FP/thread def
 Auth (pick one): IAM access keys (+ optional session token), `AWS_BEARER_TOKEN_BEDROCK`, `AWS_PROFILE`, IRSA (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), or ECS/EC2 instance roles. Baloo allowlists these AWS env vars into the sandboxed pi subprocess and bind-mounts IRSA/credential files when their paths are set. See [Configuration](../configuration.md#amazon-bedrock).
 
 Cost estimation for Bedrock models uses the cost pi reports (Baloo's built-in pricing table is Anthropic-first-party only).
+
+## Databricks
+
+For a full walkthrough (token scopes, model availability, sandbox caveats, troubleshooting) see the [Databricks Setup](databricks.md) guide. In short:
+
+pi has no native Databricks provider, so Baloo generates a `models.json` registering one against the workspace AI Gateway and points pi at it with `PI_CODING_AGENT_DIR`. Point Baloo at it with:
+
+```bash
+AGENT_PROVIDER=databricks
+AGENT_MODEL=sonnet
+# or a specific Unity Catalog model service:
+# AGENT_MODEL=system.ai.claude-sonnet-4-6
+DATABRICKS_HOST=https://dbc-xxxxxxxx-xxxx.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+```
+
+Model IDs are Unity Catalog model services (`system.ai.claude-*`); the older flat `databricks-claude-*` names return `501 NOT_IMPLEMENTED`. Availability is per workspace — an unprovisioned model reports a `rate limit of 0`.
+
+Cost is reported as `$0` for Databricks: it bills DBUs at a per-contract rate, so there is no correct USD-per-token constant to hardcode. See [Cost reporting](databricks.md#cost-reporting).
 
 ## Configuration
 

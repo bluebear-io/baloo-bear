@@ -55,6 +55,7 @@ nav:
       - Documentation Drift: features/documentation-drift.md
       - Model Configuration: features/models.md
       - Amazon Bedrock Setup: features/bedrock.md
+      - Databricks Setup: features/databricks.md
       - Severity Routing: features/severity-routing.md
       - Discussion Tracking: features/discussions.md
       - FP Verification: features/fp-verification.md

@@ -21,7 +21,7 @@ You need:
 - Docker
 - Docker Compose
 - `ngrok`
-- an Anthropic API key (or AWS credentials if you set `AGENT_PROVIDER=amazon-bedrock` — see [Amazon Bedrock Setup](features/bedrock.md))
+- an Anthropic API key (or AWS credentials if you set `AGENT_PROVIDER=amazon-bedrock` — see [Amazon Bedrock Setup](features/bedrock.md), or a Databricks PAT if you set `AGENT_PROVIDER=databricks` — see [Databricks Setup](features/databricks.md))
 
 You do not need a Python development environment just to try Baloo as a service.
 

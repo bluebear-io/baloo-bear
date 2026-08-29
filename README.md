@@ -57,7 +57,7 @@ Inline comments appear on the exact lines:
 | Feature                   | Description                                                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
-| **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, or OpenAI provider                                     |
+| **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
 | **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered                                                  |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
 | **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
@@ -161,7 +161,7 @@ Settings are configured via environment variables; allowlisted agent knobs can a
 | `GITHUB_WEBHOOK_SECRET`       | —                         | Webhook signature secret                                                                 |
 | `ANTHROPIC_API_KEY`           | —                         | Anthropic API key                                                                        |
 | `GEMINI_API_KEY`              | —                         | Google Gemini API key (when using the Google provider)                                   |
-| `AGENT_PROVIDER`              | `anthropic`               | LLM provider for all agents: `anthropic`, `google`, `openai`, `amazon-bedrock`           |
+| `AGENT_PROVIDER`              | `anthropic`               | LLM provider for all agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks` |
 | `AGENT_MODEL`                 | `sonnet`                  | Model short name: `flash`, `haiku`, `sonnet`, `gemini-pro`, `opus`                       |
 | `REVIEW_AUTO_APPROVE`         | `true`                    | Auto-approve PRs with no blocking findings                                               |
 | `REVIEW_MIN_SEVERITY`         | `MEDIUM`                  | Minimum severity to post                                                                 |
@@ -239,7 +239,7 @@ No. Baloo does not require a Baloo-hosted backend. The running service reads rep
 
 ### Which models does Baloo support?
 
-Baloo supports Anthropic, Amazon Bedrock, Google, and OpenAI providers. The selected provider applies to every agent. See [docs/features/models.md](docs/features/models.md).
+Baloo supports Anthropic, Amazon Bedrock, Google, OpenAI, and Databricks AI Gateway providers. The selected provider applies to every agent. See [docs/features/models.md](docs/features/models.md) and [docs/features/databricks.md](docs/features/databricks.md).
 
 ### Is Baloo a replacement for CodeQL, Semgrep, Ruff, or other static analysis tools?
 

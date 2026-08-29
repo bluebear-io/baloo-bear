@@ -292,3 +292,26 @@ def test_resolve_short_name_helper():
     assert provider == "amazon-bedrock"
     assert model_id == "us.anthropic.claude-sonnet-4-6"
     assert max_turns == 20
+
+
+def test_databricks_tiers_resolve_to_unity_catalog_models(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    reset_settings()
+
+    assert get_agent_options("haiku").model == "system.ai.claude-haiku-4-5"
+    assert get_agent_options("sonnet").model == "system.ai.claude-sonnet-4-6"
+    assert get_agent_options("opus").model == "system.ai.claude-opus-4-6"
+    assert get_agent_options("sonnet").provider == "databricks"
+
+
+def test_databricks_provider_model_string(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    reset_settings()
+
+    opts = get_agent_options("databricks/system.ai.claude-opus-4-6")
+    assert opts.provider == "databricks"
+    assert opts.model == "system.ai.claude-opus-4-6"
