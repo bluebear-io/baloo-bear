@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     max_concurrent_reviews: int = Field(
         default=3,
+        ge=1,
+        le=100,
         description="Maximum number of PR reviews to process concurrently",
     )
     review_stale_timeout_minutes: int = Field(
@@ -175,6 +177,8 @@ class Settings(BaseSettings):
     )
     feedback_signals_ttl_days: int = Field(
         default=180,
+        ge=1,
+        le=3650,
         description="Days before unmatched feedback signals expire",
     )
 

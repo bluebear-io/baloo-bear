@@ -575,17 +575,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
                 _resolve_patch(
                     fidelity_enabled=False,
                     fp_verification_enabled=False,
                     feedback_signals_enabled=False,
+                    review_use_checks_api=False,
                 )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(_resolve_patch(feedback_signals_enabled=False))
-            stack.enter_context(_resolve_patch(review_use_checks_api=False))
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",
@@ -626,17 +627,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
                 _resolve_patch(
                     fidelity_enabled=False,
                     fp_verification_enabled=False,
                     feedback_signals_enabled=False,
+                    review_use_checks_api=False,
                 )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(_resolve_patch(feedback_signals_enabled=False))
-            stack.enter_context(_resolve_patch(review_use_checks_api=False))
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",

@@ -27,10 +27,13 @@
     </div>
   </div>
 
-  {% if error_rate > 10 %}
-  <div class="alert {% if error_rate > 25 %}alert--danger{% else %}alert--warn{% endif %}">
+  {# Any failure today is worth surfacing — a healthy overall rate can still
+     hide a bad day, which is exactly when you want to see it. #}
+  {% if errors_today > 0 or error_rate > 10 %}
+  <div class="alert {% if error_rate > 25 %}alert--danger{% elif error_rate > 10 %}alert--warn{% endif %}">
     <strong>Review health</strong> &mdash; {{ errors_today }} failure{{ '' if errors_today == 1 else 's' }}
     today, {{ error_rate }}% error rate across {{ errors_total }} total failures.
+    <a href="/dashboard/reviews?status=agent_error" style="margin-left:var(--space-2)">View failures →</a>
   </div>
   {% endif %}
 
@@ -93,7 +96,7 @@
           {% for review in recent_failures %}
           <tr>
             <td class="mono">{{ review.repo_full_name }}</td>
-            <td class="num">#{{ review.pr_number }}</td>
+            <td><a href="/dashboard/reviews/{{ review.id }}" class="num">#{{ review.pr_number }}</a></td>
             <td><span class="badge badge--danger">{{ review.error_category or 'unknown' }}</span></td>
             <td style="max-width:32rem">{{ review.error_message or '' }}</td>
             <td><time class="local-time" datetime="{{ review.started_at.isoformat() }}">{{ review.started_at }}</time></td>

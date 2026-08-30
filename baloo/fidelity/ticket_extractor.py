@@ -34,7 +34,9 @@ def extract_ticket_id(
     if prefix is None:
         prefix = resolve_setting("ticket_id_prefix")
 
-    pattern = re.compile(rf"{prefix}-(\d+)", re.IGNORECASE)
+    # Escaped even though validate_override restricts the prefix to word
+    # characters: the caller-supplied `prefix` argument bypasses that path.
+    pattern = re.compile(rf"{re.escape(prefix)}-(\d+)", re.IGNORECASE)
 
     # Try branch name first
     ticket_id = _extract_from_branch(branch_name, prefix, pattern)

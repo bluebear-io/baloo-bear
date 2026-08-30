@@ -348,6 +348,14 @@ async def handle_webhook(
         if action != "created":
             return {"status": "ignored", "event": event, "reason": f"action={action}"}
 
+        # This path is dispatched straight from the webhook, not through
+        # process_pr_review, so nothing else refreshes the override cache here.
+        # Without this, disabling the thread agent from the dashboard never
+        # takes effect on a replica that has not run a review.
+        from baloo.config.runtime_settings import ensure_fresh_cache
+
+        await ensure_fresh_cache()
+
         if not resolve_setting("thread_agent_enabled"):
             return {"status": "ignored", "event": event, "reason": "thread agent disabled"}
 

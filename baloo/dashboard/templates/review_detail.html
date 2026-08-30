@@ -6,7 +6,11 @@
 {% block title %}Review #{{ review.id }} - Baloo Dashboard{% endblock %}
 
 {% block page_actions %}
-<a class="btn btn--ghost" href="/dashboard/reviews">Back to reviews</a>
+<div style="display:flex;gap:var(--space-2)">
+  <a class="btn btn--ghost" href="https://github.com/{{ review.repo_full_name }}/pull/{{ review.pr_number }}"
+     target="_blank" rel="noopener">Open PR ↗</a>
+  <a class="btn btn--ghost" href="/dashboard/reviews">Back to reviews</a>
+</div>
 {% endblock %}
 
 {% block content %}
@@ -56,7 +60,23 @@
       <table class="table">
         <tbody>
           <tr><td>Author</td><td class="mono">{{ review.pr_author or '—' }}</td></tr>
-          <tr><td>Commit</td><td class="mono">{{ review.commit_sha[:12] if review.commit_sha else '—' }}</td></tr>
+          <tr>
+            <td>Commit</td>
+            <td class="mono">
+              {% if review.commit_sha %}
+              <a href="https://github.com/{{ review.repo_full_name }}/commit/{{ review.commit_sha }}"
+                 target="_blank" rel="noopener">{{ review.commit_sha[:12] }}</a>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>Auto-approved</td>
+            <td>{{ 'yes' if review.auto_approved else 'no' }}</td>
+          </tr>
+          <tr>
+            <td>PR total cost</td>
+            <td class="num">{{ '$%.4f'|format(review.pr_total_cost_usd) if review.pr_total_cost_usd else '—' }}</td>
+          </tr>
           <tr><td>Trigger</td><td class="mono">{{ review.trigger_reason or '—' }}</td></tr>
           <tr><td>Model</td><td class="mono">{{ review.model_used or '—' }}</td></tr>
           <tr><td>Tokens</td><td class="num">{{ review.tokens_input or 0 }} in / {{ review.tokens_output or 0 }} out</td></tr>
@@ -76,11 +96,17 @@
           <tr><th>Severity</th><th>Category</th><th>File</th><th class="num">Line</th><th>Description</th></tr>
         </thead>
         <tbody>
-          {% for finding in review.findings %}
+          {# Ordered severest-first by the route; see _sort_findings in router.py. #}
+          {% for finding in findings %}
           <tr>
             <td><span class="badge badge--{{ finding.severity | lower }}">{{ finding.severity | lower }}</span></td>
             <td>{{ finding.category }}</td>
-            <td class="mono">{{ finding.file_path }}</td>
+            <td class="mono">
+              {% if review.commit_sha %}
+              <a href="https://github.com/{{ review.repo_full_name }}/blob/{{ review.commit_sha }}/{{ finding.file_path }}{% if finding.line_number %}#L{{ finding.line_number }}{% endif %}"
+                 target="_blank" rel="noopener">{{ finding.file_path }}</a>
+              {% else %}{{ finding.file_path }}{% endif %}
+            </td>
             <td class="num">{{ finding.line_number if finding.line_number is not none else '—' }}</td>
             <td style="max-width:40rem">{{ finding.body }}</td>
           </tr>

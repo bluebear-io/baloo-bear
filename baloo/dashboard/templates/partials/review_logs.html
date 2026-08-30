@@ -7,7 +7,16 @@
       <tr>
         <td><time class="local-time-short" datetime="{{ log.created_at.isoformat() }}">{{ log.created_at }}</time></td>
         <td><span class="chip">{{ log.event_type }}</span></td>
-        <td style="max-width:48rem">{{ log.message }}</td>
+        <td style="max-width:48rem">
+          {{ log.message }}
+          {% if log.raw_text %}
+          {# Primary debugging payload for json_parse_failed / json_retry_failed. #}
+          <details style="margin-top:var(--space-2)">
+            <summary style="cursor:pointer;color:var(--text-muted);font-size:var(--text-xs)">Raw response</summary>
+            <pre class="mono" style="white-space:pre-wrap;word-break:break-word;font-size:var(--text-xs);margin:var(--space-2) 0 0">{{ log.raw_text }}</pre>
+          </details>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

@@ -149,6 +149,17 @@
                 <input class="field mono" type="text" name="value" value="{{ row.raw_value }}"
                        aria-label="{{ row.env_var }}">
                 {% endif %}
+                {% if row.source == "db" %}
+                {# Carries its own key so reverting one row never depends on JS
+                   trimming the other 22 pairs out of the submission. #}
+                <button type="submit" name="clear_key" value="{{ row.name }}"
+                        class="btn btn--ghost" formnovalidate
+                        title="Drop the database override and go back to the environment value">
+                  Revert to env
+                </button>
+                {% endif %}
+              {% elif row.control == "masked" %}
+                <span class="mono" style="color:var(--text-muted)">{{ row.value }}</span>
               {% else %}
                 <span class="mono" style="word-break:break-all;color:var(--text-muted)">{{ row.value }}</span>
               {% endif %}

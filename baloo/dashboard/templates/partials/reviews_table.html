@@ -10,7 +10,13 @@
       {% for review in reviews %}
       <tr>
         <td data-label="Repo" class="mono">{{ review.repo_full_name }}</td>
-        <td data-label="PR"><a href="/dashboard/reviews/{{ review.id }}" class="num">#{{ review.pr_number }}</a></td>
+        <td data-label="PR">
+          <a href="/dashboard/reviews/{{ review.id }}" class="num">#{{ review.pr_number }}</a>
+          {% if review.pr_title %}
+          {# Searchable server-side, so it has to be visible to search against. #}
+          <div class="setting-desc" style="font-size:var(--text-xs);max-width:24rem">{{ review.pr_title }}</div>
+          {% endif %}
+        </td>
         <td data-label="Author" class="mono">{{ review.pr_author or '—' }}</td>
         <td data-label="Status">
           <span class="badge {% if review.review_status == 'approved' %}badge--ok
@@ -21,7 +27,7 @@
         </td>
         <td data-label="Duration" class="num">{{ '%.1f'|format(review.duration_seconds) if review.duration_seconds else '—' }}s</td>
         <td data-label="Cost" class="num">{{ '$%.4f'|format(review.cost_usd) if review.cost_usd else '—' }}</td>
-        <td data-label="PR total" class="num">{{ '$%.4f'|format(review.pr_total_cost) if review.pr_total_cost else '—' }}</td>
+        <td data-label="PR total" class="num">{{ '$%.4f'|format(review.pr_total_cost_usd) if review.pr_total_cost_usd else '—' }}</td>
         <td data-label="Started"><time class="local-time" datetime="{{ review.started_at.isoformat() }}">{{ review.started_at }}</time></td>
       </tr>
       {% else %}

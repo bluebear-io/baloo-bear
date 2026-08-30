@@ -52,6 +52,8 @@ ALLOWED_DIRECT_READERS = {
     "baloo/dashboard/router.py",
     # Runs at startup, before the overlay cache exists.
     "baloo/db/engine.py",
+    # Startup banner, before the cache is loaded; the log says "(env)".
+    "main.py",
 }
 
 
@@ -99,15 +101,32 @@ def test_enum_override_resolves(overlay) -> None:
 
 
 def test_no_call_site_reads_a_mutable_key_directly() -> None:
-    """Guards against reintroducing the settings.X bypass."""
-    pattern = re.compile(r"settings\.(" + "|".join(sorted(MUTABLE_KEYS)) + r")\b")
+    """Guards against reintroducing the settings.X bypass.
+
+    Matches every shape the bypass actually took in this codebase, not just the
+    bare ``settings.`` one: ``get_settings().X`` and an aliased ``s = get_settings()``
+    followed by ``s.X`` were both real, and a name-only regex missed both.
+    """
+    keys = "|".join(sorted(MUTABLE_KEYS))
+    patterns = [
+        re.compile(r"get_settings\(\)\.(" + keys + r")\b"),
+        # Any short attribute access on a local settings alias, e.g. `s.foo`.
+        re.compile(r"\b[a-z_]{1,10}\.(" + keys + r")\b"),
+    ]
+    roots = [Path("baloo"), Path("scripts")]
+    files = [p for root in roots if root.exists() for p in sorted(root.rglob("*.py"))]
+    files.append(Path("main.py"))
+
     offenders = []
-    for path in sorted(Path("baloo").rglob("*.py")):
-        if str(path) in ALLOWED_DIRECT_READERS:
+    for path in files:
+        if str(path) in ALLOWED_DIRECT_READERS or not path.exists():
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
-            if pattern.search(line):
-                offenders.append(f"{path}:{lineno}: {line.strip()}")
+            stripped = line.strip()
+            if stripped.startswith("#") or "resolve_setting(" in line:
+                continue
+            if any(p.search(line) for p in patterns):
+                offenders.append(f"{path}:{lineno}: {stripped}")
 
     assert offenders == [], (
         "These read a mutable setting directly, so DB overrides are ignored. "
@@ -125,11 +144,18 @@ def test_auto_approve_is_opt_in() -> None:
     assert Settings.model_fields["review_auto_approve"].default is False
 
 
-def test_databricks_host_override_resolves(overlay) -> None:
-    """AGENT_PROVIDER is switchable from the dashboard, so its paired workspace
-    URL must be too — otherwise switching to Databricks needs a redeploy."""
-    overlay({"databricks_host": "https://dbc-override.cloud.databricks.com"})
-    assert resolve_setting("databricks_host") == "https://dbc-override.cloud.databricks.com"
+def test_databricks_host_is_never_dashboard_writable() -> None:
+    """DATABRICKS_HOST is the URL the gateway bearer token is sent to.
+
+    If it were settable from a web form, dashboard access alone would be enough
+    to repoint the gateway at an attacker-controlled host and have Baloo ship
+    DATABRICKS_TOKEN there on the next review.
+    """
+    from baloo.config.runtime_settings import RuntimeSettingsError, validate_override
+
+    assert "databricks_host" not in MUTABLE_KEYS
+    with pytest.raises(RuntimeSettingsError):
+        validate_override("databricks_host", "https://attacker.example.com")
 
 
 def test_databricks_token_is_never_a_setting() -> None:

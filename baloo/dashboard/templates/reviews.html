@@ -13,7 +13,7 @@
            placeholder="Search repo, PR title, author" style="flex:1 1 16rem" aria-label="Search reviews">
     <select class="field" name="status" aria-label="Filter by status">
       <option value="">All statuses</option>
-      {% for value in ["approved", "changes_requested", "commented", "error", "in_progress"] %}
+      {% for value in ["approved", "changes_requested", "commented", "error", "agent_error", "in_progress"] %}
       <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ value.replace('_', ' ') }}</option>
       {% endfor %}
     </select>

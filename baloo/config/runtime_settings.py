@@ -9,6 +9,7 @@ settings are never overridable.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, get_args, get_origin
 
@@ -21,10 +22,11 @@ MUTABLE_KEYS = frozenset(
         # Agent selection
         "agent_provider",
         "agent_model",
-        # Paired with agent_provider="databricks": switching provider from the
-        # dashboard is useless if the workspace URL needs a redeploy. The PAT
-        # stays env-only (DATABRICKS_TOKEN is not a Settings field).
-        "databricks_host",
+        # DATABRICKS_HOST is deliberately absent and must stay absent: it is the
+        # URL the gateway bearer token is sent to. If it were settable from a web
+        # form, dashboard access alone would be enough to repoint the gateway at
+        # an attacker-controlled host and have Baloo ship DATABRICKS_TOKEN there.
+        # Set it in the environment and restart.
         "pi_thinking_level",
         "fp_verification_model",
         "thread_agent_model",
@@ -135,12 +137,64 @@ def coerce_setting_value(key: str, raw: str) -> Any:
     return text
 
 
+#: Values a setting is allowed to take, where the field type alone is not
+#: enough. Enforced server-side: the HTML ``min``/``max``/``<select>`` are a
+#: convenience, and anything that only lives in the browser is not validation.
+ALLOWED_VALUES: dict[str, frozenset[str]] = {
+    "review_min_severity": frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"}),
+    "pi_thinking_level": frozenset({"off", "minimal", "low", "medium", "high"}),
+}
+
+#: Prefix is interpolated into a regex in fidelity/ticket_extractor.py, so it is
+#: restricted rather than escaped alone: a pattern like ``(a+)+`` would otherwise
+#: be a catastrophic-backtracking stall on the event loop.
+_TICKET_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]{1,32}$")
+
+
+def _numeric_bounds(key: str) -> tuple[Any, Any]:
+    """ge/le declared on the Settings field, if any."""
+    field = Settings.model_fields.get(key)
+    minimum = maximum = None
+    for item in getattr(field, "metadata", ()) or ():
+        minimum = getattr(item, "ge", minimum)
+        maximum = getattr(item, "le", maximum)
+    return minimum, maximum
+
+
 def validate_override(key: str, raw: str) -> str:
     """Validate an override and return the canonical string to store."""
     if key not in MUTABLE_KEYS:
         raise RuntimeSettingsError(f"Setting is not mutable at runtime: {key}")
 
     coerced = coerce_setting_value(key, raw)
+
+    if isinstance(coerced, (int, float)) and not isinstance(coerced, bool):
+        minimum, maximum = _numeric_bounds(key)
+        if minimum is not None and coerced < minimum:
+            raise RuntimeSettingsError(f"{key} must be >= {minimum} (got {coerced})")
+        if maximum is not None and coerced > maximum:
+            raise RuntimeSettingsError(f"{key} must be <= {maximum} (got {coerced})")
+
+    allowed = ALLOWED_VALUES.get(key)
+    if allowed is not None and str(coerced) not in allowed:
+        raise RuntimeSettingsError(
+            f"{key} must be one of: {', '.join(sorted(allowed))} (got {coerced!r})"
+        )
+
+    # Empty is reported by the non-empty check below, which gives a better message.
+    if key == "agent_provider" and str(coerced).strip():
+        from baloo.agent.tiers import PROVIDER_TIER_MODELS
+
+        if str(coerced) not in PROVIDER_TIER_MODELS:
+            raise RuntimeSettingsError(
+                f"Unknown provider {coerced!r}. Valid: "
+                f"{', '.join(sorted(PROVIDER_TIER_MODELS))}"
+            )
+
+    if key == "ticket_id_prefix" and not _TICKET_PREFIX_RE.match(str(coerced)):
+        raise RuntimeSettingsError(
+            f"{key} must be 1-32 letters, digits, or underscores (got {coerced!r})"
+        )
 
     if key in {
         "agent_provider",
