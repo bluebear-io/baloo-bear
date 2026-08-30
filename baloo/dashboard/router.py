@@ -18,6 +18,7 @@ from baloo.config.runtime_settings import (
     RuntimeSettingsError,
     _unwrap_optional,
     clear_override,
+    coerce_setting_value,
     ensure_fresh_cache,
     resolve_setting,
     set_override,
@@ -652,8 +653,13 @@ async def update_settings(
     # Skip writes that would store the value the setting already resolves to,
     # so a client that submits every field (no JS, say) does not convert the
     # whole page from env to permanent db overrides in one click.
+    # Compare coerced values, not strings: the toggle inputs emit "true"/"false"
+    # while ``str(True)`` is "True", so a raw string compare never matches for a
+    # bool and every checkbox would be written as a db override.
     pending = [
-        (key, value) for key, value in zip(keys, values) if str(resolve_setting(key)) != value
+        (key, value)
+        for key, value in zip(keys, values)
+        if coerce_setting_value(key, value) != resolve_setting(key)
     ]
     if not pending:
         return _settings_redirect(message="No changes to save.")

@@ -460,3 +460,72 @@ def test_env_only_rows_explain_why_they_are_not_editable(monkeypatch) -> None:
     assert "cannot be changed from this page" in response.text
     # DATABRICKS_HOST is the row that prompted this: env-only and often empty.
     assert "DATABRICKS_HOST" in response.text
+
+
+def test_dashboard_settings_save_skips_unchanged_booleans(monkeypatch) -> None:
+    # The toggle inputs submit "true"/"false", but ``str(True)`` is "True", so a
+    # raw string compare made every boolean look changed and a no-JS full-form
+    # save converted every env-sourced toggle into a permanent db override.
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("REVIEW_AUTO_APPROVE", "false")
+    monkeypatch.setenv("THREAD_AGENT_ENABLED", "true")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.set_override", new=AsyncMock()) as set_mock:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={
+                    "key": ["review_auto_approve", "thread_agent_enabled"],
+                    "value": ["false", "true"],
+                    "action": "save",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            follow = client.get(response.headers["location"])
+
+    set_mock.assert_not_awaited()
+    assert "No changes to save" in follow.text
+
+
+def test_dashboard_settings_save_writes_flipped_boolean(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("REVIEW_AUTO_APPROVE", "false")
+    monkeypatch.setenv("THREAD_AGENT_ENABLED", "true")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        return value
+
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set) as set_mock:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={
+                    "key": ["review_auto_approve", "thread_agent_enabled"],
+                    "value": ["true", "true"],
+                    "action": "save",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            follow = client.get(response.headers["location"])
+
+    assert set_mock.await_count == 1
+    assert set_mock.await_args.args[:2] == ("review_auto_approve", "true")
+    assert "Updated 1 setting" in follow.text
