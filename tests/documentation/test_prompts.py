@@ -4,7 +4,7 @@ from baloo.documentation.models import (
     DocumentationWorkItem,
     DocumentationWorkItemMatch,
 )
-from baloo.documentation.prompts import build_documentation_drift_prompt
+from baloo.documentation.prompts import MAX_DIFF_CHARS, build_documentation_drift_prompt
 from baloo.github.models import (
     FileChange,
     PRContext,
@@ -111,3 +111,17 @@ def test_prompt_forbids_file_edits():
 
     assert "Do not edit files" in prompt
     assert "Do not create branches" in prompt
+
+
+def test_prompt_truncates_oversized_diff():
+    pr_context = _pr_context()
+    pr_context.diff = "x" * (MAX_DIFF_CHARS + 5000)
+
+    prompt = build_documentation_drift_prompt(
+        pr_context=pr_context,
+        work_item=_work_item(),
+        catalog_path=".baloo/documentation-catalog.json",
+    )
+
+    assert "[diff truncated" in prompt
+    assert len(prompt) < MAX_DIFF_CHARS + 5000

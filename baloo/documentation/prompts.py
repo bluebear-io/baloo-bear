@@ -7,6 +7,11 @@ import json
 from baloo.documentation.models import DocumentationWorkItem
 from baloo.github.models import PRContext
 
+# ponytail: flat char cap instead of token counting. The agent has the repo
+# checked out and can read any file it needs, so a clipped diff is enough
+# signal. Raise if drift analysis starts missing large PRs.
+MAX_DIFF_CHARS = 60_000
+
 DOCUMENTATION_DRIFT_SYSTEM_PROMPT = """You are Baloo's documentation drift reviewer.
 
 You run during pull request review. Your audience is the PR author. Your job is
@@ -38,13 +43,19 @@ def build_documentation_drift_prompt(
                 "additions": file.additions,
                 "deletions": file.deletions,
                 "changes": file.changes,
-                "patch": file.patch,
             }
             for file in pr_context.files_changed
         ],
         indent=2,
         sort_keys=True,
     )
+
+    diff = pr_context.diff or ""
+    if len(diff) > MAX_DIFF_CHARS:
+        diff = (
+            diff[:MAX_DIFF_CHARS]
+            + "\n\n[diff truncated - read the changed files in the repo checkout for full context]"
+        )
 
     return f"""Review this pull request for documentation drift.
 
@@ -103,6 +114,6 @@ Changed files:
 
 PR diff:
 ```diff
-{pr_context.diff}
+{diff}
 ```
 """
