@@ -77,14 +77,41 @@
     });
   });
 
-  if (search) {
-    search.addEventListener("input", function () {
-      var q = search.value.trim().toLowerCase();
-      rows.forEach(function (row) {
-        row.hidden = q !== "" && row.getAttribute("data-search").indexOf(q) === -1;
-      });
+  /* Filtering. Advanced settings are hidden until asked for, but a search
+     always looks through everything — otherwise the box appears broken when
+     it can't find a setting the user knows exists. A category card whose rows
+     are all hidden is hidden too, so filtering never leaves empty cards. */
+  var showAdvanced = document.getElementById("show-advanced");
+  var advancedCount = document.getElementById("advanced-count");
+  var cards = Array.prototype.slice.call(document.querySelectorAll(".settings-layout .card"));
+
+  if (advancedCount) {
+    advancedCount.textContent = rows.filter(function (row) {
+      return row.getAttribute("data-tier") === "advanced";
+    }).length;
+  }
+
+  function applyFilter() {
+    var q = search ? search.value.trim().toLowerCase() : "";
+    var searching = q !== "";
+    var wantAdvanced = searching || (showAdvanced && showAdvanced.checked);
+
+    rows.forEach(function (row) {
+      var matches = !searching || row.getAttribute("data-search").indexOf(q) !== -1;
+      var tierOk = wantAdvanced || row.getAttribute("data-tier") !== "advanced";
+      row.hidden = !(matches && tierOk);
+    });
+
+    cards.forEach(function (card) {
+      var visible = card.querySelectorAll(".setting-row:not([hidden])").length;
+      // Cards without setting rows (e.g. "Models in use") are left alone.
+      card.hidden = card.querySelectorAll(".setting-row").length > 0 && visible === 0;
     });
   }
 
+  if (search) search.addEventListener("input", applyFilter);
+  if (showAdvanced) showAdvanced.addEventListener("change", applyFilter);
+
+  applyFilter();
   refresh();
 })();

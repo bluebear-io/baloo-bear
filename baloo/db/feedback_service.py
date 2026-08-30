@@ -91,7 +91,9 @@ class FeedbackService:
         if not resolve_setting("feedback_signals_enabled") or not settings.database_enabled:
             return []
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=settings.feedback_signals_ttl_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=resolve_setting("feedback_signals_ttl_days")
+        )
 
         session_factory = get_session_factory(settings.database_url)
         async with session_factory() as session:

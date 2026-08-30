@@ -22,7 +22,11 @@ from typing import Any
 
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
-from baloo.agent.tiers import AGENT_MAX_TURNS, PROVIDER_TIER_MODELS
+from baloo.agent.tiers import (
+    AGENT_MAX_TURNS,
+    PROVIDER_TIER_MODELS,
+    RETRY_TURN_BUDGET,
+)
 from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import Settings, get_settings
 
@@ -794,7 +798,7 @@ Serialized payload:
             provider=self.options.provider,
             system_prompt=self._JSON_RETRY_SYSTEM_PROMPT,
             thinking_level="off",
-            max_turns=2,
+            max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
         )
 

@@ -163,13 +163,15 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 |---|---|---|
 | Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`, `DATABRICKS_HOST` | select / text |
 | Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
-| Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS` | select / number |
+| Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS`, `MAX_CONCURRENT_REVIEWS`, `FEEDBACK_SIGNALS_TTL_DAYS`, `TICKET_ID_PREFIX`, `FIDELITY_PLAN_PATH_PATTERN` | select / number / text |
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
 
 `DATABRICKS_HOST` is overridable so that switching `AGENT_PROVIDER` to `databricks` from the dashboard is actually usable — the workspace URL would otherwise need a redeploy. The paired `DATABRICKS_TOKEN` is deliberately *not* a setting at all: it stays an environment variable passed through to the agent sandbox, so it can never be read or written from the dashboard.
 
-`LOG_RETENTION_DAYS` is read once at startup, so a change to it takes effect on the next restart rather than within the cache TTL. Every other mutable key takes effect on the next review.
+`LOG_RETENTION_DAYS` and `MAX_CONCURRENT_REVIEWS` are read once at startup, so a change to either takes effect on the next restart rather than within the cache TTL. The Settings page marks them **restart required** so a saved value is not mistaken for a live one. Every other mutable key takes effect on the next review.
+
+Settings are grouped into three tiers on the dashboard: **required** (Baloo will not run without them), **common** (what operators actually tune), and **advanced** (everything else, hidden behind a *Show advanced* toggle). Searching always looks through all three.
 
 The Settings page validates each field against its type and bounds before writing, and a batch save is all-or-nothing: if any field in the batch is invalid, nothing is written.
 

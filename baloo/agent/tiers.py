@@ -29,6 +29,14 @@ TIER_MAX_TURNS: dict[str, int] = {
 #: provider/model string). Follows the standard tier.
 AGENT_MAX_TURNS = TIER_MAX_TURNS["standard"]
 
+#: One prompt, one answer. Used by agents with no tool loop to run — the
+#: provider smoke probe and the sync scope decider.
+SINGLE_TURN = 1
+
+#: One answer plus one retry. Used where a malformed reply is recoverable by
+#: asking again: FP verification, thread replies, and the JSON retry spawn.
+RETRY_TURN_BUDGET = 2
+
 # Short names are tier aliases. Which backend they hit is controlled by
 # AGENT_PROVIDER — the model split (economy / standard / premium) is an
 # implementation detail of each Baloo agent role, not a separate provider.

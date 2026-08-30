@@ -119,6 +119,26 @@ def test_immutable_key_is_rejected() -> None:
     set_override.assert_not_awaited()
 
 
+def test_every_row_has_a_tier() -> None:
+    for row in _settings_rows():
+        assert row["tier"] in {"required", "common", "advanced"}
+
+
+def test_credentials_are_required_tier() -> None:
+    """The settings you cannot run Baloo without must not hide under Advanced."""
+    by_name = {row["name"]: row for row in _settings_rows()}
+    for name in ("github_app_id", "github_private_key", "github_webhook_secret"):
+        assert by_name[name]["tier"] == "required"
+
+
+def test_startup_only_settings_are_flagged() -> None:
+    """A setting read once at startup must say so, or the page implies a live change."""
+    by_name = {row["name"]: row for row in _settings_rows()}
+    assert by_name["max_concurrent_reviews"]["restart_required"] is True
+    assert by_name["log_retention_days"]["restart_required"] is True
+    assert by_name["agent_model"]["restart_required"] is False
+
+
 def test_categories_are_contiguous() -> None:
     """Each category renders as one card, not several.
 

@@ -58,9 +58,10 @@ USER baloo
 # Expose port
 EXPOSE 8000
 
-# Health check
+# Health check. Reads APP_PORT so a changed port doesn't leave the container
+# permanently unhealthy while the app is serving fine.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f "http://localhost:${APP_PORT:-8000}/health" || exit 1
 
 # Run the application
 CMD ["python", "main.py"]

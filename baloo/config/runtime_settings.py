@@ -43,8 +43,17 @@ MUTABLE_KEYS = frozenset(
         "thread_agent_max_replies",
         "fidelity_approval_threshold",
         "log_retention_days",
+        "ticket_id_prefix",
+        "fidelity_plan_path_pattern",
+        "feedback_signals_ttl_days",
+        "max_concurrent_reviews",
     }
 )
+
+# Mutable keys that are read once during startup. The override is stored and
+# shown immediately, but only takes effect on the next restart — the settings
+# page says so rather than implying the change is live.
+RESTART_REQUIRED_KEYS = frozenset({"log_retention_days", "max_concurrent_reviews"})
 
 CACHE_TTL_SECONDS = 30
 

@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from baloo.config.runtime_settings import (
     MUTABLE_KEYS,
+    RESTART_REQUIRED_KEYS,
     RuntimeSettingsError,
     _unwrap_optional,
     clear_override,
@@ -202,6 +203,53 @@ def _setting_category(name: str) -> str:
     return "Other"
 
 
+# Three tiers so a newcomer meeting 50 settings knows which ones matter.
+# "Required" is what Baloo will not run without; "Common" is what an operator
+# actually tunes; everything else is Advanced and collapses by default.
+REQUIRED_SETTINGS = frozenset(
+    {
+        "github_app_id",
+        "github_private_key",
+        "github_webhook_secret",
+        "anthropic_api_key",
+    }
+)
+
+COMMON_SETTINGS = frozenset(
+    {
+        "agent_provider",
+        "agent_model",
+        "databricks_host",
+        "pi_thinking_level",
+        "review_auto_approve",
+        "review_min_severity",
+        "review_use_checks_api",
+        "ticket_id_prefix",
+        "fp_verification_enabled",
+        "thread_agent_enabled",
+        "documentation_drift_enabled",
+        "fidelity_enabled",
+        "ast_tools_enabled",
+        "feedback_signals_enabled",
+        "database_enabled",
+        "database_url",
+        "dashboard_username",
+        "dashboard_password",
+        "log_level",
+        "app_environment",
+        "max_concurrent_reviews",
+    }
+)
+
+
+def _setting_tier(name: str) -> str:
+    if name in REQUIRED_SETTINGS:
+        return "required"
+    if name in COMMON_SETTINGS:
+        return "common"
+    return "advanced"
+
+
 SECRET_PATTERNS = ("_key", "_secret", "_password", "_token")
 
 REVIEW_SEVERITY_CHOICES = (
@@ -282,6 +330,8 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "minimum": minimum,
                 "maximum": maximum,
                 "bool_value": bool(effective) if control == "toggle" else None,
+                "restart_required": name in RESTART_REQUIRED_KEYS,
+                "tier": _setting_tier(name),
             }
         )
 

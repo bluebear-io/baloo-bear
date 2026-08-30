@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.repo_provision import provision_repo
+from baloo.agent.tiers import SINGLE_TURN
 from baloo.config.runtime_settings import ensure_fresh_cache, resolve_setting
 from baloo.config.settings import settings
 from baloo.db.service import DuplicateReviewError, ReviewCompleteDTO, ReviewService
@@ -92,9 +93,10 @@ def get_review_semaphore() -> asyncio.Semaphore:
     """Get or create the review semaphore with the configured limit."""
     global review_semaphore
     if review_semaphore is None:
-        review_semaphore = asyncio.Semaphore(settings.max_concurrent_reviews)
+        review_semaphore = asyncio.Semaphore(resolve_setting("max_concurrent_reviews"))
         logger.info(
-            f"Initialized review queue with max {settings.max_concurrent_reviews} concurrent reviews"
+            f"Initialized review queue with max "
+            f"{resolve_setting('max_concurrent_reviews')} concurrent reviews"
         )
     return review_semaphore
 
@@ -362,7 +364,7 @@ async def _decide_synchronize_review_mode(
     """Ask PI whether synchronize should use scoped or full PR context."""
     options = get_agent_options()
     options.system_prompt = _SYNC_SCOPE_DECIDER_SYSTEM_PROMPT
-    options.max_turns = 1
+    options.max_turns = SINGLE_TURN
     options.no_tools = True
     options.thinking_level = "minimal"
     options.name = "SyncScopeDecider"
@@ -789,7 +791,7 @@ async def _run_fidelity_analysis(
             logger.info("Fidelity: No ticket ID found in PR metadata")
             return format_fidelity_report(no_ticket=True), None
 
-        plan_path = settings.fidelity_plan_path_pattern.format(ticket_id=ticket_id)
+        plan_path = resolve_setting("fidelity_plan_path_pattern").format(ticket_id=ticket_id)
         plan_content = await fetch_plan_content(
             github_client,
             repo_full_name,

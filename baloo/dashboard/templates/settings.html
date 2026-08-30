@@ -51,9 +51,18 @@
     </div>
   </div>
 
-  <input class="field" type="search" id="settings-search"
-         placeholder="Filter settings by name, variable, or description"
-         aria-label="Filter settings" style="width:100%">
+  <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">
+    <input class="field" type="search" id="settings-search"
+           placeholder="Filter settings by name, variable, or description"
+           aria-label="Filter settings" style="flex:1 1 20rem">
+    <label class="toggle" for="show-advanced">
+      <input type="checkbox" id="show-advanced">
+      <span class="toggle-track"></span>
+      <span style="font-size:var(--text-sm);white-space:nowrap">
+        Show advanced <span class="chip" id="advanced-count"></span>
+      </span>
+    </label>
+  </div>
 
   <form method="post" action="/dashboard/settings" id="settings-form">
     <div class="settings-layout">
@@ -80,7 +89,7 @@
               <div>
           {% endif %}
 
-          <div class="setting-row"
+          <div class="setting-row" data-tier="{{ row.tier }}"
                data-search="{{ (row.env_var ~ ' ' ~ row.name ~ ' ' ~ row.description) | lower }}">
             <div>
               <div class="setting-name">{{ row.env_var }}</div>
@@ -105,6 +114,12 @@
                 <span class="badge" title="Set through the environment, then restart. Not editable from the dashboard.">env only</span>
                 {% endif %}
                 <span class="chip">default: {{ row.default }}</span>
+                {% if row.tier == "required" %}
+                <span class="badge badge--high">required</span>
+                {% endif %}
+                {% if row.restart_required %}
+                <span class="badge badge--medium" title="Read once at startup">restart required</span>
+                {% endif %}
               </div>
             </div>
 
