@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "baloo"
-version = "2.2.1"
+version = "2.3.0"
 description = "AI-powered GitHub code review agent using PI"
 readme = "README.md"
 requires-python = ">=3.10"
