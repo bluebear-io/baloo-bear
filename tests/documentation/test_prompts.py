@@ -124,4 +124,23 @@ def test_prompt_truncates_oversized_diff():
     )
 
     assert "[diff truncated" in prompt
-    assert len(prompt) < MAX_DIFF_CHARS + 5000
+    # Pin the cap directly rather than bounding the whole prompt: a total-length
+    # assertion passes even with truncation removed if the template is small,
+    # and fails spuriously when the template grows.
+    assert "x" * MAX_DIFF_CHARS in prompt
+    assert "x" * (MAX_DIFF_CHARS + 1) not in prompt
+
+
+def test_prompt_keeps_undersized_diff_intact():
+    """The other half of the invariant: nothing under the cap gets clipped."""
+    pr_context = _pr_context()
+    pr_context.diff = "y" * 100
+
+    prompt = build_documentation_drift_prompt(
+        pr_context=pr_context,
+        work_item=_work_item(),
+        catalog_path=".baloo/documentation-catalog.json",
+    )
+
+    assert "[diff truncated" not in prompt
+    assert "y" * 100 in prompt
