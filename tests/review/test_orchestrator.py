@@ -1187,3 +1187,29 @@ class TestAgentErrorSuppressesApproval:
 
         body = gc.edit_comment.call_args.args[2]
         assert "failed" in body and "not reviewed" in body
+
+
+def test_build_db_findings_keeps_findings_github_could_not_place_inline():
+    """A blocking finding GitHub refuses to place inline must still be persisted.
+
+    Regression: production review 7567 landed as `changes_requested` with zero
+    rows in `findings`, because the only finding was dropped for an invalid
+    diff line. The dashboard showed a blocked review with no reason.
+    """
+    from baloo.github.models import FindingCategory, ReviewComment, ReviewSeverity
+    from baloo.review.orchestrator import _build_db_findings
+
+    dropped = ReviewComment(
+        path="baloo/agent/config.py",
+        line=999,
+        body="Line is outside the diff hunk.",
+        severity=ReviewSeverity.HIGH,
+        category=FindingCategory.BUGS,
+    )
+    placed = ReviewComment(path="main.py", line=1, body="Placed fine.")
+
+    rows = _build_db_findings([dropped, placed])
+
+    assert [r["file_path"] for r in rows] == ["baloo/agent/config.py", "main.py"]
+    assert rows[0]["line_number"] == 999
+    assert rows[0]["severity"] == ReviewSeverity.HIGH

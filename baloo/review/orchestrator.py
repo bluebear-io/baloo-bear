@@ -681,16 +681,13 @@ def _calculate_similarity(s1: str, s2: str) -> float:
     return sim
 
 
-def _build_db_findings(
-    comments: list[ReviewComment],
-    posted_review_result: PostedReviewResult | None,
-) -> list[dict]:
-    """Build the findings list for DB storage, excluding dropped comments."""
-    dropped_ids: set[int] = (
-        {id(d.comment) for d in posted_review_result.dropped}
-        if posted_review_result and posted_review_result.dropped
-        else set()
-    )
+def _build_db_findings(comments: list[ReviewComment]) -> list[dict]:
+    """Build the findings list for DB storage.
+
+    Findings GitHub refused to place inline (line not in the diff) are kept:
+    the review still blocked on them, so dropping them left the dashboard
+    showing a `changes_requested` review with zero findings and no reason.
+    """
     return [
         {
             "file_path": c.path,
@@ -700,7 +697,6 @@ def _build_db_findings(
             "body": c.body,
         }
         for c in comments
-        if id(c) not in dropped_ids
     ]
 
 
@@ -1896,7 +1892,7 @@ async def process_pr_review(
                     fidelity_score=(fidelity_result.fidelity_score if fidelity_result else None),
                     error_message=error_detail,
                     error_category=error_category,
-                    findings=_build_db_findings(decision_comments, posted_review_result),
+                    findings=_build_db_findings(decision_comments),
                 )
 
                 await ReviewService.complete_review(
