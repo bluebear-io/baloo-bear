@@ -17,10 +17,13 @@ SHORT_NAME_TIERS: dict[str, tuple[str, int]] = {
     # Economy — FP verification, thread replies, simple reviews
     "flash": ("economy", 10),
     "haiku": ("economy", 10),
-    # Standard — default code reviews
-    "standard": ("standard", 20),
-    "gemini-pro": ("standard", 20),
-    "sonnet": ("standard", 20),
+    # Standard — default code reviews. 30, not 20: at 20 the finished-run
+    # histogram decayed smoothly to ~11 runs at turn 19 and then spiked to 86
+    # at exactly 20, with a further 66 aborting there having produced no
+    # output — a wall, not a distribution.
+    "standard": ("standard", 30),
+    "gemini-pro": ("standard", 30),
+    "sonnet": ("standard", 30),
     # Premium — complex / security-sensitive reviews
     "premium": ("premium", 30),
     "gemini-3.1-pro": ("premium", 30),

@@ -96,7 +96,8 @@ def _format_findings(findings: list[DocumentationDriftFinding]) -> list[str]:
         lines.append(f"- `{finding.doc_path}`")
         if finding.suggested_update:
             lines.append(f"  - {finding.suggested_update}")
-        lines.append(f"  - Rationale: {finding.rationale}")
+        if finding.rationale:
+            lines.append(f"  - Rationale: {finding.rationale}")
         if finding.evidence:
             evidence = ", ".join(f"`{item}`" for item in finding.evidence)
             lines.append(f"  - Evidence: {evidence}")
