@@ -64,3 +64,26 @@ class TestProviderCredentialValidation:
         # The check must be provider-scoped; anthropic/bedrock have no host.
         for provider in ("anthropic", "amazon-bedrock", "google", "openai"):
             assert Settings(agent_provider=provider, databricks_host="").agent_provider == provider
+
+
+class TestAgentProviderNormalization:
+    """Provider tokens are lowercase everywhere they are consumed."""
+
+    @pytest.mark.parametrize("raw", ["Databricks", "DATABRICKS", "  databricks  "])
+    def test_provider_is_canonicalized(self, raw):
+        s = Settings(
+            agent_provider=raw,
+            databricks_host="https://dbc-test.cloud.databricks.com",
+        )
+        assert s.agent_provider == "databricks"
+
+    def test_mixed_case_still_trips_the_host_guard(self):
+        # Without normalization the guard silently passes, the app starts, and
+        # every review fails — the exact failure this validator exists to stop.
+        with pytest.raises(ValidationError) as exc:
+            Settings(agent_provider="Databricks", databricks_host="")
+        assert "DATABRICKS_HOST" in str(exc.value)
+
+    def test_normalization_applies_to_every_provider(self):
+        assert Settings(agent_provider="Amazon-Bedrock").agent_provider == "amazon-bedrock"
+        assert Settings(agent_provider="Anthropic").agent_provider == "anthropic"

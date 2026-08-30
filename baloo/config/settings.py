@@ -235,6 +235,23 @@ class Settings(BaseSettings):
         description="Linear GraphQL API endpoint",
     )
 
+    @field_validator("agent_provider", mode="before")
+    @classmethod
+    def normalize_agent_provider(cls, v: object) -> object:
+        """Canonicalize the provider token to lowercase.
+
+        Provider tokens are lowercase everywhere they are consumed — the
+        ``PROVIDER_TIER_MODELS`` catalog, the ``databricks`` comparison in
+        ``pi_runtime``, and pi's own ``--provider`` argument. Without this,
+        ``AGENT_PROVIDER=Databricks`` passes every check by not matching any of
+        them and reaches pi verbatim, which fails per review with
+        ``Unknown provider "Databricks"``. Normalizing once here keeps the rest
+        of the system free of case-insensitive comparisons.
+        """
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
     @model_validator(mode="after")
     def check_provider_credentials(self) -> "Settings":
         """Reject a provider selection whose required settings are missing.

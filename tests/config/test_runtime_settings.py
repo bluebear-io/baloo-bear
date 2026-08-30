@@ -272,3 +272,16 @@ def test_fidelity_agent_keeps_medium_thinking_level(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     assert FidelityAgent().options.thinking_level == "medium"
+
+
+def test_validate_override_canonicalizes_agent_provider() -> None:
+    # A dashboard override must land in the same lowercase form as the env
+    # value, or it reaches pi verbatim and fails with Unknown provider.
+    assert validate_override("agent_provider", "  Databricks ") == "databricks"
+
+
+def test_validate_override_leaves_model_ids_untouched() -> None:
+    # Model IDs are provider-defined and may be case-sensitive; only the
+    # provider token is canonicalized.
+    arn = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/AbC123"
+    assert validate_override("agent_model", f"  {arn} ") == arn

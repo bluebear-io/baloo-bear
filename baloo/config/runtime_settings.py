@@ -117,6 +117,12 @@ def validate_override(key: str, raw: str) -> str:
     }:
         if not isinstance(coerced, str) or not coerced.strip():
             raise RuntimeSettingsError(f"{key} must be a non-empty string")
+        # Provider tokens are lowercase wherever they are consumed, so store the
+        # canonical form — matching Settings.normalize_agent_provider, which does
+        # the same for the environment-configured value. Model IDs are left
+        # alone: those are provider-defined and may be case-sensitive.
+        if key == "agent_provider":
+            return coerced.strip().lower()
         return coerced.strip()
 
     return str(coerced)
