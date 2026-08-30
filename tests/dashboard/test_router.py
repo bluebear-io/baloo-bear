@@ -437,3 +437,26 @@ def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
 
     assert "Updated AGENT_PROVIDER" in follow.text
     assert "Smoke test failed for amazon-bedrock" in follow.text
+
+
+def test_env_only_rows_explain_why_they_are_not_editable(monkeypatch) -> None:
+    # An empty, uneditable field with an em-dash source reads as a bug. Env-only
+    # settings must say so and name the variable to set.
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        response = TestClient(app).get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "env only" in response.text
+    assert "cannot be changed from this page" in response.text
+    # DATABRICKS_HOST is the row that prompted this: env-only and often empty.
+    assert "DATABRICKS_HOST" in response.text

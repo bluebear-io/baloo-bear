@@ -298,6 +298,7 @@ def test_databricks_tiers_resolve_to_unity_catalog_models(monkeypatch):
     from baloo.agent.config import get_agent_options
 
     monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    monkeypatch.setenv("DATABRICKS_HOST", "https://dbc-test.cloud.databricks.com")
     reset_settings()
 
     assert get_agent_options("haiku").model == "system.ai.claude-haiku-4-5"
@@ -310,6 +311,7 @@ def test_databricks_provider_model_string(monkeypatch):
     from baloo.agent.config import get_agent_options
 
     monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    monkeypatch.setenv("DATABRICKS_HOST", "https://dbc-test.cloud.databricks.com")
     reset_settings()
 
     opts = get_agent_options("databricks/system.ai.claude-opus-4-6")

@@ -140,12 +140,18 @@
                 <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">env</span>
                 {% endif %}
               {% else %}
-              <span class="text-gray-400 text-xs">—</span>
+              <span
+                class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                title="Set through the environment, then restart. Not editable from the dashboard."
+              >env only</span>
               {% endif %}
             </td>
             <td class="px-4 py-3 text-sm font-mono text-gray-500 max-w-sm break-all">{{ row.default }}</td>
             <td class="px-4 py-3 text-sm text-gray-600 min-w-64">
               {{ row.description }}
+              {% if not row.mutable %}
+              <span class="block mt-1 text-xs text-gray-500">Set <code class="font-mono">{{ row.env_var }}</code> in the environment and restart to apply; it cannot be changed from this page.</span>
+              {% endif %}
               {% if row.name == "agent_provider" %}
               <span class="block mt-1 text-xs text-gray-500">Applies to all Baloo agents. Short names (<code class="font-mono">haiku</code>/<code class="font-mono">sonnet</code>/<code class="font-mono">opus</code>) resolve to that provider's tier models; override with a bare model ID when needed.</span>
               {% endif %}

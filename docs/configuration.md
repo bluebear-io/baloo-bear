@@ -66,7 +66,7 @@ pi has no native Databricks provider, so Baloo generates a `models.json` registe
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABRICKS_HOST` | Yes | — | Workspace URL, e.g. `https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`. A trailing `/ai-gateway/anthropic` is accepted and stripped |
+| `DATABRICKS_HOST` | Yes | — | Workspace URL, e.g. `https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`. A trailing `/ai-gateway/anthropic` is accepted and stripped. Environment-only (shown as `env only` on the dashboard); missing it with `AGENT_PROVIDER=databricks` fails at startup |
 | `DATABRICKS_TOKEN` | Yes | — | Workspace PAT (`dapi...`). Read by pi at request time; never written to the generated config |
 
 Example:

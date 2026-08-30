@@ -272,3 +272,34 @@ def test_fidelity_agent_keeps_medium_thinking_level(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     assert FidelityAgent().options.thinking_level == "medium"
+
+
+def test_validate_override_canonicalizes_agent_provider() -> None:
+    # A dashboard override must land in the same lowercase form as the env
+    # value, or it reaches pi verbatim and fails with Unknown provider.
+    assert validate_override("agent_provider", "  Databricks ") == "databricks"
+
+
+def test_resolve_setting_canonicalizes_a_legacy_mixed_case_row(monkeypatch) -> None:
+    # A row stored before agent_provider was normalized on write must still read
+    # back canonical, or it reaches pi verbatim and every review fails with
+    # Unknown provider. Normalizing on read means no data migration is needed.
+    import baloo.config.runtime_settings as rs
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    monkeypatch.setattr(rs, "_cache", {"agent_provider": "Databricks"})
+
+    assert resolve_setting("agent_provider") == "databricks"
+
+
+def test_coerce_setting_value_canonicalizes_agent_provider() -> None:
+    assert coerce_setting_value("agent_provider", "  DATABRICKS ") == "databricks"
+
+
+def test_validate_override_leaves_model_ids_untouched() -> None:
+    # Model IDs are provider-defined and may be case-sensitive; only the
+    # provider token is canonicalized.
+    arn = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/AbC123"
+    assert validate_override("agent_model", f"  {arn} ") == arn
