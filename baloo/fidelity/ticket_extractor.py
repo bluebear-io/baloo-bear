@@ -3,7 +3,7 @@
 import logging
 import re
 
-from baloo.config.settings import get_settings
+from baloo.config.runtime_settings import resolve_setting
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +26,17 @@ def extract_ticket_id(
         branch_name: Git branch name
         pr_title: PR title
         pr_description: PR description/body
-        prefix: Optional prefix override (defaults to settings.ticket_id_prefix)
+        prefix: Optional prefix override (defaults to TICKET_ID_PREFIX)
 
     Returns:
         Normalized ticket ID (e.g., "PROJ-123") or None if not found
     """
     if prefix is None:
-        prefix = get_settings().ticket_id_prefix
+        prefix = resolve_setting("ticket_id_prefix")
 
-    pattern = re.compile(rf"{prefix}-(\d+)", re.IGNORECASE)
+    # Escaped even though validate_override restricts the prefix to word
+    # characters: the caller-supplied `prefix` argument bypasses that path.
+    pattern = re.compile(rf"{re.escape(prefix)}-(\d+)", re.IGNORECASE)
 
     # Try branch name first
     ticket_id = _extract_from_branch(branch_name, prefix, pattern)

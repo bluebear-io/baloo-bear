@@ -19,6 +19,7 @@ from pathlib import Path
 
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase, PIAgentOptions
+from baloo.agent.tiers import RETRY_TURN_BUDGET
 from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import get_settings
 from baloo.github.models import PRContext, ReviewComment
@@ -256,7 +257,7 @@ class FPVerifier:
         # turns on file reads (which fail for new files anyway) and a
         # single turn is sufficient for the JSON verdict.
         options.no_tools = True
-        options.max_turns = 2
+        options.max_turns = RETRY_TURN_BUDGET
 
         agent = _FPVerifierAgent(options)
 

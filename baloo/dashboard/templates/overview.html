@@ -1,229 +1,167 @@
 {% extends "base.html" %}
 {% set active_page = "overview" %}
+{% set page_title = "Overview" %}
+{% set page_subtitle = "Review activity across all connected repositories." %}
 
 {% block title %}Overview - Baloo Dashboard{% endblock %}
 
 {% block content %}
-<h1 class="text-2xl font-bold text-gray-900 mb-6">Overview</h1>
+<div class="stack">
 
-<!-- Stat cards -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-  <div class="lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
-    <div class="bg-white rounded-lg shadow p-5">
-      <p class="text-sm text-gray-500">Total Reviews</p>
-      <p class="text-3xl font-bold text-gray-900">{{ total_reviews }}</p>
+  <div class="grid grid-3">
+    <div class="card stat">
+      <div class="stat-label">Total reviews</div>
+      <div class="stat-value">{{ total_reviews }}</div>
     </div>
-    <div class="bg-white rounded-lg shadow p-5">
-      <p class="text-sm text-gray-500">Reviews Today</p>
-      <p class="text-3xl font-bold text-gray-900">{{ reviews_today }}</p>
+    <div class="card stat">
+      <div class="stat-label">Reviews today</div>
+      <div class="stat-value">{{ reviews_today }}</div>
     </div>
-    <div class="bg-white rounded-lg shadow p-5">
-      <p class="text-sm text-gray-500">Avg Duration</p>
-      <p class="text-3xl font-bold text-gray-900">{{ avg_duration }}s</p>
+    <div class="card stat">
+      <div class="stat-label">Avg duration</div>
+      <div class="stat-value">{{ avg_duration }}<span style="font-size:var(--text-lg)">s</span></div>
     </div>
-    <div class="bg-white rounded-lg shadow p-5">
-      <p class="text-sm text-gray-500">Approval Rate</p>
-      <p class="text-3xl font-bold text-gray-900">{{ approval_rate }}%</p>
+    <div class="card stat">
+      <div class="stat-label">Approval rate</div>
+      <div class="stat-value">{{ approval_rate }}<span style="font-size:var(--text-lg)">%</span></div>
     </div>
   </div>
-  <div class="lg:col-span-2 bg-white rounded-lg shadow p-5">
-    <h2 class="text-sm font-semibold text-gray-500 mb-2">Recent Activity (Last 24h)</h2>
-    <div class="h-40">
-      <canvas id="activityChart"></canvas>
+
+  {# Any failure today is worth surfacing — a healthy overall rate can still
+     hide a bad day, which is exactly when you want to see it. #}
+  {% if errors_today > 0 or error_rate > 10 %}
+  <div class="alert {% if error_rate > 25 %}alert--danger{% elif error_rate > 10 %}alert--warn{% endif %}">
+    <strong>Review health</strong> &mdash; {{ errors_today }} failure{{ '' if errors_today == 1 else 's' }}
+    today, {{ error_rate }}% error rate across {{ errors_total }} total failures.
+    <a href="/dashboard/reviews?status=agent_error" style="margin-left:var(--space-2)">View failures →</a>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-head"><h2>Recent activity</h2><p>Reviews started, last 24 hours</p></div>
+    <div class="card-body"><div class="chart-box chart-box--sm"><canvas id="activityChart"></canvas></div></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h2>Findings by severity</h2></div>
+      <div class="card-body">
+        {% if severity %}
+        <table class="table">
+          <tbody>
+            {% for name, count in severity.items() %}
+            <tr>
+              <td><span class="badge badge--{{ name | lower }}">{{ name | lower }}</span></td>
+              <td class="num">{{ count }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty">No findings recorded yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Failure categories</h2></div>
+      <div class="card-body">
+        {% if error_categories %}
+        <table class="table">
+          <tbody>
+            {% for name, count in error_categories.items() %}
+            <tr>
+              <td class="mono">{{ name }}</td>
+              <td class="num">{{ count }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty">No failures recorded</div>
+        {% endif %}
+      </div>
     </div>
   </div>
+
+  {% if recent_failures %}
+  <div class="card">
+    <div class="card-head"><h2>Recent failures</h2></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Repo</th><th>PR</th><th>Category</th><th>Error</th><th>When</th></tr>
+        </thead>
+        <tbody>
+          {% for review in recent_failures %}
+          <tr>
+            <td class="mono">{{ review.repo_full_name }}</td>
+            <td><a href="/dashboard/reviews/{{ review.id }}" class="num">#{{ review.pr_number }}</a></td>
+            <td><span class="badge badge--danger">{{ review.error_category or 'unknown' }}</span></td>
+            <td style="max-width:32rem">{{ review.error_message or '' }}</td>
+            <td><time class="local-time" datetime="{{ review.started_at.isoformat() }}">{{ review.started_at }}</time></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-head"><h2>Recent reviews</h2></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Repo</th><th>PR</th><th>Status</th><th class="num">Duration</th><th>Started</th></tr>
+        </thead>
+        <tbody>
+          {% for review in recent_reviews %}
+          <tr>
+            <td class="mono">{{ review.repo_full_name }}</td>
+            <td><a href="/dashboard/reviews/{{ review.id }}" class="num">#{{ review.pr_number }}</a></td>
+            <td>
+              <span class="badge {% if review.review_status == 'approved' %}badge--ok
+                {%- elif review.review_status == 'error' %}badge--danger
+                {%- elif review.review_status == 'changes_requested' %}badge--high{% endif %}">
+                {{ review.review_status }}
+              </span>
+            </td>
+            <td class="num">{{ '%.1f'|format(review.duration_seconds) if review.duration_seconds else '—' }}s</td>
+            <td><time class="local-time" datetime="{{ review.started_at.isoformat() }}">{{ review.started_at }}</time></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="empty">No reviews yet</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
-  const hourly = {{ (hourly_activity or []) | tojson }};
-  new Chart(document.getElementById('activityChart'), {
-    type: 'line',
+(function () {
+  var hourly = {{ (hourly_activity or []) | tojson }};
+  BalooCharts.make("activityChart", {
+    type: "line",
     data: {
-      labels: hourly.map(d => d.hour.split(' ')[1]),
+      labels: hourly.map(function (d) { return d.hour.split(" ")[1]; }),
       datasets: [{
-        label: 'Reviews',
-        data: hourly.map(d => d.count),
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99,102,241,0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 2
+        label: "Reviews",
+        data: hourly.map(function (d) { return d.count; }),
+        fill: true, tension: 0.35, pointRadius: 2
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, ticks: { stepSize: 1 } },
-        x: { grid: { display: false } }
-      }
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } }
     }
+  }, function (config, api) {
+    config.data.datasets[0].borderColor = api.token("--accent");
+    config.data.datasets[0].backgroundColor = api.token("--accent-soft");
   });
+})();
 </script>
-
-<!-- Error alert banner -->
-{% if errors_today > 0 or error_rate > 10 %}
-<div class="{% if error_rate > 25 %}bg-red-50 border-red-300{% else %}bg-yellow-50 border-yellow-300{% endif %} border rounded-lg p-4 mb-8">
-  <div class="flex items-start">
-    <span class="text-2xl mr-3">{% if error_rate > 25 %}🚨{% else %}⚠️{% endif %}</span>
-    <div>
-      <h2 class="text-sm font-semibold {% if error_rate > 25 %}text-red-800{% else %}text-yellow-800{% endif %}">Review Health Alert</h2>
-      <p class="text-sm {% if error_rate > 25 %}text-red-700{% else %}text-yellow-700{% endif %} mt-1">
-        <strong>{{ errors_today }}</strong> failed review(s) today &middot;
-        <strong>{{ errors_total }}</strong> total failures ({{ error_rate }}% error rate).
-        <a href="/dashboard/reviews?status=agent_error" class="underline font-medium">View failures →</a>
-      </p>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-<!-- Error stats row -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-  <div class="bg-white rounded-lg shadow p-5 {% if errors_today > 0 %}ring-2 ring-red-200{% endif %}">
-    <p class="text-sm text-gray-500">Failures Today</p>
-    <p class="text-3xl font-bold {% if errors_today > 0 %}text-red-600{% else %}text-green-600{% endif %}">{{ errors_today }}</p>
-  </div>
-  <div class="bg-white rounded-lg shadow p-5">
-    <p class="text-sm text-gray-500">Total Failures</p>
-    <p class="text-3xl font-bold text-gray-900">{{ errors_total }}</p>
-  </div>
-  <div class="bg-white rounded-lg shadow p-5">
-    <p class="text-sm text-gray-500">Error Rate</p>
-    <p class="text-3xl font-bold {% if error_rate > 25 %}text-red-600{% elif error_rate > 10 %}text-yellow-600{% else %}text-green-600{% endif %}">{{ error_rate }}%</p>
-  </div>
-</div>
-
-<!-- Error category breakdown -->
-{% if error_categories %}
-<div class="bg-white rounded-lg shadow p-5 mb-8">
-  <h2 class="text-lg font-semibold text-gray-900 mb-3">Failure Categories</h2>
-  <div class="flex flex-wrap gap-4">
-    {% for cat, count in error_categories.items() %}
-    <div class="flex items-center space-x-2 bg-red-50 rounded-lg px-3 py-2">
-      <span class="text-sm font-mono font-medium text-red-800">{{ cat }}</span>
-      <span class="inline-flex items-center justify-center w-6 h-6 text-xs font-bold text-white bg-red-500 rounded-full">{{ count }}</span>
-    </div>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
-
-<!-- Severity breakdown -->
-{% if severity %}
-<div class="bg-white rounded-lg shadow p-5 mb-8">
-  <h2 class="text-lg font-semibold text-gray-900 mb-3">Findings by Severity</h2>
-  <div class="flex space-x-6">
-    <span class="inline-flex items-center">
-      <span class="w-3 h-3 rounded-full bg-red-600 mr-2"></span>
-      Critical: {{ severity.get("CRITICAL", 0) }}
-    </span>
-    <span class="inline-flex items-center">
-      <span class="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>
-      High: {{ severity.get("HIGH", 0) }}
-    </span>
-    <span class="inline-flex items-center">
-      <span class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
-      Medium: {{ severity.get("MEDIUM", 0) }}
-    </span>
-    <span class="inline-flex items-center">
-      <span class="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>
-      Low: {{ severity.get("LOW", 0) }}
-    </span>
-  </div>
-</div>
-{% endif %}
-
-<!-- Recent failures table -->
-{% if recent_failures %}
-<div class="bg-white rounded-lg shadow overflow-hidden mb-8 ring-1 ring-red-200">
-  <div class="px-5 py-4 border-b border-red-200 bg-red-50">
-    <h2 class="text-lg font-semibold text-red-900">Recent Failures</h2>
-  </div>
-  <table class="min-w-full divide-y divide-gray-200">
-    <thead class="bg-gray-50">
-      <tr>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Repo</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PR</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Error</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">When</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-200">
-      {% for r in recent_failures %}
-      <tr class="hover:bg-red-50">
-        <td class="px-4 py-3 text-sm text-gray-900">{{ r.repo_full_name }}</td>
-        <td class="px-4 py-3 text-sm">
-          <a href="/dashboard/reviews/{{ r.id }}" class="text-indigo-600 hover:underline">
-            #{{ r.pr_number }} {{ r.pr_title }}
-          </a>
-        </td>
-        <td class="px-4 py-3 text-sm">
-          {% if r.error_category %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium font-mono bg-red-100 text-red-800">{{ r.error_category }}</span>
-          {% else %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">unknown</span>
-          {% endif %}
-        </td>
-        <td class="px-4 py-3 text-sm text-red-700 max-w-xs truncate" title="{{ r.error_message }}">{{ r.error_message[:80] if r.error_message else "-" }}{{ "..." if r.error_message and r.error_message|length > 80 else "" }}</td>
-        <td class="px-4 py-3 text-sm text-gray-500"><time datetime="{{ r.started_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" class="local-time">{{ r.started_at.strftime("%Y-%m-%d %H:%M") }} UTC</time></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
-<!-- Recent reviews table -->
-<div class="bg-white rounded-lg shadow overflow-hidden">
-  <div class="px-5 py-4 border-b border-gray-200">
-    <h2 class="text-lg font-semibold text-gray-900">Recent Reviews</h2>
-  </div>
-  <table class="min-w-full divide-y divide-gray-200">
-    <thead class="bg-gray-50">
-      <tr>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Repo</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PR</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-200">
-      {% for r in recent_reviews %}
-      <tr class="hover:bg-gray-50">
-        <td class="px-4 py-3 text-sm text-gray-900">{{ r.repo_full_name }}</td>
-        <td class="px-4 py-3 text-sm">
-          <a href="/dashboard/reviews/{{ r.id }}" class="text-indigo-600 hover:underline">
-            #{{ r.pr_number }} {{ r.pr_title }}
-          </a>
-        </td>
-        <td class="px-4 py-3 text-sm">
-          {% if r.review_status == "approved" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">approved</span>
-          {% elif r.review_status == "changes_requested" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">changes requested</span>
-          {% elif r.review_status == "error" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">error</span>
-          {% elif r.review_status == "agent_error" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">agent error</span>
-          {% elif r.review_status == "in_progress" %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">in progress</span>
-          {% else %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{{ r.review_status }}</span>
-          {% endif %}
-        </td>
-        <td class="px-4 py-3 text-sm text-gray-500">{{ "%.1fs"|format(r.duration_seconds) if r.duration_seconds else "-" }}</td>
-        <td class="px-4 py-3 text-sm text-gray-500"><time datetime="{{ r.started_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" class="local-time">{{ r.started_at.strftime("%Y-%m-%d %H:%M") }} UTC</time></td>
-      </tr>
-      {% endfor %}
-      {% if not recent_reviews %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">No reviews yet</td></tr>
-      {% endif %}
-    </tbody>
-  </table>
-</div>
 {% endblock %}

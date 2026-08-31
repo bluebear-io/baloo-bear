@@ -44,7 +44,7 @@ The agent assigns severity based on these guidelines:
 |---|---|---|
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post. Set to `LOW` to see everything, `HIGH` to reduce noise |
 | `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API. When `false`, MEDIUM findings go to review comments |
-| `REVIEW_AUTO_APPROVE` | `true` | Auto-approve PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE` | `false` | Auto-approve PRs with no CRITICAL/HIGH findings (opt-in) |
 
 ## Approval Decision Logic
 

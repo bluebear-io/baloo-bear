@@ -22,7 +22,19 @@ from typing import Any
 
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
-from baloo.config.settings import get_settings
+from baloo.agent.tiers import (
+    AGENT_MAX_TURNS,
+    PROVIDER_TIER_MODELS,
+    RETRY_TURN_BUDGET,
+)
+from baloo.config.runtime_settings import resolve_setting
+from baloo.config.settings import Settings, get_settings
+
+
+def _settings_default(name: str) -> Any:
+    """Field default from Settings, so this module doesn't restate config."""
+    return Settings.model_fields[name].default
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +43,15 @@ logger = logging.getLogger(__name__)
 class PIAgentOptions:
     """Configuration for a PI agent session."""
 
-    model: str = "claude-sonnet-4-6"
-    provider: str = "anthropic"
+    # Defaults mirror the config layer rather than restating it: the provider
+    # and thinking level come from the Settings fields, the model from that
+    # provider's standard tier. get_agent_options() sets all of these
+    # explicitly, so these only apply to bare construction.
+    model: str = PROVIDER_TIER_MODELS[_settings_default("agent_provider")]["standard"]
+    provider: str = _settings_default("agent_provider")
     system_prompt: str = ""
-    thinking_level: str = "medium"
-    max_turns: int = 20
+    thinking_level: str = _settings_default("pi_thinking_level")
+    max_turns: int = AGENT_MAX_TURNS
     # Working directory for the agent (where it can read files)
     cwd: str | None = None
     # When True, launch PI with --no-tools (no file read/grep/etc).
@@ -479,6 +495,7 @@ class PIAgentBase:
         if self.options.provider != DATABRICKS_PROVIDER:
             return base
         env = dict(base) if base is not None else dict(os.environ)
+        # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
         env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
         return env
 
@@ -508,7 +525,7 @@ class PIAgentBase:
             cmd.extend(["--tools", "read,grep,find,ls"])
 
             # Load AST tools extension when enabled
-            if s.ast_tools_enabled:
+            if resolve_setting("ast_tools_enabled"):
                 ext_path = (
                     Path(__file__).resolve().parent.parent.parent
                     / "extensions"
@@ -782,7 +799,7 @@ Serialized payload:
             provider=self.options.provider,
             system_prompt=self._JSON_RETRY_SYSTEM_PROMPT,
             thinking_level="off",
-            max_turns=2,
+            max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
         )
 

@@ -8,18 +8,22 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from baloo.config.runtime_settings import (
     MUTABLE_KEYS,
+    RESTART_REQUIRED_KEYS,
     RuntimeSettingsError,
+    _unwrap_optional,
     clear_override,
+    coerce_setting_value,
     ensure_fresh_cache,
     resolve_setting,
     set_override,
     setting_source,
+    validate_override,
 )
 from baloo.config.settings import Settings, get_settings
 from baloo.dashboard.auth import verify_credentials
@@ -38,12 +42,20 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 _FLASH_TTL_SECONDS = 300
 _flash_store: dict[str, tuple[float, dict[str, Any]]] = {}
 
-SENSITIVE_SETTINGS = {
-    "anthropic_api_key",
-    "dashboard_password",
-    "github_private_key",
-    "github_webhook_secret",
-}
+# Substrings that mark a setting as a credential. One classifier, used by both
+# _format_setting_value (what is rendered) and _derive_control (how it renders).
+# Keeping two lists in step is how LINEAR_API_KEY ended up printed in cleartext:
+# the control said "masked" while the value formatter had never heard of it.
+SECRET_PATTERNS = ("_key", "_secret", "_password", "_token")
+
+
+def _is_secret(name: str) -> bool:
+    return any(pattern in name for pattern in SECRET_PATTERNS)
+
+
+# database_url is deliberately excluded — it has its own sanitizer below that
+# keeps the useful connection target while stripping credentials.
+SENSITIVE_SETTINGS = {name for name in Settings.model_fields if _is_secret(name)}
 
 SENSITIVE_DATABASE_QUERY_KEYS = {
     "api_key",
@@ -80,8 +92,6 @@ SETTING_CATEGORIES = {
     "Agent": {
         "agent_provider",
         "agent_model",
-        "agent_max_tokens",
-        "agent_temperature",
         "pi_binary_path",
         "pi_thinking_level",
         "databricks_host",
@@ -195,11 +205,119 @@ def _format_setting_value(name: str, value: Any) -> str:
     return str(value)
 
 
+_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _sort_findings(findings: Any) -> list[Any]:
+    """Severest first. Unknown severities sort last rather than disappearing."""
+    return sorted(
+        findings,
+        key=lambda f: _SEVERITY_RANK.get(str(f.severity).lower(), len(_SEVERITY_RANK)),
+    )
+
+
 def _setting_category(name: str) -> str:
     for category, names in SETTING_CATEGORIES.items():
         if name in names:
             return category
     return "Other"
+
+
+# Three tiers so a newcomer meeting 50 settings knows which ones matter.
+# "Required" is what Baloo will not run without; "Common" is what an operator
+# actually tunes; everything else is Advanced and collapses by default.
+REQUIRED_SETTINGS = frozenset(
+    {
+        "github_app_id",
+        "github_private_key",
+        "github_webhook_secret",
+        "anthropic_api_key",
+    }
+)
+
+COMMON_SETTINGS = frozenset(
+    {
+        "agent_provider",
+        "agent_model",
+        "databricks_host",
+        "pi_thinking_level",
+        "review_auto_approve",
+        "review_min_severity",
+        "review_use_checks_api",
+        "ticket_id_prefix",
+        "fp_verification_enabled",
+        "thread_agent_enabled",
+        "documentation_drift_enabled",
+        "fidelity_enabled",
+        "ast_tools_enabled",
+        "feedback_signals_enabled",
+        "database_enabled",
+        "database_url",
+        "dashboard_username",
+        "dashboard_password",
+        "log_level",
+        "app_environment",
+        "max_concurrent_reviews",
+    }
+)
+
+
+def _setting_tier(name: str) -> str:
+    if name in REQUIRED_SETTINGS:
+        return "required"
+    if name in COMMON_SETTINGS:
+        return "common"
+    return "advanced"
+
+
+# Uppercase to match FindingsFilter's severity_order lookup and the values
+# documented in docs/features/severity-routing.md. Lowercase here silently
+# fell through to the .get() default, making every option mean MEDIUM.
+REVIEW_SEVERITY_CHOICES = (
+    ("CRITICAL", "Critical only"),
+    ("HIGH", "High and above"),
+    ("MEDIUM", "Medium and above"),
+    ("LOW", "Low and above"),
+)
+
+THINKING_LEVEL_CHOICES = (
+    ("off", "Off"),
+    ("minimal", "Minimal"),
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+)
+
+_EXPLICIT_CHOICES = {
+    "agent_provider": AGENT_PROVIDER_CHOICES,
+    "review_min_severity": REVIEW_SEVERITY_CHOICES,
+    "pi_thinking_level": THINKING_LEVEL_CHOICES,
+}
+
+
+def _field_bounds(field: Any) -> tuple[Any, Any]:
+    """Pull ge/le out of a pydantic field's metadata, if present."""
+    minimum = maximum = None
+    for item in getattr(field, "metadata", ()):
+        minimum = getattr(item, "ge", minimum)
+        maximum = getattr(item, "le", maximum)
+    return minimum, maximum
+
+
+def _derive_control(name: str, field: Any, mutable: bool) -> str:
+    """Pick the input control for a setting from its pydantic annotation."""
+    if _is_secret(name) or name == "database_url":
+        return "masked"
+    if not mutable:
+        return "text"
+    if name in _EXPLICIT_CHOICES:
+        return "select"
+    annotation = _unwrap_optional(field.annotation)
+    if annotation is bool:
+        return "toggle"
+    if annotation in (int, float):
+        return "number"
+    return "text"
 
 
 def _settings_rows() -> list[dict[str, Any]]:
@@ -215,6 +333,8 @@ def _settings_rows() -> list[dict[str, Any]]:
             effective = env_value
             source = "env"
         default = field.default
+        minimum, maximum = _field_bounds(field)
+        control = _derive_control(name, field, mutable)
         rows.append(
             {
                 "category": _setting_category(name),
@@ -226,9 +346,20 @@ def _settings_rows() -> list[dict[str, Any]]:
                 "description": field.description or "",
                 "mutable": mutable,
                 "source": source,
-                "choices": AGENT_PROVIDER_CHOICES if name == "agent_provider" else None,
+                "choices": _EXPLICIT_CHOICES.get(name),
+                "control": control,
+                "minimum": minimum,
+                "maximum": maximum,
+                "bool_value": bool(effective) if control == "toggle" else None,
+                "restart_required": name in RESTART_REQUIRED_KEYS,
+                "tier": _setting_tier(name),
             }
         )
+
+    # Group by category. Fields are not declared contiguously by category, so
+    # without this a category renders as several separate cards.
+    order = {name: index for index, name in enumerate(SETTING_CATEGORIES)}
+    rows.sort(key=lambda row: order.get(row["category"], len(order)))
     return rows
 
 
@@ -351,7 +482,7 @@ async def review_detail(request: Request, review_id: int):
     return templates.TemplateResponse(
         request=request,
         name="review_detail.html",
-        context={"review": review},
+        context={"review": review, "findings": _sort_findings(review.findings)},
     )
 
 
@@ -451,13 +582,19 @@ def _settings_redirect(**flash: Any) -> RedirectResponse:
 
 @router.post("/settings")
 async def update_settings(
-    key: str = Form(...),
-    value: str = Form(""),
-    action: str = Form("save"),
+    request: Request,
     username: str = Depends(verify_credentials),
 ):
-    """Set or clear an allowlisted runtime override, or run a provider smoke test."""
+    """Set or clear allowlisted runtime overrides, or run a provider smoke test.
+
+    Accepts one or many key/value pairs. Every pair is validated before
+    anything is written, so a single bad field cannot leave the batch
+    half-applied.
+    """
     from baloo.agent.provider_smoke import SMOKE_TRIGGER_KEYS, smoke_test_provider
+
+    form = await request.form()
+    action = str(form.get("action", "save"))
 
     if action == "test_connection":
         result = await smoke_test_provider()
@@ -467,20 +604,82 @@ async def update_settings(
             smoke_message=result.message,
         )
 
+    # A per-row "Revert to env" button carries its own key, so reverting one
+    # setting never depends on the client trimming the other pairs out.
+    clear_key = form.get("clear_key")
+    if clear_key:
+        try:
+            await clear_override(str(clear_key))
+        except RuntimeSettingsError as exc:
+            return _settings_redirect(error=str(exc))
+        return _settings_redirect(
+            message=f"Cleared override for {str(clear_key).upper()}; using env default."
+        )
+
+    keys = [str(k) for k in form.getlist("key")]
+    values = [str(v) for v in form.getlist("value")]
+    if len(keys) != len(values):
+        return _settings_redirect(error="Malformed settings submission.")
+    if not keys:
+        return _settings_redirect(error="No settings submitted.")
+
+    if action == "clear":
+        for key in keys:
+            if key not in MUTABLE_KEYS:
+                return _settings_redirect(error=f"Setting is not mutable at runtime: {key}")
+        try:
+            for key in keys:
+                await clear_override(key)
+        except RuntimeSettingsError as exc:
+            return _settings_redirect(error=str(exc))
+        plural = "" if len(keys) == 1 else "s"
+        return _settings_redirect(
+            message=f"Cleared {len(keys)} override{plural}; using env default{plural}."
+        )
+
+    if action != "save":
+        return _settings_redirect(error="Unknown action.")
+
+    # Validate everything first — all or nothing.
+    errors: list[str] = []
+    for key, value in zip(keys, values):
+        try:
+            validate_override(key, value)
+        except RuntimeSettingsError as exc:
+            errors.append(f"{key.upper()}: {exc}")
+    if errors:
+        return _settings_redirect(error=" · ".join(errors))
+
+    # Skip writes that would store the value the setting already resolves to,
+    # so a client that submits every field (no JS, say) does not convert the
+    # whole page from env to permanent db overrides in one click.
+    # Compare coerced values, not strings: the toggle inputs emit "true"/"false"
+    # while ``str(True)`` is "True", so a raw string compare never matches for a
+    # bool and every checkbox would be written as a db override.
+    pending = [
+        (key, value)
+        for key, value in zip(keys, values)
+        if coerce_setting_value(key, value) != resolve_setting(key)
+    ]
+    if not pending:
+        return _settings_redirect(message="No changes to save.")
+
+    written: list[str] = []
     try:
-        if action == "clear":
-            await clear_override(key)
-            msg = f"Cleared override for {key.upper()}; using env default."
-        elif action == "save":
+        for key, value in pending:
             await set_override(key, value, updated_by=username)
-            msg = f"Updated {key.upper()}."
-        else:
-            return _settings_redirect(error="Unknown action.")
+            written.append(key)
     except RuntimeSettingsError as exc:
+        if written:
+            return _settings_redirect(
+                error=f"{exc} Applied before failing: {', '.join(k.upper() for k in written)}."
+            )
         return _settings_redirect(error=str(exc))
 
-    flash: dict[str, Any] = {"message": msg}
-    if key in SMOKE_TRIGGER_KEYS:
+    plural = "" if len(written) == 1 else "s"
+    names = ", ".join(k.upper() for k in written)
+    flash: dict[str, Any] = {"message": f"Updated {len(written)} setting{plural}: {names}."}
+    if any(key in SMOKE_TRIGGER_KEYS for key in written):
         result = await smoke_test_provider()
         flash["smoke_ok"] = "1" if result.ok else "0"
         flash["smoke_message"] = result.message

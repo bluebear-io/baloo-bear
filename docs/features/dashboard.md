@@ -10,6 +10,8 @@ Baloo includes an optional review history dashboard backed by PostgreSQL. It pro
 - **Fidelity scores** — When fidelity analysis is enabled
 - **Settings** — Effective runtime configuration; allowlisted agent knobs can be edited when the database is enabled
 
+The dashboard follows the viewer's light/dark preference and has a theme toggle in the header. All CSS and JavaScript are served from the application itself — no CDN — so it renders correctly offline and behind a firewall.
+
 ## Requirements
 
 The dashboard requires:
@@ -31,9 +33,11 @@ http://localhost:8000/dashboard/
 
 ## Settings Page
 
-The dashboard includes a **Settings** page at `/dashboard/settings` showing the effective runtime configuration for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). Each row lists the environment variable, its current value, its default, and a description.
+The dashboard includes a **Settings** page at `/dashboard/settings` showing the effective runtime configuration for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). A category rail jumps between groups, and the filter box narrows rows by variable name or description. Each row lists the environment variable, its current value, its default, and a description.
 
-Allowlisted agent settings (`AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, and secondary model knobs) can be overridden at runtime when `DATABASE_ENABLED=true`. Overridden rows show a `db` source badge and a **Revert to env** control. All other settings remain read-only and always come from environment variables.
+Allowlisted settings can be overridden at runtime when `DATABASE_ENABLED=true` — model selection, the agent feature toggles, and the tuning knobs (see [Runtime Overrides](../configuration.md#runtime-overrides-db) for the full list). Each renders the control its type calls for: a toggle for booleans, a bounded number input for integers, a select for enumerated values. Overridden rows show a `db` source badge. All other settings remain read-only and always come from environment variables.
+
+Edits are batched: change several settings, and a save bar reports how many changed, with **Save** and **Discard**. Only changed fields are submitted, every field is validated against its type and bounds first, and a batch is all-or-nothing — if one field is invalid, nothing is written and the page reports which field failed.
 
 `AGENT_PROVIDER` is a selector with labeled choices, including **Anthropic (direct API)**, **Amazon Bedrock**, and **Databricks AI Gateway**. It applies to **all** Baloo agents (primary, FP verification, thread, fidelity, docs, sync). Short names like `haiku` / `sonnet` / `opus` are model tiers on that provider, not separate backends — with Bedrock selected they resolve to Bedrock inference-profile IDs.
 
