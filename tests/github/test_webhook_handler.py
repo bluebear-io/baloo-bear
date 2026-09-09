@@ -131,6 +131,7 @@ async def test_review_summary_uses_actionable_findings_after_resolved_thread_ski
     mock_pr_context.description = ""
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -219,6 +220,7 @@ async def test_progress_comment_reports_dropped_inline_findings_internally():
     mock_pr_context.description = ""
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -301,6 +303,7 @@ async def test_synchronize_scoped_mode_posts_only_latest_push_related_findings()
     mock_pr_context.files_changed = []
     mock_pr_context.metadata = MagicMock()
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -407,6 +410,7 @@ async def test_synchronize_scoped_mode_passes_scoped_context_to_agent():
         diff="full-pr-diff",
     )
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
         return_value=ReviewResult(
@@ -471,6 +475,7 @@ async def test_collapses_near_duplicate_findings_in_same_run():
     mock_pr_context.description = ""
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -539,6 +544,7 @@ async def test_dedup_keeps_higher_severity_when_similar_findings_overlap():
     mock_pr_context.description = ""
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -659,6 +665,7 @@ async def test_does_not_repost_missing_plan_fidelity_report():
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -729,6 +736,7 @@ async def test_does_not_repost_no_ticket_fidelity_report():
     mock_pr_context.description = ""
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -795,6 +803,7 @@ async def test_does_not_repost_error_fidelity_report():
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -867,6 +876,7 @@ async def _process_review_with_existing_fidelity_comment(
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(
@@ -994,6 +1004,7 @@ async def test_updates_progress_comment_when_no_actionable_findings():
     mock_pr_context.awaiting_response_threads = 0
     mock_pr_context.head_sha = "abc123"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     # Mock agent that returns only LOW severity finding
     mock_agent = MagicMock()
@@ -1056,6 +1067,7 @@ async def test_posts_approval_when_auto_approve_enabled():
     mock_pr_context.awaiting_response_threads = 0
     mock_pr_context.head_sha = "abc123"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     # Mock agent that returns no findings
     mock_agent = MagicMock()
@@ -1114,6 +1126,7 @@ async def test_approves_clean_review_with_high_fidelity_score():
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     # Mock agent that returns no findings (clean review)
     mock_agent = MagicMock()
@@ -1189,6 +1202,7 @@ async def test_approves_with_medium_issues_when_high_fidelity():
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     # Mock agent that returns MEDIUM severity finding
     # Note: body must not contain low-confidence patterns like "consider", "might", "maybe"
@@ -1277,6 +1291,7 @@ async def test_does_not_approve_with_low_fidelity_score():
     mock_pr_context.description = "This PR adds a new feature"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     # Mock agent that returns no findings (clean review)
     mock_agent = MagicMock()
@@ -1352,6 +1367,7 @@ async def test_fidelity_and_agent_review_run_concurrently_when_fidelity_enabled(
     mock_pr_context.description = "Does something"
     mock_pr_context.diff = "+ added code"
     mock_github_client.get_pr_context = AsyncMock(return_value=mock_pr_context)
+    mock_github_client.request_self_as_reviewer = AsyncMock(return_value=True)
 
     mock_agent = MagicMock()
     mock_agent.review_pr = AsyncMock(

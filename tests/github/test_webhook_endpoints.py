@@ -154,6 +154,78 @@ class TestPullRequestActionRouting:
         assert data["status"] == "ignored"
         assert data["action"] == "labeled"
 
+    def test_review_requested_for_baloo_queues_review(self, client):
+        payload = _pr_payload(action="review_requested")
+        payload["requested_reviewer"] = {"login": "baloo-code-reviewer[bot]"}
+
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(client, payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
+        mock_review.assert_called_once()
+
+    def test_review_requested_for_baloo_on_draft_pr_queues_review(self, client):
+        payload = _pr_payload(action="review_requested", draft=True)
+        payload["requested_reviewer"] = {"login": "baloo-code-reviewer[bot]"}
+
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(client, payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
+        mock_review.assert_called_once()
+
+    def test_baloos_own_review_request_is_ignored(self, client):
+        """Baloo lists itself as a reviewer on every run — reacting would loop."""
+        payload = _pr_payload(action="review_requested")
+        payload["requested_reviewer"] = {"login": "baloo-code-reviewer[bot]"}
+        payload["sender"] = {
+            "login": "baloo-code-reviewer[bot]",
+            "id": 2,
+            "avatar_url": "",
+            "html_url": "",
+        }
+
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(client, payload)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "self-request"
+        mock_review.assert_not_called()
+
+    def test_review_requested_for_human_is_ignored(self, client):
+        payload = _pr_payload(action="review_requested")
+        payload["requested_reviewer"] = {"login": "alice"}
+
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(client, payload)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "other reviewer"
+        mock_review.assert_not_called()
+
+    def test_review_requested_for_team_is_ignored(self, client):
+        payload = _pr_payload(action="review_requested")
+        payload["requested_team"] = {"slug": "backend"}
+
+        resp = _post_webhook(client, payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ignored"
+
     def test_pr_closed_not_merged_is_ignored(self, client):
         payload = _pr_payload(action="closed")
         payload["pull_request"]["merged"] = False

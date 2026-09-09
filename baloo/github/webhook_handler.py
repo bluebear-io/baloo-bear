@@ -261,10 +261,36 @@ async def handle_webhook(
             pr_number = webhook_payload.number
             repo_name = webhook_payload.repository.full_name
 
-            # Only process opened, synchronize (new commits), reopened, and ready_for_review actions
-            if action in ["opened", "synchronize", "reopened", "ready_for_review"]:
-                # Skip draft PRs
-                if webhook_payload.pull_request.draft:
+            # review_requested fires for every reviewer — only re-review when it's us
+            # (the ↻ re-request button next to baloo in the Reviewers box).
+            if action == "review_requested":
+                from baloo.github.discussions import is_baloo_actor
+
+                # Baloo lists itself as a reviewer at the start of every review — reacting
+                # to its own request would loop forever.
+                if is_baloo_actor(webhook_payload.sender.login):
+                    logger.info(f"Ignoring Baloo's own review request on {repo_name}#{pr_number}")
+                    return {"status": "ignored", "action": action, "reason": "self-request"}
+
+                requested_login = (payload.get("requested_reviewer") or {}).get("login")
+                if not is_baloo_actor(requested_login):
+                    logger.info(
+                        f"Ignoring review request for {requested_login} on "
+                        f"{repo_name}#{pr_number} — not Baloo"
+                    )
+                    return {"status": "ignored", "action": action, "reason": "other reviewer"}
+
+            # Only process opened, synchronize (new commits), reopened, ready_for_review,
+            # and review_requested (re-request button) actions
+            if action in [
+                "opened",
+                "synchronize",
+                "reopened",
+                "ready_for_review",
+                "review_requested",
+            ]:
+                # Skip draft PRs — an explicit review request overrides that
+                if webhook_payload.pull_request.draft and action != "review_requested":
                     logger.info(f"Skipping draft PR: {repo_name}#{pr_number} (action: {action})")
                     return {"status": "skipped", "reason": "draft PR"}
 
@@ -332,7 +358,8 @@ async def handle_webhook(
             else:
                 logger.info(
                     f"Ignoring PR action: {repo_name}#{pr_number} (action: {action}) "
-                    f"- only process: opened, synchronize, reopened, ready_for_review"
+                    f"- only process: opened, synchronize, reopened, ready_for_review, "
+                    f"review_requested"
                 )
                 return {"status": "ignored", "action": action, "reason": "action not processed"}
 
