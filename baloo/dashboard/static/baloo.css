@@ -234,6 +234,15 @@ a {
   font-size: var(--text-sm);
 }
 
+.footer {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-5);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 /* Cards */
 .card {
   background: var(--surface);
