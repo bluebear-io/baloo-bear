@@ -477,6 +477,35 @@ def _comment_from_thread(thread: DiscussionThread) -> ReviewComment:
     )
 
 
+_MAX_LISTED_THREADS = 5
+
+
+def _format_awaiting_threads(
+    threads: list[DiscussionThread],
+    repo_full_name: str,
+    pr_number: int,
+) -> str:
+    """Render the open-thread block: what is blocking, and how to clear it."""
+    lines = [
+        f"⛔ Still requesting changes — {len(threads)} earlier finding(s) have had no response:"
+    ]
+    for thread in threads[:_MAX_LISTED_THREADS]:
+        location = f"`{thread.path}:{thread.line}`" if thread.path else f"thread #{thread.id}"
+        if thread.root_comment_id is not None:
+            location += (
+                f" — https://github.com/{repo_full_name}/pull/{pr_number}"
+                f"#discussion_r{thread.root_comment_id}"
+            )
+        lines.append(f"- {location}")
+    if len(threads) > _MAX_LISTED_THREADS:
+        lines.append(f"- …and {len(threads) - _MAX_LISTED_THREADS} more")
+    lines.append(
+        '\nReply to clear one (a "won\'t fix" with reasoning counts), or hit '
+        "**Resolve conversation** to dismiss it."
+    )
+    return "\n".join(lines)
+
+
 async def _reverify_awaiting_threads(
     awaiting_threads: list[DiscussionThread],
     pr_context: PRContext,
@@ -549,6 +578,8 @@ async def _reverify_awaiting_threads(
                 )
 
         await api_client.resolve_review_thread(thread.node_id)
+        thread.awaiting_response = False
+        thread.resolved = True
         resolved_count += 1
 
         # Update finding_outcomes row for this finding if DB is enabled
@@ -1532,7 +1563,12 @@ async def process_pr_review(
                 fidelity_result=fidelity_result,
                 general_findings=general_findings,
             )
-            awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
+            awaiting_thread_list = [
+                t
+                for t in pr_context.discussion_threads
+                if t.is_baloo_thread and t.awaiting_response
+            ]
+            awaiting_threads = len(awaiting_thread_list)
 
             if awaiting_threads and not request_changes and not decision_comments:
                 request_changes = True
@@ -1588,8 +1624,8 @@ async def process_pr_review(
                     "lines changed in the latest push."
                 )
             if awaiting_threads:
-                summary_text += (
-                    f"\n\n⏳ {awaiting_threads} Baloo thread(s) remain open from earlier reviews."
+                summary_text += "\n\n" + _format_awaiting_threads(
+                    awaiting_thread_list, repo_full_name, pr_number
                 )
 
             review_result = ReviewResult(
@@ -1776,8 +1812,8 @@ async def process_pr_review(
                 elif awaiting_threads:
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s. "
-                        f"Still waiting on {awaiting_threads} existing thread(s)."
-                    )
+                        "No new issues in this commit.\n\n"
+                    ) + _format_awaiting_threads(awaiting_thread_list, repo_full_name, pr_number)
                 else:
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s. No new issues found."
