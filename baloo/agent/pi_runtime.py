@@ -722,11 +722,27 @@ class PIAgentBase:
                 error_category="agent_error",
             )
         else:
+            if structured_output is None:
+                # A run that yields nothing is a real loss for every agent, but
+                # only BalooAgent's failure reaches reviews.review_status — the
+                # fidelity and documentation agents just log to stderr and
+                # return None. Record it here so aborts are countable per agent.
+                await review_logger.agent_error(
+                    error_message=(
+                        f"No structured output after {result.num_turns} turn(s), "
+                        f"${result.cost_usd:.4f} spent"
+                    ),
+                    error_category=(
+                        "max_turns_reached" if result.max_turns_reached else "no_output"
+                    ),
+                )
             await review_logger.agent_completed(
                 tokens_in=metadata.get("input_tokens", 0),
                 tokens_out=metadata.get("output_tokens", 0),
                 cost=metadata.get("cost_usd", 0),
                 duration=metadata.get("duration_seconds", 0),
+                cache_read=metadata.get("cache_read_tokens", 0),
+                cache_write=metadata.get("cache_write_tokens", 0),
             )
 
         return structured_output, metadata
@@ -738,6 +754,18 @@ class PIAgentBase:
     _JSON_RETRY_SYSTEM_PROMPT = (
         "You repair malformed JSON. "
         "Return only valid JSON with the same meaning and fields as the input."
+    )
+
+    # Turns held back so the agent can be told to wrap up and still have room to
+    # answer. Without it the cap arrives unannounced mid-exploration, PI is sent
+    # abort, and the entire run is discarded with zero findings — the turn-30
+    # wall seen in production. Raising max_turns only moves that wall.
+    _WRAPUP_RESERVE = 3
+
+    _WRAPUP_STEER = (
+        "You have {remaining} turn(s) left before this session is cut off. "
+        "Stop investigating now and return your final JSON response using only what "
+        "you have already found. A partial review is useful; no review is not."
     )
 
     _JSON_RETRY_PROMPT_TEMPLATE = """The malformed response is serialized below as a JSON object
@@ -880,6 +908,10 @@ Serialized payload:
         all_assistant_texts: list[str] = []
         turn_count = 0
         turn_tools: list[str] = []
+        # Steer the agent to finalize before the cap. A 1- or 2-turn decider has
+        # no room for the nudge, so it is pre-marked as sent and never fires.
+        wrapup_at = self.options.max_turns - self._WRAPUP_RESERVE
+        wrapup_sent = wrapup_at < 1
         # toolCallId -> (tool_name, target) captured at tool_execution_start so we
         # can attribute the outcome reported at tool_execution_end.
         pending_tools: dict[str, tuple[str, str | None]] = {}
@@ -909,6 +941,23 @@ Serialized payload:
                         tokens_out=result.output_tokens,
                     )
                 turn_tools = []
+                if not wrapup_sent and turn_count >= wrapup_at:
+                    wrapup_sent = True
+                    remaining = self.options.max_turns - turn_count
+                    logger.info(
+                        "%s: turn %d of %d — steering agent to wrap up",
+                        self.agent_name,
+                        turn_count,
+                        self.options.max_turns,
+                    )
+                    assert proc.stdin is not None
+                    proc.stdin.write(
+                        self._make_command(
+                            "steer",
+                            message=self._WRAPUP_STEER.format(remaining=remaining),
+                        ).encode("utf-8")
+                    )
+                    await proc.stdin.drain()
                 if turn_count >= self.options.max_turns:
                     result.max_turns_reached = True
                     if last_assistant_text:
