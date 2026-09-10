@@ -8,16 +8,21 @@ import httpx
 import pytest
 
 import baloo.github.api_client as api_client_module
+import baloo.github.auth as auth_module
 from baloo.github.api_client import GitHubAPIClient
+from baloo.github.auth import get_app_bot_login
 
 BOT = "baloo-code-reviewer[bot]"
 
 
 @pytest.fixture(autouse=True)
-def _reset_kill_switch():
+def _reset_process_globals():
+    """Both caches are process-level — a leak between tests would hide real failures."""
     api_client_module._self_review_request_supported = True
+    auth_module._app_bot_login = None
     yield
     api_client_module._self_review_request_supported = True
+    auth_module._app_bot_login = None
 
 
 def _make_client() -> tuple[GitHubAPIClient, AsyncMock]:
@@ -89,3 +94,21 @@ async def test_server_error_keeps_trying():
         assert await client.request_self_as_reviewer("org/repo", 8) is False
 
     assert mock_http.post.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bot_login_without_slug_raises():
+    """A malformed GET /app must fail loudly here, not produce a "None[bot]" reviewer."""
+    mock_http = AsyncMock(spec=httpx.AsyncClient)
+    mock_http.get.return_value = _mock_response({})
+    mock_http.__aenter__.return_value = mock_http
+    mock_http.__aexit__.return_value = False
+
+    with (
+        patch("httpx.AsyncClient", return_value=mock_http),
+        patch("baloo.github.auth.generate_jwt", return_value="jwt"),
+        pytest.raises(ValueError, match="no slug"),
+    ):
+        await get_app_bot_login()
+
+    assert auth_module._app_bot_login is None

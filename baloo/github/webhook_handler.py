@@ -264,16 +264,16 @@ async def handle_webhook(
             # review_requested fires for every reviewer — only re-review when it's us
             # (the ↻ re-request button next to baloo in the Reviewers box).
             if action == "review_requested":
-                from baloo.github.discussions import is_baloo_actor
+                from baloo.github.auth import is_this_app
 
                 # Baloo lists itself as a reviewer at the start of every review — reacting
                 # to its own request would loop forever.
-                if is_baloo_actor(webhook_payload.sender.login):
+                if await is_this_app(webhook_payload.sender.login):
                     logger.info(f"Ignoring Baloo's own review request on {repo_name}#{pr_number}")
                     return {"status": "ignored", "action": action, "reason": "self-request"}
 
                 requested_login = (payload.get("requested_reviewer") or {}).get("login")
-                if not is_baloo_actor(requested_login):
+                if not await is_this_app(requested_login):
                     logger.info(
                         f"Ignoring review request for {requested_login} on "
                         f"{repo_name}#{pr_number} — not Baloo"
