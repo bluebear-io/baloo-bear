@@ -132,7 +132,7 @@ def test_route_renders(path: str, method: str, payload: dict) -> None:
     # loaded earlier in the document or every chart silently stays blank.
     call = response.text.find("BalooCharts.make")
     if call != -1:
-        assert response.text.find("charts.js") < call, "charts.js loads after BalooCharts.make"
+        assert response.text.index("charts.js") < call, "charts.js loads after BalooCharts.make"
 
 
 def test_review_detail_renders() -> None:
