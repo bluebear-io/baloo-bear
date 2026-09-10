@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 
@@ -79,9 +81,12 @@ async def test_check_runs_on_a_freshly_booted_host(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_non_https_release_url_is_dropped(monkeypatch):
+async def test_non_https_release_url_is_dropped(monkeypatch, caplog):
     """The banner renders this URL as an href; autoescape does not stop javascript:."""
     monkeypatch.setattr(upgrade, "VERSION", "2.2.1")
     _mock_release(monkeypatch, {"tag_name": "v2.3.0", "html_url": "javascript:alert(1)"})
 
-    assert await upgrade.check_for_upgrade() is None
+    with caplog.at_level(logging.WARNING):
+        assert await upgrade.check_for_upgrade() is None
+
+    assert "not https" in caplog.text
