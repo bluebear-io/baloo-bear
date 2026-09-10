@@ -28,6 +28,7 @@ from baloo.config.runtime_settings import (
 from baloo.config.settings import Settings, get_settings
 from baloo.dashboard.auth import verify_credentials
 from baloo.dashboard.queries import DashboardService
+from baloo.dashboard.upgrade import check_for_upgrade, current_version
 
 router = APIRouter(
     prefix="/dashboard",
@@ -35,6 +36,7 @@ router = APIRouter(
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["current_version"] = current_version()
 
 # One-shot flash payloads for PRG redirects. Location only carries a server-
 # generated token so user-controlled form values never flow into the URL
@@ -433,6 +435,15 @@ def _models_in_use() -> list[dict[str, str]]:
             "source": setting_source("agent_model"),
         },
     ]
+
+
+@router.get("/upgrade-banner", response_class=HTMLResponse)
+async def upgrade_banner(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/upgrade_banner.html",
+        context={"upgrade": await check_for_upgrade()},
+    )
 
 
 @router.get("/", response_class=HTMLResponse)

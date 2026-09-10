@@ -33,6 +33,8 @@
   </header>
 
   <main class="main">
+    <div hx-get="/dashboard/upgrade-banner" hx-trigger="load" hx-swap="outerHTML"></div>
+
     {% block page_head %}
     {% if page_title %}
     <div class="page-head">
@@ -47,6 +49,11 @@
 
     {% block content %}{% endblock %}
   </main>
+
+  <footer class="footer">
+    Baloo v{{ current_version }} &middot; built by
+    <a href="https://bluebear.io" target="_blank" rel="noopener">BlueBear</a>
+  </footer>
 
   <script src="/dashboard-static/chart.umd.js"></script>
   <script src="/dashboard-static/charts.js"></script>

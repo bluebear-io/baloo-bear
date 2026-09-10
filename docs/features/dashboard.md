@@ -9,8 +9,17 @@ Baloo includes an optional review history dashboard backed by PostgreSQL. It pro
 - **Cost tracking** — Token usage and dollar cost per review and in aggregate
 - **Fidelity scores** — When fidelity analysis is enabled
 - **Settings** — Effective runtime configuration; allowlisted agent knobs can be edited when the database is enabled
+- **Upgrade notice** — A banner when a newer Baloo-Bear release is available
 
 The dashboard follows the viewer's light/dark preference and has a theme toggle in the header. All CSS and JavaScript are served from the application itself — no CDN — so it renders correctly offline and behind a firewall.
+
+## Upgrade Notifications
+
+Every page checks the [GitHub releases API](https://github.com/bluebear-io/baloo-bear/releases) and shows a banner when a newer version is available, linking to its release notes. The footer shows the version you are running.
+
+Only published, non-prerelease releases count, so builds tracking `main` never raise the banner — nor does a build running ahead of the latest release. The check is loaded after the page renders, cached for an hour, and requires no token; if GitHub is unreachable the banner is simply omitted and the failure is logged as a warning.
+
+The running version comes from `BALOO_VERSION`, set at image build time from the release tag. Deployments that build from a source checkout fall back to the version in `pyproject.toml`.
 
 ## Requirements
 
