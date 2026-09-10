@@ -42,6 +42,9 @@ def current_version() -> str:
 
 async def check_for_upgrade() -> dict[str, str] | None:
     """Return {'version', 'url'} when a newer release exists, else None."""
+    # ponytail: no lock around the fetch. A cache miss served to N concurrent
+    # requests costs N GitHub calls once per TTL, well inside the 60/hr
+    # unauthenticated budget; add an asyncio.Lock if the check ever needs auth.
     global _cache
     cached_at, cached = _cache
     if time.monotonic() - cached_at < CACHE_TTL_SECONDS:
@@ -60,7 +63,8 @@ async def check_for_upgrade() -> dict[str, str] | None:
         if current and newest and newest > current:
             latest = {"version": release["tag_name"], "url": release["html_url"]}
     except Exception as exc:  # network, rate limit, malformed payload
-        logger.debug(f"Upgrade check failed: {exc}")
+        # Cached like a real result, so this warns at most once per TTL.
+        logger.warning(f"Upgrade check failed: {exc}")
 
     _cache = (time.monotonic(), latest)
     return latest
