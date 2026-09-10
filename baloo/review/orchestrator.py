@@ -1207,6 +1207,12 @@ async def process_pr_review(
             # Initialize GitHub client
             github_client = GitHubAPIClient(installation_id)
 
+            # List Baloo as a reviewer so GitHub shows the re-request (↻) button.
+            # ponytail: done on every run because GitHub clears the request when Baloo
+            # submits its review. Costs one "requested a review" timeline entry per run —
+            # narrow to the first review of each PR if that turns out to be noisy.
+            await github_client.request_self_as_reviewer(repo_full_name, pr_number)
+
             # Post initial comment for main PR events only
             if notify_progress:
                 progress_comment_id = await github_client.post_comment(

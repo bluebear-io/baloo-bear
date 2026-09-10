@@ -86,6 +86,7 @@ def _make_github_client(pr_context=None):
     gc.resolve_review_thread = AsyncMock()
     gc.is_merge_or_sync_commit = AsyncMock(return_value=(False, ""))
     gc.get_pr_context = AsyncMock(return_value=pr_context or _make_pr_context())
+    gc.request_self_as_reviewer = AsyncMock(return_value=True)
     return gc
 
 
