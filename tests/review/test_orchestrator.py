@@ -727,7 +727,7 @@ class TestGitHubChecksApiPath:
         assert medium_comment.body in check_text
 
     @pytest.mark.asyncio
-    async def test_checks_api_failure_keeps_medium_in_completion_digest(self):
+    async def test_checks_api_failure_without_progress_posts_medium_digest(self):
         from baloo.review.orchestrator import process_pr_review
 
         gc = _make_github_client()
@@ -758,16 +758,21 @@ class TestGitHubChecksApiPath:
                 repo_full_name="org/repo",
                 pr_number=1,
                 installation_id=1,
-                notify_progress=True,
+                notify_progress=False,
                 head_sha="abc123",
             )
 
-        # Only the progress comment is created; the full finding is added there
-        # instead of being duplicated as a separate fallback comment.
+        # With no progress comment to edit, post one canonical digest rather
+        # than silently dropping the finding or duplicating it per finding.
         assert gc.post_comment.call_count == 1
-        completion = gc.edit_comment.call_args.args[2]
-        assert "<details>" in completion
-        assert medium_comment.body in completion
+        digest = gc.post_comment.call_args.args[2]
+        assert "<details>" in digest
+        assert medium_comment.body in digest
+        gc.edit_comment.assert_not_called()
+
+        approval = gc.post_review.call_args.args[2]
+        assert "Baloo's finding digest" in approval.summary
+        assert "Checks tab" not in approval.summary
 
 
 # ---------------------------------------------------------------------------

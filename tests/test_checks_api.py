@@ -40,7 +40,7 @@ async def test_create_check_run():
 
     assert check_run_id == "12345"
     mock_http.post.assert_called_once()
-    payload = mock_http.post.call_args[1]["json"]
+    payload = mock_http.post.call_args.kwargs["json"]
     assert payload["name"] == "Test Check"
     assert payload["head_sha"] == "abc123def"
     assert payload["status"] == "completed"
@@ -65,7 +65,7 @@ async def test_add_annotations_includes_category():
     )
 
     mock_http.patch.assert_called_once()
-    annotations = mock_http.patch.call_args[1]["json"]["output"]["annotations"]
+    annotations = mock_http.patch.call_args.kwargs["json"]["output"]["annotations"]
     assert len(annotations) == 2
     assert annotations[0]["path"] == "test.py"
     assert annotations[0]["start_line"] == 10
@@ -128,7 +128,7 @@ async def test_create_check_run_with_different_conclusions():
             summary="Test",
         )
 
-        payload = mock_http.post.call_args[1]["json"]
+        payload = mock_http.post.call_args.kwargs["json"]
         assert payload["conclusion"] == conclusion
 
 

@@ -1678,6 +1678,7 @@ async def process_pr_review(
             )
 
             # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
+            checks_posted = False
             if routed["checks"] and resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
@@ -1702,12 +1703,18 @@ async def process_pr_review(
                     logger.info(
                         f"Successfully posted GitHub Check with {len(routed['checks'])} annotations"
                     )
+                    checks_posted = True
 
                 except Exception as check_error:
                     logger.error(f"Failed to post GitHub Check: {check_error}", exc_info=True)
                     logger.warning(
-                        "MEDIUM findings remain available in the pull request completion digest"
+                        "MEDIUM findings remain available in the pull request finding digest"
                     )
+
+            # Webhook entry points create a progress comment that becomes the
+            # completion digest. Keep direct/internal callers equally lossless.
+            if medium_details and not progress_comment_id:
+                await github_client.post_comment(repo_full_name, pr_number, medium_details)
 
             has_new_feedback = bool(
                 routed["review"] or follow_up_comments or routed["checks"] or general_findings
@@ -1745,8 +1752,15 @@ async def process_pr_review(
             if not request_changes and approve:
                 logger.info("No blocking issues found, posting approval review")
                 approval_msg = "✅ No critical or high severity issues found. Safe to merge!"
-                if routed["checks"]:
-                    approval_msg += f"\n\n💡 {len(routed['checks'])} medium severity suggestion(s) available in the Checks tab."
+                medium_count = severity_counts.get(ReviewSeverity.MEDIUM.value, 0)
+                if medium_count:
+                    location = "Baloo's finding digest"
+                    if checks_posted:
+                        location += " and the Checks tab"
+                    approval_msg += (
+                        f"\n\n💡 {medium_count} medium severity suggestion(s) available in "
+                        f"{location}."
+                    )
 
                 await github_client.post_review(
                     repo_full_name,

@@ -23,7 +23,7 @@ Posted as inline comments on the exact file and line. The PR review is submitted
 
 Posted as annotations on a GitHub Check called "Baloo Code Quality". These appear in the Checks tab and as non-blocking annotations on the PR diff, but don't block merge. The full text is also available in the Check summary and in an expandable section of Baloo's completion comment.
 
-If the Checks API fails (e.g., missing permissions), MEDIUM findings fall back to regular issue comments.
+If the Checks API fails (e.g., missing permissions), MEDIUM findings are not posted as separate comments — they remain available in Baloo's expandable PR finding digest.
 
 ### LOW → Filtered
 
