@@ -128,6 +128,11 @@ def test_route_renders(path: str, method: str, payload: dict) -> None:
 
     assert response.status_code == 200, response.text
     assert "<html" in response.text
+    # Inline page scripts call BalooCharts synchronously, so the bridge must be
+    # loaded earlier in the document or every chart silently stays blank.
+    call = response.text.find("BalooCharts.make")
+    if call != -1:
+        assert response.text.find("charts.js") < call, "charts.js loads after BalooCharts.make"
 
 
 def test_review_detail_renders() -> None:
