@@ -1,6 +1,6 @@
 """Format fidelity analysis results as markdown report."""
 
-from baloo.config.settings import get_settings
+from baloo.config.runtime_settings import resolve_setting
 from baloo.fidelity.models import FidelityResult
 
 NO_TICKET_FIDELITY_SENTINEL = "<!-- baloo:no-ticket-fidelity-report -->"
@@ -159,7 +159,7 @@ def _get_severity_icon(severity: str) -> str:
 
 def _format_no_ticket() -> str:
     """Format report when no ticket ID is found."""
-    prefix = get_settings().ticket_id_prefix
+    prefix = resolve_setting("ticket_id_prefix")
     return f"""<details>
 <summary>\U0001f4cb Fidelity Report - \u23ed\ufe0f Skipped</summary>
 

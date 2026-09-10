@@ -24,9 +24,12 @@ def test_extension_flag_added_when_ast_tools_enabled():
     )
     agent = PIAgentBase(options)
 
-    with patch(
-        "baloo.agent.pi_runtime.get_settings",
-        return_value=_make_mock_settings(ast_tools_enabled=True),
+    with (
+        patch(
+            "baloo.agent.pi_runtime.get_settings",
+            return_value=_make_mock_settings(ast_tools_enabled=True),
+        ),
+        patch("baloo.agent.pi_runtime.resolve_setting", return_value=True),
     ):
         cmd = agent._build_pi_command()
 
@@ -45,9 +48,12 @@ def test_extension_flag_omitted_when_ast_tools_disabled():
     )
     agent = PIAgentBase(options)
 
-    with patch(
-        "baloo.agent.pi_runtime.get_settings",
-        return_value=_make_mock_settings(ast_tools_enabled=False),
+    with (
+        patch(
+            "baloo.agent.pi_runtime.get_settings",
+            return_value=_make_mock_settings(ast_tools_enabled=False),
+        ),
+        patch("baloo.agent.pi_runtime.resolve_setting", return_value=False),
     ):
         cmd = agent._build_pi_command()
 

@@ -69,11 +69,16 @@ class TestPIAgentOptions:
     """Tests for PIAgentOptions defaults."""
 
     def test_defaults(self):
+        """Defaults mirror the config layer rather than restating it."""
+        from baloo.agent.tiers import AGENT_MAX_TURNS, PROVIDER_TIER_MODELS
+        from baloo.config.settings import Settings
+
         opts = PIAgentOptions()
-        assert opts.model == "claude-sonnet-4-6"
-        assert opts.provider == "anthropic"
-        assert opts.thinking_level == "medium"
-        assert opts.max_turns == 20
+        provider = Settings.model_fields["agent_provider"].default
+        assert opts.provider == provider
+        assert opts.model == PROVIDER_TIER_MODELS[provider]["standard"]
+        assert opts.thinking_level == Settings.model_fields["pi_thinking_level"].default
+        assert opts.max_turns == AGENT_MAX_TURNS
         assert opts.cwd is None
         assert opts.name is None
 
