@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 LATEST_RELEASE_URL = "https://api.github.com/repos/bluebear-io/baloo-bear/releases/latest"
 CACHE_TTL_SECONDS = 3600
 
-_cache: tuple[float, dict[str, str] | None] = (0.0, None)
+# -inf, not 0.0: time.monotonic() is time since boot on Linux, so on a
+# freshly booted host 0.0 still looks like a fresh cache entry and the
+# check would be suppressed for the first hour of uptime.
+_EMPTY_CACHE: tuple[float, dict[str, str] | None] = (float("-inf"), None)
+_cache = _EMPTY_CACHE
 
 
 def _parse(version: str) -> tuple[int, ...] | None:

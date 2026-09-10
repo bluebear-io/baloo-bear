@@ -8,9 +8,9 @@ from baloo.dashboard import upgrade
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    upgrade._cache = (0.0, None)
+    upgrade._cache = upgrade._EMPTY_CACHE
     yield
-    upgrade._cache = (0.0, None)
+    upgrade._cache = upgrade._EMPTY_CACHE
 
 
 def _mock_release(monkeypatch, payload: dict) -> None:
@@ -66,3 +66,13 @@ async def test_network_failure_is_swallowed(monkeypatch):
 def test_current_version_falls_back_to_pyproject(monkeypatch):
     monkeypatch.setattr(upgrade, "VERSION", "dev")
     assert upgrade._parse(upgrade.current_version()) is not None
+
+
+@pytest.mark.asyncio
+async def test_check_runs_on_a_freshly_booted_host(monkeypatch):
+    """monotonic() is uptime on Linux; a low value must not read as a warm cache."""
+    monkeypatch.setattr(upgrade.time, "monotonic", lambda: 200.0)
+    monkeypatch.setattr(upgrade, "VERSION", "2.2.1")
+    _mock_release(monkeypatch, {"tag_name": "v2.3.0", "html_url": "https://example.invalid/v2.3.0"})
+
+    assert await upgrade.check_for_upgrade() is not None
