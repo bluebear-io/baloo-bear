@@ -54,6 +54,7 @@ class ReviewCompleteDTO(BaseModel):
     fidelity_score: float | None = None
     error_message: str | None = None
     error_category: str | None = None
+    awaiting_thread_count: int = 0
     findings: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -190,12 +191,14 @@ class ReviewService:
                     review.fidelity_score = data.fidelity_score
                     review.error_message = data.error_message
                     review.error_category = data.error_category
+                    review.awaiting_thread_count = data.awaiting_thread_count
 
                     if data.findings:
                         for f in data.findings:
                             finding = Finding(
                                 review_id=review.id,
-                                file_path=f.get("file_path", ""),
+                                finding_type=f.get("finding_type", "inline"),
+                                file_path=f.get("file_path"),
                                 line_number=f.get("line_number"),
                                 severity=f.get("severity", "MEDIUM"),
                                 category=f.get("category", "Quality"),

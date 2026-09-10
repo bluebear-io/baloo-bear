@@ -47,6 +47,9 @@ class Review(Base):
     fidelity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    awaiting_thread_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     installation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     findings: Mapped[list["Finding"]] = relationship(
@@ -79,7 +82,10 @@ class Finding(Base):
     review_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
     )
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    finding_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="inline", server_default="inline"
+    )
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="Quality")

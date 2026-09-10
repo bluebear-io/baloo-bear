@@ -105,6 +105,7 @@ async def test_complete_review_success(db_session_factory):
         files_examined=5,
         auto_approved=True,
         fidelity_score=95.0,
+        awaiting_thread_count=2,
         findings=[
             {
                 "file_path": "src/main.py",
@@ -114,11 +115,12 @@ async def test_complete_review_success(db_session_factory):
                 "body": "SQL injection risk",
             },
             {
-                "file_path": "src/utils.py",
-                "line_number": 25,
-                "severity": "LOW",
-                "category": "Quality",
-                "body": "Consider renaming variable",
+                "finding_type": "general",
+                "file_path": None,
+                "line_number": None,
+                "severity": "HIGH",
+                "category": "Guidelines",
+                "body": "Missing repository-wide review guidance",
             },
         ],
     )
@@ -132,10 +134,14 @@ async def test_complete_review_success(db_session_factory):
         assert review.review_status == "approved"
         assert review.pr_title == "Add feature"
         assert review.tokens_input == 1000
+        assert review.awaiting_thread_count == 2
 
         result = await session.execute(select(Finding).where(Finding.review_id == review_id))
         findings = result.scalars().all()
         assert len(findings) == 2
+        general = next(finding for finding in findings if finding.finding_type == "general")
+        assert general.file_path is None
+        assert general.body == "Missing repository-wide review guidance"
 
 
 async def test_complete_review_error_status(db_session_factory):

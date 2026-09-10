@@ -35,6 +35,7 @@ async def test_create_check_run():
         name="Test Check",
         conclusion="neutral",
         summary="Test summary",
+        text="Full finding details",
     )
 
     assert check_run_id == "12345"
@@ -45,6 +46,7 @@ async def test_create_check_run():
     assert payload["status"] == "completed"
     assert payload["conclusion"] == "neutral"
     assert payload["output"]["summary"] == "Test summary"
+    assert payload["output"]["text"] == "Full finding details"
 
 
 @pytest.mark.asyncio
@@ -84,7 +86,7 @@ async def test_add_annotations_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_add_annotations_truncates_to_50():
+async def test_add_annotations_batches_beyond_50():
     findings = [
         ReviewComment(
             path=f"file{i}.py",
@@ -102,8 +104,14 @@ async def test_add_annotations_truncates_to_50():
         repo_full_name="owner/repo", check_run_id="12345", findings=findings
     )
 
-    annotations = mock_http.patch.call_args[1]["json"]["output"]["annotations"]
-    assert len(annotations) == 50
+    assert mock_http.patch.call_count == 2
+    batches = [
+        call.kwargs["json"]["output"]["annotations"] for call in mock_http.patch.call_args_list
+    ]
+    assert [len(batch) for batch in batches] == [50, 50]
+    assert [annotation["path"] for batch in batches for annotation in batch] == [
+        f"file{i}.py" for i in range(100)
+    ]
 
 
 @pytest.mark.asyncio

@@ -102,16 +102,33 @@
             <td><span class="badge badge--{{ finding.severity | lower }}">{{ finding.severity | lower }}</span></td>
             <td>{{ finding.category }}</td>
             <td class="mono">
-              {% if review.commit_sha %}
+              {% if finding.finding_type == 'general' or not finding.file_path %}
+              General observation
+              {% elif review.commit_sha %}
               <a href="https://github.com/{{ review.repo_full_name }}/blob/{{ review.commit_sha }}/{{ finding.file_path }}{% if finding.line_number %}#L{{ finding.line_number }}{% endif %}"
                  target="_blank" rel="noopener">{{ finding.file_path }}</a>
               {% else %}{{ finding.file_path }}{% endif %}
             </td>
             <td class="num">{{ finding.line_number if finding.line_number is not none else '—' }}</td>
-            <td style="max-width:40rem">{{ finding.body }}</td>
+            <td style="max-width:40rem">
+              <details>
+                <summary style="cursor:pointer">
+                  {{ finding.body[:140] }}{% if finding.body | length > 140 %}…{% endif %}
+                </summary>
+                <div style="margin-top:var(--space-3);white-space:pre-wrap;overflow-wrap:anywhere">{{ finding.body }}</div>
+              </details>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="5"><div class="empty">No findings on this review</div></td></tr>
+          <tr><td colspan="5"><div class="empty">
+            {% if review.awaiting_thread_count | default(0, true) %}
+              No new findings. Waiting on {{ review.awaiting_thread_count }} existing Baloo review thread{% if review.awaiting_thread_count != 1 %}s{% endif %}.
+            {% elif review.review_status == 'changes_requested' %}
+              This review requested changes, but its finding details were not recorded. Open the PR for the original review.
+            {% else %}
+              No findings on this review
+            {% endif %}
+          </div></td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -1,5 +1,6 @@
 """Format review comments and summaries as Markdown."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from baloo.github.models import GeneralFinding, ReviewComment
@@ -14,6 +15,47 @@ class CommentFormatter:
         "MEDIUM": "🟡",
         "LOW": "🔵",
     }
+
+    @staticmethod
+    def format_findings_digest(
+        findings: Sequence[ReviewComment | GeneralFinding],
+    ) -> str:
+        """Format complete finding bodies for a GitHub Markdown surface."""
+        sections: list[str] = []
+        for index, finding in enumerate(findings, start=1):
+            category = (
+                finding.category.value if hasattr(finding.category, "value") else finding.category
+            )
+            if isinstance(finding, ReviewComment):
+                location = f"`{finding.path}:{finding.line}`"
+            else:
+                location = "_General observation_"
+            sections.append(f"### {index}. {category} — {location}\n\n{finding.body}")
+        return "\n\n---\n\n".join(sections)
+
+    @staticmethod
+    def format_collapsible_medium_findings(
+        findings: Sequence[ReviewComment | GeneralFinding],
+    ) -> str:
+        """Render MEDIUM findings in a compact section without hiding their content."""
+        medium_findings = [
+            finding
+            for finding in findings
+            if (finding.severity.value if hasattr(finding.severity, "value") else finding.severity)
+            == "MEDIUM"
+        ]
+        if not medium_findings:
+            return ""
+
+        count = len(medium_findings)
+        noun = "suggestion" if count == 1 else "suggestions"
+        digest = CommentFormatter.format_findings_digest(medium_findings)
+        return (
+            "<details>\n"
+            f"<summary>🟡 {count} medium {noun} — expand to read</summary>\n\n"
+            f"{digest}\n\n"
+            "</details>"
+        )
 
     @staticmethod
     def format_summary(

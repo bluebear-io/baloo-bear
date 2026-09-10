@@ -61,7 +61,13 @@ class GitHubChecksClient:
         }
 
     async def create_check_run(
-        self, repo_full_name: str, commit_sha: str, name: str, conclusion: str, summary: str
+        self,
+        repo_full_name: str,
+        commit_sha: str,
+        name: str,
+        conclusion: str,
+        summary: str,
+        text: str | None = None,
     ) -> str:
         """
         Create a GitHub Check Run.
@@ -72,17 +78,22 @@ class GitHubChecksClient:
             name: Check run name (e.g., "Baloo Code Quality")
             conclusion: "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
             summary: Summary text for the check
+            text: Optional full Markdown details shown on the check run
 
         Returns:
             Check run ID as string
         """
         url = f"{self.base_url}/repos/{repo_full_name}/check-runs"
+        output = {"title": name, "summary": summary}
+        if text:
+            output["text"] = text
+
         payload = {
             "name": name,
             "head_sha": commit_sha,
             "status": "completed",
             "conclusion": conclusion,
-            "output": {"title": name, "summary": summary},
+            "output": output,
         }
 
         logger.debug(f"Creating check run: {name} for {repo_full_name}@{commit_sha[:7]}")
@@ -111,15 +122,9 @@ class GitHubChecksClient:
             logger.debug("No findings to annotate")
             return
 
-        if len(findings) > MAX_ANNOTATIONS:
-            logger.warning(
-                f"Truncating {len(findings)} findings to {MAX_ANNOTATIONS} "
-                f"(GitHub Checks API limit)"
-            )
-
         # Format findings as annotations with category prefix
         annotations = []
-        for finding in findings[:MAX_ANNOTATIONS]:
+        for finding in findings:
             severity = _enum_value(finding.severity)
             category = _enum_value(finding.category)
             annotation = {
@@ -133,20 +138,29 @@ class GitHubChecksClient:
             annotations.append(annotation)
 
         url = f"{self.base_url}/repos/{repo_full_name}/check-runs/{check_run_id}"
-        payload = {
-            "output": {
-                "title": "Baloo Code Quality",
-                "summary": f"Found {len(findings)} code quality issue(s)",
-                "annotations": annotations,
+        url = f"{self.base_url}/repos/{repo_full_name}/check-runs/{check_run_id}"
+        for offset in range(0, len(annotations), MAX_ANNOTATIONS):
+            batch = annotations[offset : offset + MAX_ANNOTATIONS]
+            payload = {
+                "output": {
+                    "title": "Baloo Code Quality",
+                    "summary": f"Found {len(findings)} code quality issue(s)",
+                    "annotations": batch,
+                }
             }
-        }
 
-        logger.debug(f"Adding {len(annotations)} annotations to check run {check_run_id}")
+            logger.debug(
+                "Adding annotations %d-%d of %d to check run %s",
+                offset + 1,
+                offset + len(batch),
+                len(annotations),
+                check_run_id,
+            )
 
-        response = await self._http.patch(url, headers=self._get_headers(), json=payload)
-        response.raise_for_status()
+            response = await self._http.patch(url, headers=self._get_headers(), json=payload)
+            response.raise_for_status()
 
         logger.info(
-            f"Added {len(annotations)} annotations to check run {check_run_id} "
+            f"Added all {len(annotations)} annotations to check run {check_run_id} "
             f"for {repo_full_name}"
         )

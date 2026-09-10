@@ -8,10 +8,10 @@ Baloo routes findings to different GitHub surfaces based on severity, so develop
 |---|---|---|
 | **CRITICAL** | Inline review comment + "Request Changes" | ✅ Yes |
 | **HIGH** | Inline review comment + "Request Changes" | ✅ Yes |
-| **MEDIUM** | GitHub Checks API annotation | ❌ No |
+| **MEDIUM** | GitHub Checks API annotation + collapsible PR digest | ❌ No |
 | **LOW** | Filtered out (not posted) | ❌ No |
 
-General findings (no file/line anchor, e.g. missing tests) are not posted inline or to the Checks API — they appear under a "💬 General Observations" section in the review summary. CRITICAL/HIGH general findings still count toward the "Request Changes" decision.
+General findings (no file/line anchor, e.g. missing tests) are not posted inline or to the Checks API — they appear under a "💬 General Observations" section in the review summary and are stored in the dashboard. CRITICAL/HIGH general findings still count toward the "Request Changes" decision.
 
 ## How It Looks
 
@@ -21,7 +21,7 @@ Posted as inline comments on the exact file and line. The PR review is submitted
 
 ### MEDIUM → Checks API
 
-Posted as annotations on a GitHub Check called "Baloo Code Quality". These appear in the Checks tab and as non-blocking annotations on the PR diff, but don't block merge.
+Posted as annotations on a GitHub Check called "Baloo Code Quality". These appear in the Checks tab and as non-blocking annotations on the PR diff, but don't block merge. The full text is also available in the Check summary and in an expandable section of Baloo's completion comment.
 
 If the Checks API fails (e.g., missing permissions), MEDIUM findings fall back to regular issue comments.
 
@@ -43,7 +43,7 @@ The agent assigns severity based on these guidelines:
 | Variable | Default | Description |
 |---|---|---|
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post. Set to `LOW` to see everything, `HIGH` to reduce noise |
-| `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API. When `false`, MEDIUM findings go to review comments |
+| `REVIEW_USE_CHECKS_API` | `true` | Also post MEDIUM findings to the Checks API. The completion comment contains their full text either way |
 | `REVIEW_AUTO_APPROVE` | `false` | Auto-approve PRs with no CRITICAL/HIGH findings (opt-in) |
 
 ## Approval Decision Logic

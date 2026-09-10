@@ -50,6 +50,7 @@ def _review(review_id: int = 1) -> SimpleNamespace:
         fidelity_score=88.0,
         error_message=None,
         error_category=None,
+        awaiting_thread_count=0,
         findings=[],
         logs=[],
     )
@@ -145,6 +146,62 @@ def test_review_detail_renders() -> None:
 
     assert response.status_code == 200, response.text
     assert "example-org/example-repo" in response.text
+
+
+def test_review_detail_expands_general_finding_without_file_link() -> None:
+    review = _review()
+    full_body = "A complete general finding that remains readable after expansion. " * 8
+    review.findings = [
+        SimpleNamespace(
+            finding_type="general",
+            file_path=None,
+            line_number=None,
+            severity="MEDIUM",
+            category="Quality",
+            body=full_body,
+        )
+    ]
+    app = _build_app()
+    with patch(
+        "baloo.dashboard.router.DashboardService.get_review_detail",
+        new=AsyncMock(return_value=review),
+    ):
+        response = TestClient(app).get("/dashboard/reviews/1")
+
+    assert response.status_code == 200, response.text
+    assert "<details>" in response.text
+    assert "General observation" in response.text
+    assert full_body in response.text
+    assert "/blob/" not in response.text
+
+
+def test_review_detail_explains_existing_thread_blocker() -> None:
+    review = _review()
+    review.review_status = "changes_requested"
+    review.awaiting_thread_count = 2
+    app = _build_app()
+    with patch(
+        "baloo.dashboard.router.DashboardService.get_review_detail",
+        new=AsyncMock(return_value=review),
+    ):
+        response = TestClient(app).get("/dashboard/reviews/1")
+
+    assert response.status_code == 200, response.text
+    assert "No new findings. Waiting on 2 existing Baloo review threads." in response.text
+
+
+def test_review_detail_labels_legacy_zero_finding_rejection() -> None:
+    review = _review()
+    review.review_status = "changes_requested"
+    app = _build_app()
+    with patch(
+        "baloo.dashboard.router.DashboardService.get_review_detail",
+        new=AsyncMock(return_value=review),
+    ):
+        response = TestClient(app).get("/dashboard/reviews/1")
+
+    assert response.status_code == 200, response.text
+    assert "finding details were not recorded" in response.text
 
 
 def test_settings_renders() -> None:
