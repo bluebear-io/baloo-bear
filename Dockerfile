@@ -2,7 +2,7 @@
 # Pin to specific version for security patching - update periodically
 FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 as node-runtime
 
-FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 as base
+FROM python:3.14.7-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f as base
 
 # Build arguments for version tracking
 ARG BALOO_VERSION=dev
@@ -58,9 +58,10 @@ USER baloo
 # Expose port
 EXPOSE 8000
 
-# Health check
+# Health check. Reads APP_PORT so a changed port doesn't leave the container
+# permanently unhealthy while the app is serving fine.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f "http://localhost:${APP_PORT:-8000}/health" || exit 1
 
 # Run the application
 CMD ["python", "main.py"]
