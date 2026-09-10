@@ -234,7 +234,10 @@ class TestPullRequestReviewCommentRouting:
         payload = self._make_review_comment_payload(author="developer", body="I fixed it")
         mock_settings = MagicMock()
         mock_settings.thread_agent_enabled = True
-        with patch("baloo.github.webhook_handler.settings", mock_settings):
+        with (
+            patch("baloo.github.webhook_handler.settings", mock_settings),
+            patch("baloo.github.webhook_handler.resolve_setting", return_value=True),
+        ):
             resp = _post_webhook(client, payload, event="pull_request_review_comment")
         assert resp.status_code == 200
         data = resp.json()

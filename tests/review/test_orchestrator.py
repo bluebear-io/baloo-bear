@@ -30,6 +30,21 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _resolve_patch(**overrides):
+    """Patch the orchestrator's ``resolve_setting``, falling through for other keys.
+
+    These settings are DB-overridable, so the code reads them through
+    ``resolve_setting`` rather than off the ``settings`` object. Patching the
+    attribute on ``settings`` would be a silent no-op.
+    """
+    from baloo.config.runtime_settings import resolve_setting as real_resolve
+
+    return patch(
+        "baloo.review.orchestrator.resolve_setting",
+        side_effect=lambda key: overrides[key] if key in overrides else real_resolve(key),
+    )
+
+
 def _make_pr_context(
     *,
     repo: str = "org/repo",
@@ -88,18 +103,24 @@ def _make_agent(comments=None, approve=True, request_changes=False, metadata=Non
     return agent
 
 
-def _base_patches(gc, agent):
+def _base_patches(gc, agent, **overrides):
+    """Standard patch set. Extra ``resolve_setting`` overrides merge into the
+    single patch — stacking a second ``_resolve_patch`` would replace this one
+    rather than add to it."""
+    resolved = {
+        "fidelity_enabled": False,
+        "fp_verification_enabled": False,
+        "feedback_signals_enabled": False,
+        "review_use_checks_api": False,
+    }
+    resolved.update(overrides)
     return [
         patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc),
         patch("baloo.agent.client.BalooAgent", return_value=agent),
-        patch("baloo.review.orchestrator.settings.fidelity_enabled", False),
-        patch("baloo.review.orchestrator.settings.fp_verification_enabled", False),
-        patch("baloo.config.settings.settings.fp_verification_enabled", False),
-        patch("baloo.config.settings.settings.review_min_severity", "MEDIUM"),
+        _resolve_patch(**resolved),
+        patch("baloo.processor.findings_filter.resolve_setting", return_value="MEDIUM"),
         patch("baloo.review.orchestrator.settings.database_enabled", False),
         patch("baloo.config.settings.settings.database_enabled", False),
-        patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False),
-        patch("baloo.review.orchestrator.settings.review_use_checks_api", False),
     ]
 
 
@@ -554,18 +575,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
-            stack.enter_context(patch("baloo.review.orchestrator.settings.fidelity_enabled", False))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
-                patch("baloo.review.orchestrator.settings.fp_verification_enabled", False)
+                _resolve_patch(
+                    fidelity_enabled=False,
+                    fp_verification_enabled=False,
+                    feedback_signals_enabled=False,
+                    review_use_checks_api=False,
+                )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False)
-            )
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", False)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",
@@ -606,18 +627,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
-            stack.enter_context(patch("baloo.review.orchestrator.settings.fidelity_enabled", False))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
-                patch("baloo.review.orchestrator.settings.fp_verification_enabled", False)
+                _resolve_patch(
+                    fidelity_enabled=False,
+                    fp_verification_enabled=False,
+                    feedback_signals_enabled=False,
+                    review_use_checks_api=False,
+                )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False)
-            )
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", False)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",
@@ -678,9 +699,7 @@ class TestGitHubChecksApiPath:
             for p in _base_patches(gc, agent):
                 stack.enter_context(p)
             # Override the review_use_checks_api patch to True
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", True)
-            )
+            stack.enter_context(_resolve_patch(review_use_checks_api=True))
             # Local import in orchestrator — patch the source module, not orchestrator namespace
             stack.enter_context(
                 patch("baloo.github.checks_api.GitHubChecksClient", return_value=mock_checks_client)
@@ -718,11 +737,8 @@ class TestGitHubChecksApiPath:
         )
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, review_use_checks_api=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", True)
-            )
             # Local import in orchestrator — patch the source module, not orchestrator namespace
             stack.enter_context(
                 patch("baloo.github.checks_api.GitHubChecksClient", return_value=mock_checks_client)
@@ -796,7 +812,7 @@ class TestDocumentationDriftOrchestration:
         from baloo.review.orchestrator import _run_documentation_drift_analysis
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", False),
+            _resolve_patch(documentation_drift_enabled=False),
             patch("baloo.review.orchestrator.load_documentation_catalog") as load_catalog,
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
@@ -819,7 +835,7 @@ class TestDocumentationDriftOrchestration:
         from baloo.review.orchestrator import _run_documentation_drift_analysis
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch("baloo.review.orchestrator.load_documentation_catalog", return_value=None),
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
@@ -958,7 +974,7 @@ class TestDocumentationDriftOrchestration:
         ]
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch("baloo.review.orchestrator.load_documentation_catalog", return_value=catalog),
             patch(
                 "baloo.review.orchestrator.analyze_documentation_drift",
@@ -1001,7 +1017,7 @@ class TestDocumentationDriftOrchestration:
         session.close = AsyncMock()
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch("baloo.review.orchestrator.settings.database_enabled", True),
             patch("baloo.review.orchestrator.settings.database_url", "db"),
             patch("baloo.review.orchestrator.load_documentation_catalog", return_value=catalog),
@@ -1042,11 +1058,8 @@ class TestDocumentationDriftOrchestration:
         agent = _make_agent()
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, documentation_drift_enabled=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator._run_documentation_drift_analysis",
@@ -1086,11 +1099,8 @@ class TestDocumentationDriftOrchestration:
         agent = _make_agent()
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, documentation_drift_enabled=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator._decide_synchronize_review_mode",
