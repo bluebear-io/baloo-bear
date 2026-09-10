@@ -99,6 +99,19 @@ def test_total_review_tokens_include_side_agent_tokens():
     assert total == 205
 
 
+def test_total_review_tokens_covers_cache_keys():
+    """The orchestrator sums input_tokens + cache_read + cache_write into
+    reviews.tokens_input — summing only input_tokens recorded ~1 per message."""
+    for key in ("cache_read_tokens", "cache_write_tokens"):
+        total = _total_review_tokens(
+            key,
+            {key: 100, "fp_verification": {key: 10}},
+            {key: 30},
+            {key: 40},
+        )
+        assert total == 180, key
+
+
 @pytest.mark.asyncio
 async def test_review_summary_uses_actionable_findings_after_resolved_thread_skip():
     """Review body counts should reflect deduped actionable findings, not raw agent output."""

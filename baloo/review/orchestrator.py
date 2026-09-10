@@ -1851,11 +1851,17 @@ async def process_pr_review(
                 )
 
                 # Aggregate costs and tokens
-                total_input_tokens = _total_review_tokens(
-                    "input_tokens",
-                    review_metadata,
-                    fidelity_metadata,
-                    documentation_metadata,
+                # Cache reads/writes ARE input tokens — providers just bill them
+                # separately and report `input` as the uncached delta only. Summing
+                # only "input_tokens" made reviews.tokens_input read ~1 per message.
+                total_input_tokens = sum(
+                    _total_review_tokens(
+                        key,
+                        review_metadata,
+                        fidelity_metadata,
+                        documentation_metadata,
+                    )
+                    for key in ("input_tokens", "cache_read_tokens", "cache_write_tokens")
                 )
                 total_output_tokens = _total_review_tokens(
                     "output_tokens",

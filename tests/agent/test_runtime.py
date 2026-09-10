@@ -1159,3 +1159,177 @@ class TestDatabricksWiring:
     def test_unsandboxed_spawn_still_inherits(self):
         agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
         assert agent._subprocess_env(sandbox_active=False) is None
+
+
+class TestWrapUpSteer:
+    """The agent must be told to finalize before the turn cap cuts it off.
+
+    Production hit a wall at exactly max_turns: the run was aborted mid-
+    exploration with no assistant text, so nothing could be parsed and the
+    whole review was discarded with zero findings.
+    """
+
+    async def _drive(
+        self,
+        *,
+        max_turns: int,
+        turns: int,
+        with_text: bool = False,
+        parseable: bool = True,
+        logger=None,
+    ):
+        """Run an agent that emits `turns` tool-only turns. Returns stdin writes."""
+        agent = PIAgentBase(PIAgentOptions(max_turns=max_turns, name="BalooAgent"))
+
+        text = '{"findings": []}' if parseable else "Let me check the parser next."
+        content = [{"type": "text", "text": text}] if with_text else []
+        events = [
+            json.dumps(
+                {"type": "response", "command": "set_thinking_level", "success": True}
+            ).encode()
+            + b"\n",
+            json.dumps({"type": "response", "command": "prompt", "success": True}).encode() + b"\n",
+        ]
+        for _ in range(turns):
+            events += [
+                json.dumps({"type": "turn_start"}).encode() + b"\n",
+                json.dumps(
+                    {
+                        "type": "message_end",
+                        "message": {
+                            "role": "assistant",
+                            "content": content,
+                            "model": "test",
+                            "usage": {"input": 1, "output": 5, "cost": {"total": 0.001}},
+                        },
+                    }
+                ).encode()
+                + b"\n",
+                json.dumps({"type": "turn_end"}).encode() + b"\n",
+            ]
+        events.append(json.dumps({"type": "agent_end"}).encode() + b"\n")
+
+        with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            with patch.object(
+                PIAgentBase, "_retry_json", AsyncMock(return_value=(None, None, None))
+            ):
+                await agent.run_query("Review", review_logger=logger)
+
+            return [json.loads(c[0][0].decode()) for c in proc.stdin.write.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_steer_sent_before_cap_and_before_abort(self):
+        """A 30-turn agent is steered to wrap up at turn 27, then aborted at 30."""
+        cmds = await self._drive(max_turns=30, turns=30)
+        types = [c["type"] for c in cmds]
+
+        assert "steer" in types, "no wrap-up steer was sent before the cap"
+        assert types.index("steer") < types.index("abort")
+
+        steer = cmds[types.index("steer")]
+        assert "3 turn(s) left" in steer["message"]
+        assert "final JSON" in steer["message"]
+
+    @pytest.mark.asyncio
+    async def test_steer_not_repeated(self):
+        cmds = await self._drive(max_turns=30, turns=30)
+        assert [c["type"] for c in cmds].count("steer") == 1
+
+    @pytest.mark.asyncio
+    async def test_no_steer_when_agent_finishes_early(self):
+        """The common case costs nothing: a run that ends well short of the cap
+        is never nudged."""
+        cmds = await self._drive(max_turns=30, turns=12, with_text=True)
+        assert "steer" not in [c["type"] for c in cmds]
+
+    @pytest.mark.asyncio
+    async def test_no_steer_for_short_deciders(self):
+        """A 1- or 2-turn decider has no room for a nudge — reaching its cap is
+        its normal, successful exit."""
+        for cap in (1, 2, 3):
+            cmds = await self._drive(max_turns=cap, turns=cap, with_text=True)
+            assert "steer" not in [c["type"] for c in cmds], f"steered a {cap}-turn agent"
+
+
+class TestEmptyRunIsLogged:
+    """Only BalooAgent's failure reaches reviews.review_status. The fidelity and
+    documentation agents return None and log to stderr, so their aborts were
+    invisible in the database — they must land in review_logs.
+    """
+
+    def _logger(self):
+        log = AsyncMock()
+        log.agent_error = AsyncMock()
+        log.agent_completed = AsyncMock()
+        return log
+
+    @pytest.mark.asyncio
+    async def test_capped_run_with_no_output_logs_agent_error(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=30, logger=log)
+
+        log.agent_error.assert_awaited_once()
+        assert log.agent_error.await_args.kwargs["error_category"] == "max_turns_reached"
+        assert "30 turn(s)" in log.agent_error.await_args.kwargs["error_message"]
+        # Cost accounting must still be recorded for a run that produced nothing.
+        log.agent_completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_short_run_with_no_output_logs_no_output(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, logger=log)
+
+        log.agent_error.assert_awaited_once()
+        assert log.agent_error.await_args.kwargs["error_category"] == "no_output"
+
+    @pytest.mark.asyncio
+    async def test_successful_run_logs_no_error(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, with_text=True, logger=log)
+
+        log.agent_error.assert_not_awaited()
+        log.agent_completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_text_is_not_counted_as_an_abort(self):
+        """Text present means the agent answered and the answer was malformed —
+        a JSON-quality problem, not the cap silencing it. A count of
+        max_turns_reached must mean only "cut off with nothing"."""
+        log = self._logger()
+        await TestWrapUpSteer()._drive(
+            max_turns=30, turns=30, with_text=True, parseable=False, logger=log
+        )
+
+        log.agent_error.assert_awaited_once()
+        kwargs = log.agent_error.await_args.kwargs
+        assert kwargs["error_category"] == "json_parse_failed"
+        assert "unparseable text" in kwargs["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_agent_completed_receives_cache_tokens(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, with_text=True, logger=log)
+
+        kwargs = log.agent_completed.await_args.kwargs
+        assert "cache_read" in kwargs and "cache_write" in kwargs
