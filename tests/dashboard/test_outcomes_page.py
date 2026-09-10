@@ -54,4 +54,4 @@ def test_outcomes_page_renders():
     assert response.status_code == 200
     assert "Outcomes" in response.text
     assert "60.0" in response.text  # hit_rate
-    assert "Accuracy Over Time" in response.text
+    assert "Accuracy over time" in response.text

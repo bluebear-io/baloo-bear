@@ -1,5 +1,6 @@
 """GitHub App authentication utilities."""
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -143,3 +144,62 @@ async def verify_repo_belongs_to_installation(installation_id: int, repo_full_na
             headers=headers,
         )
     return response.status_code == 200
+
+
+# ponytail: process-local cache — the app slug only changes if the app is renamed,
+# which a restart picks up.
+_app_bot_login: str | None = None
+_app_bot_login_lock = asyncio.Lock()
+
+
+async def get_app_bot_login() -> str:
+    """
+    Return the app's reviewer login, e.g. "baloo-code-reviewer[bot]".
+
+    Cached for the process; resolved from GET /app so it follows whichever
+    GitHub App these credentials belong to.
+    """
+    global _app_bot_login
+
+    if _app_bot_login is not None:
+        return _app_bot_login
+
+    # One fetch per process even when a burst of reviews starts at once.
+    async with _app_bot_login_lock:
+        if _app_bot_login is not None:
+            return _app_bot_login
+
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/app",
+                headers={
+                    "Authorization": f"Bearer {generate_jwt()}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        response.raise_for_status()
+        slug = response.json().get("slug")
+        if not slug:
+            raise ValueError("GET /app returned no slug")
+        _app_bot_login = f"{slug}[bot]"
+
+    return _app_bot_login
+
+
+async def is_this_app(login: str | None) -> bool:
+    """
+    True if `login` is this app's own bot account.
+
+    Falls back to the fuzzy `is_baloo_actor` heuristic when the login can't be
+    resolved, so an unreachable GET /app degrades instead of dropping events.
+    """
+    from baloo.github.discussions import is_baloo_actor
+
+    try:
+        return login == await get_app_bot_login()
+    except Exception:
+        logger.warning("Could not resolve app bot login — falling back to name heuristic")
+        return is_baloo_actor(login)

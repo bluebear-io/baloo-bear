@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from baloo.github.auth import GitHubAuth
+from baloo.github.auth import GitHubAuth, get_app_bot_login
 from baloo.github.discussions import (
     build_discussion_digest,
     build_general_discussion,
@@ -28,6 +28,10 @@ from baloo.github.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ponytail: process-local kill switch — flipped off if GitHub refuses the self
+# review-request, reset by a restart. No config knob until one is asked for.
+_self_review_request_supported = True
 
 
 @dataclass(frozen=True)
@@ -491,6 +495,73 @@ class GitHubAPIClient:
             else:
                 # Other HTTP error - re-raise
                 raise
+
+    async def request_self_as_reviewer(self, repo_full_name: str, pr_number: int) -> bool:
+        """
+        Add Baloo to the PR's reviewer list.
+
+        This does not change when Baloo reviews (it already runs on every PR) — it makes
+        GitHub render the re-request (circular arrow) button next to Baloo in the Reviewers
+        box, which humans can click to trigger a fresh review. GitHub clears the request
+        as soon as Baloo submits its review, so it is re-added on the next run.
+
+        Best effort: a failure here never blocks a review.
+
+        Returns:
+            True if Baloo is now listed as a requested reviewer.
+        """
+        global _self_review_request_supported
+
+        if not _self_review_request_supported:
+            return False
+
+        url = f"{self.base_url}/repos/{repo_full_name}/pulls/{pr_number}/requested_reviewers"
+
+        try:
+            bot_login = await get_app_bot_login()
+            response = await self._http.post(
+                url, headers=self._get_headers(), json={"reviewers": [bot_login]}
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if 400 <= e.response.status_code < 500:
+                # The app is not allowed to request itself on this GitHub instance —
+                # stop asking until the process restarts.
+                _self_review_request_supported = False
+                logger.warning(
+                    "GitHub rejected Baloo's self review-request (%s) — "
+                    "disabling until restart. Response: %s",
+                    e.response.status_code,
+                    e.response.text[:200],
+                )
+            else:
+                logger.warning("Self review-request failed for %s#%s", repo_full_name, pr_number)
+            return False
+        except Exception:
+            logger.warning(
+                "Self review-request failed for %s#%s",
+                repo_full_name,
+                pr_number,
+                exc_info=True,
+            )
+            return False
+
+        requested = [
+            reviewer.get("login") for reviewer in response.json().get("requested_reviewers", [])
+        ]
+        if bot_login not in requested:
+            # GitHub answers 200 but silently drops reviewers it will not accept.
+            _self_review_request_supported = False
+            logger.warning(
+                "GitHub accepted but ignored Baloo's self review-request for %s#%s "
+                "(requested reviewers: %s) — disabling until restart",
+                repo_full_name,
+                pr_number,
+                requested,
+            )
+            return False
+
+        return True
 
     async def post_comment(self, repo_full_name: str, pr_number: int, comment: str) -> int:
         """
