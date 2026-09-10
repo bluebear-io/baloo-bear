@@ -1705,14 +1705,9 @@ async def process_pr_review(
 
                 except Exception as check_error:
                     logger.error(f"Failed to post GitHub Check: {check_error}", exc_info=True)
-                    # Fallback: Post MEDIUM findings as regular comments
-                    logger.warning("Falling back to posting MEDIUM findings as issue comments")
-                    for finding in routed["checks"]:
-                        comment_body = (
-                            f"**[{finding.severity.value}] {finding.category.value}** - {finding.path}:{finding.line}\n\n"
-                            f"{finding.body}"
-                        )
-                        await github_client.post_comment(repo_full_name, pr_number, comment_body)
+                    logger.warning(
+                        "MEDIUM findings remain available in the pull request completion digest"
+                    )
 
             has_new_feedback = bool(
                 routed["review"] or follow_up_comments or routed["checks"] or general_findings

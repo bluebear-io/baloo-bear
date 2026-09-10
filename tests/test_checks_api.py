@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from baloo.github.checks_api import GitHubChecksClient
+from baloo.github.checks_api import MAX_OUTPUT_TEXT_BYTES, GitHubChecksClient
 from baloo.github.models import ReviewComment
 
 
@@ -130,3 +130,22 @@ async def test_create_check_run_with_different_conclusions():
 
         payload = mock_http.post.call_args[1]["json"]
         assert payload["conclusion"] == conclusion
+
+
+@pytest.mark.asyncio
+async def test_create_check_run_limits_output_text_without_splitting_utf8():
+    client, mock_http = _make_client()
+    mock_http.post.return_value = _mock_response({"id": 12345})
+
+    await client.create_check_run(
+        repo_full_name="owner/repo",
+        commit_sha="abc123",
+        name="Baloo Code Quality",
+        conclusion="neutral",
+        summary="One finding",
+        text="🐻" * MAX_OUTPUT_TEXT_BYTES,
+    )
+
+    output_text = mock_http.post.call_args.kwargs["json"]["output"]["text"]
+    assert len(output_text.encode("utf-8")) <= MAX_OUTPUT_TEXT_BYTES
+    assert output_text.endswith("Baloo's pull request completion comment.")

@@ -58,7 +58,7 @@ Inline comments appear on the exact lines:
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
 | **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
-| **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks API annotations; LOW → filtered                                                  |
+| **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                              |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
 | **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
 | **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |

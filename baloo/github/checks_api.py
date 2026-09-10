@@ -13,11 +13,33 @@ logger = logging.getLogger(__name__)
 
 # GitHub limits annotations to 50 per request
 MAX_ANNOTATIONS = 50
+# Leave headroom below GitHub's output text limit for UTF-8 and API validation.
+MAX_OUTPUT_TEXT_BYTES = 60_000
 
 
 def _enum_value(value: object) -> object:
     """Return enum values for user-facing strings without changing plain strings."""
     return getattr(value, "value", value)
+
+
+def _limit_output_text(text: str) -> str:
+    """Fit Markdown into the Check output while keeping UTF-8 valid."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= MAX_OUTPUT_TEXT_BYTES:
+        return text
+
+    suffix = (
+        "\n\n… Check details truncated. Full findings are available in "
+        "Baloo's pull request completion comment."
+    )
+    available = MAX_OUTPUT_TEXT_BYTES - len(suffix.encode("utf-8"))
+    shortened = encoded[:available].decode("utf-8", errors="ignore")
+    logger.warning(
+        "Truncated Check output text from %d to at most %d bytes",
+        len(encoded),
+        MAX_OUTPUT_TEXT_BYTES,
+    )
+    return shortened + suffix
 
 
 class GitHubChecksClient:
@@ -86,7 +108,7 @@ class GitHubChecksClient:
         url = f"{self.base_url}/repos/{repo_full_name}/check-runs"
         output = {"title": name, "summary": summary}
         if text:
-            output["text"] = text
+            output["text"] = _limit_output_text(text)
 
         payload = {
             "name": name,

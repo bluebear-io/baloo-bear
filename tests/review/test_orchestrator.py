@@ -727,7 +727,7 @@ class TestGitHubChecksApiPath:
         assert medium_comment.body in check_text
 
     @pytest.mark.asyncio
-    async def test_checks_api_failure_falls_back_to_issue_comments(self):
+    async def test_checks_api_failure_keeps_medium_in_completion_digest(self):
         from baloo.review.orchestrator import process_pr_review
 
         gc = _make_github_client()
@@ -758,12 +758,16 @@ class TestGitHubChecksApiPath:
                 repo_full_name="org/repo",
                 pr_number=1,
                 installation_id=1,
-                notify_progress=False,
+                notify_progress=True,
                 head_sha="abc123",
             )
 
-        # Fallback: posted as issue comment
-        gc.post_comment.assert_called()
+        # Only the progress comment is created; the full finding is added there
+        # instead of being duplicated as a separate fallback comment.
+        assert gc.post_comment.call_count == 1
+        completion = gc.edit_comment.call_args.args[2]
+        assert "<details>" in completion
+        assert medium_comment.body in completion
 
 
 # ---------------------------------------------------------------------------
