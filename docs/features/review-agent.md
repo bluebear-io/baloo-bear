@@ -65,6 +65,4 @@ saying it was not reviewed, never an approval. See
 |---|---|---|
 | `AGENT_PROVIDER` | `anthropic` | LLM provider for all agents (see [Models](models.md)) |
 | `AGENT_MODEL` | `sonnet` | Model to use (see [Models](models.md)) |
-| `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
-| `AGENT_TEMPERATURE` | `0.2` | Temperature for generation |
 | `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high |

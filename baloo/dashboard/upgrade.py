@@ -64,8 +64,11 @@ async def check_for_upgrade() -> dict[str, str] | None:
             release = response.json()
         current = _parse(current_version())
         newest = _parse(release.get("tag_name", ""))
-        if current and newest and newest > current:
-            latest = {"version": release["tag_name"], "url": release["html_url"]}
+        url = release.get("html_url", "")
+        # The banner renders this as an href, and Jinja's autoescape stops tag
+        # injection but not a javascript: scheme.
+        if current and newest and newest > current and url.startswith("https://"):
+            latest = {"version": release["tag_name"], "url": url}
     except Exception as exc:  # network, rate limit, malformed payload
         # Cached like a real result, so this warns at most once per TTL.
         logger.warning(f"Upgrade check failed: {exc}")

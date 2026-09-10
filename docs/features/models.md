@@ -9,7 +9,7 @@ A `provider/model` string is accepted, but its provider **must match** `AGENT_PR
 | Short names | Tier | Max turns | Typical use |
 |---|---|---|---|
 | `flash`, `haiku` | Economy | 10 | FP verification, thread replies, simple PRs |
-| `sonnet`, `standard`, `gemini-pro` | Standard | 20 | Default code reviews |
+| `sonnet`, `standard`, `gemini-pro` | Standard | 30 | Default code reviews |
 | `opus`, `premium`, `gemini-3.1-pro` | Premium | 30 | Complex / security-sensitive reviews |
 
 Resolved model IDs depend on `AGENT_PROVIDER`:
