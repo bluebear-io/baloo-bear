@@ -1169,11 +1169,20 @@ class TestWrapUpSteer:
     whole review was discarded with zero findings.
     """
 
-    async def _drive(self, *, max_turns: int, turns: int, with_text: bool = False, logger=None):
+    async def _drive(
+        self,
+        *,
+        max_turns: int,
+        turns: int,
+        with_text: bool = False,
+        parseable: bool = True,
+        logger=None,
+    ):
         """Run an agent that emits `turns` tool-only turns. Returns stdin writes."""
         agent = PIAgentBase(PIAgentOptions(max_turns=max_turns, name="BalooAgent"))
 
-        content = [{"type": "text", "text": '{"findings": []}'}] if with_text else []
+        text = '{"findings": []}' if parseable else "Let me check the parser next."
+        content = [{"type": "text", "text": text}] if with_text else []
         events = [
             json.dumps(
                 {"type": "response", "command": "set_thinking_level", "success": True}
@@ -1301,6 +1310,21 @@ class TestEmptyRunIsLogged:
 
         log.agent_error.assert_not_awaited()
         log.agent_completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_text_is_not_counted_as_an_abort(self):
+        """Text present means the agent answered and the answer was malformed —
+        a JSON-quality problem, not the cap silencing it. A count of
+        max_turns_reached must mean only "cut off with nothing"."""
+        log = self._logger()
+        await TestWrapUpSteer()._drive(
+            max_turns=30, turns=30, with_text=True, parseable=False, logger=log
+        )
+
+        log.agent_error.assert_awaited_once()
+        kwargs = log.agent_error.await_args.kwargs
+        assert kwargs["error_category"] == "json_parse_failed"
+        assert "unparseable text" in kwargs["error_message"]
 
     @pytest.mark.asyncio
     async def test_agent_completed_receives_cache_tokens(self):

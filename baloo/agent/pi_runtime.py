@@ -727,14 +727,23 @@ class PIAgentBase:
                 # only BalooAgent's failure reaches reviews.review_status — the
                 # fidelity and documentation agents just log to stderr and
                 # return None. Record it here so aborts are countable per agent.
+                #
+                # Text present means the agent did answer and the answer was
+                # malformed — a JSON-quality problem, not the turn cap silencing
+                # it mid-exploration. Keep the two apart so a count of
+                # max_turns_reached means only "cut off with nothing".
+                if result.assistant_text:
+                    category = "json_parse_failed"
+                    detail = f"{len(result.assistant_text)} chars of unparseable text"
+                else:
+                    category = "max_turns_reached" if result.max_turns_reached else "no_output"
+                    detail = "no assistant text"
                 await review_logger.agent_error(
                     error_message=(
-                        f"No structured output after {result.num_turns} turn(s), "
-                        f"${result.cost_usd:.4f} spent"
+                        f"No structured output after {result.num_turns} turn(s) "
+                        f"({detail}), ${result.cost_usd:.4f} spent"
                     ),
-                    error_category=(
-                        "max_turns_reached" if result.max_turns_reached else "no_output"
-                    ),
+                    error_category=category,
                 )
             await review_logger.agent_completed(
                 tokens_in=metadata.get("input_tokens", 0),
