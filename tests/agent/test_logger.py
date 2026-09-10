@@ -161,3 +161,45 @@ async def test_default_agent_label_is_review():
     row = mock_session.add.call_args[0][0]
     meta = json.loads(row.metadata_json)
     assert meta["agent"] == "review"
+
+
+class TestCacheTokenAccounting:
+    """Providers report nearly all prompt volume as cache read/write and only
+    the uncached delta as `input`, so tokens_in alone reads as ~1 per message.
+    """
+
+    @pytest.mark.asyncio
+    async def test_agent_completed_records_cache_split(self):
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+
+        logger = ReviewLogger(review_id=42, session=mock_session)
+        await logger.agent_completed(
+            tokens_in=31,
+            tokens_out=8363,
+            cost=1.0573,
+            duration=171.2,
+            cache_read=240_000,
+            cache_write=27_000,
+        )
+
+        log_row = mock_session.add.call_args[0][0]
+        meta = json.loads(log_row.metadata_json)
+        assert meta["tokens_in"] == 31
+        assert meta["cache_read_tokens"] == 240_000
+        assert meta["cache_write_tokens"] == 27_000
+        # The human-readable line must show real input, not the uncached delta.
+        assert "267031 in" in log_row.message
+
+    @pytest.mark.asyncio
+    async def test_agent_completed_without_cache_is_unchanged(self):
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+
+        logger = ReviewLogger(review_id=42, session=mock_session)
+        await logger.agent_completed(tokens_in=1000, tokens_out=500, cost=0.05, duration=12.3)
+
+        log_row = mock_session.add.call_args[0][0]
+        assert "1000 in" in log_row.message
+        meta = json.loads(log_row.metadata_json)
+        assert meta["cache_read_tokens"] == 0
