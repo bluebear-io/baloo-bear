@@ -13,6 +13,9 @@
   </script>
   <link rel="stylesheet" href="/dashboard-static/baloo.css">
   <script src="/dashboard-static/htmx.min.js" defer></script>
+  <!-- Loaded in <head> on purpose: page templates call BalooCharts from inline scripts inside the content block. -->
+  <script src="/dashboard-static/chart.umd.js"></script>
+  <script src="/dashboard-static/charts.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -55,8 +58,6 @@
     <a href="https://bluebear.io" target="_blank" rel="noopener">BlueBear</a>
   </footer>
 
-  <script src="/dashboard-static/chart.umd.js"></script>
-  <script src="/dashboard-static/charts.js"></script>
   <script>
     (function () {
       var root = document.documentElement;
