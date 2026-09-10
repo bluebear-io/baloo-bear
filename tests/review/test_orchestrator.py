@@ -90,12 +90,19 @@ def _make_github_client(pr_context=None):
     return gc
 
 
-def _make_agent(comments=None, approve=True, request_changes=False, metadata=None):
+def _make_agent(
+    comments=None,
+    approve=True,
+    request_changes=False,
+    metadata=None,
+    general_findings=None,
+):
     agent = MagicMock()
     agent.review_pr = AsyncMock(
         return_value=ReviewResult(
             summary="## Summary",
             comments=comments or [],
+            general_findings=general_findings or [],
             approve=approve,
             request_changes=request_changes,
             metadata=metadata or {},
@@ -715,9 +722,12 @@ class TestGitHubChecksApiPath:
 
         mock_checks_client.create_check_run.assert_called_once()
         mock_checks_client.add_annotations.assert_called_once()
+        check_text = mock_checks_client.create_check_run.call_args.kwargs["text"]
+        assert "`app.py:5`" in check_text
+        assert medium_comment.body in check_text
 
     @pytest.mark.asyncio
-    async def test_checks_api_failure_falls_back_to_issue_comments(self):
+    async def test_checks_api_failure_without_progress_posts_medium_digest(self):
         from baloo.review.orchestrator import process_pr_review
 
         gc = _make_github_client()
@@ -752,8 +762,17 @@ class TestGitHubChecksApiPath:
                 head_sha="abc123",
             )
 
-        # Fallback: posted as issue comment
-        gc.post_comment.assert_called()
+        # With no progress comment to edit, post one canonical digest rather
+        # than silently dropping the finding or duplicating it per finding.
+        assert gc.post_comment.call_count == 1
+        digest = gc.post_comment.call_args.args[2]
+        assert "<details>" in digest
+        assert medium_comment.body in digest
+        gc.edit_comment.assert_not_called()
+
+        approval = gc.post_review.call_args.args[2]
+        assert "Baloo's finding digest" in approval.summary
+        assert "Checks tab" not in approval.summary
 
 
 # ---------------------------------------------------------------------------
@@ -1172,6 +1191,138 @@ class TestGeneralFindingsPosting:
         )
         assert result_arg.comments == []
 
+    @pytest.mark.asyncio
+    async def test_general_findings_are_counted_and_persisted(self):
+        from baloo.github.models import GeneralFinding
+        from baloo.review.orchestrator import process_pr_review
+
+        gf = GeneralFinding(
+            body="The required review guidance is missing.",
+            severity=ReviewSeverity.HIGH,
+            category=FindingCategory.GUIDELINES,
+        )
+        agent = _make_agent(
+            approve=False,
+            request_changes=True,
+            general_findings=[gf],
+        )
+        gc = _make_github_client()
+        mock_complete = AsyncMock()
+
+        with ExitStack() as stack:
+            for p in _base_patches(gc, agent):
+                stack.enter_context(p)
+            stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
+            stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
+            stack.enter_context(
+                patch(
+                    "baloo.review.orchestrator.ReviewService.start_review",
+                    new=AsyncMock(return_value=77),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "baloo.review.orchestrator.ReviewService.is_review_cancelled",
+                    new=AsyncMock(return_value=False),
+                )
+            )
+            stack.enter_context(
+                patch("baloo.review.orchestrator.ReviewService.complete_review", new=mock_complete)
+            )
+            await process_pr_review(
+                repo_full_name="org/repo",
+                pr_number=1,
+                installation_id=1,
+                trigger_reason="pull_request:opened",
+                notify_progress=True,
+                head_sha="abc123",
+            )
+
+        completion = gc.edit_comment.call_args.args[2]
+        assert "Found 1 issue(s)" in completion
+        assert "1 high" in completion
+        data = mock_complete.call_args.kwargs["data"]
+        assert data.findings == [
+            {
+                "finding_type": "general",
+                "file_path": None,
+                "line_number": None,
+                "severity": ReviewSeverity.HIGH,
+                "category": FindingCategory.GUIDELINES,
+                "body": gf.body,
+            }
+        ]
+
+
+@pytest.mark.asyncio
+async def test_completion_comment_contains_full_collapsible_medium_finding():
+    full_body = "This allocation repeats for every record and increases processing time. " * 20
+    medium = ReviewComment(
+        path="baloo/processor.py",
+        line=31,
+        body=full_body,
+        severity=ReviewSeverity.MEDIUM,
+        category=FindingCategory.PERFORMANCE,
+    )
+    gc = _make_github_client()
+    agent = _make_agent(comments=[medium], approve=True)
+
+    await _run_review(gc, agent, notify_progress=True)
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "Found 1 issue(s)" in completion
+    assert "<details>" in completion
+    assert "1 medium suggestion — expand to read" in completion
+    assert "`baloo/processor.py:31`" in completion
+    assert full_body in completion
+
+
+@pytest.mark.asyncio
+async def test_unresolved_threads_are_persisted_as_review_blocker() -> None:
+    from baloo.review.orchestrator import process_pr_review
+
+    pr_context = _make_pr_context()
+    pr_context.awaiting_response_threads = 2
+    gc = _make_github_client(pr_context)
+    agent = _make_agent(approve=True)
+    mock_complete = AsyncMock()
+
+    with ExitStack() as stack:
+        for p in _base_patches(gc, agent):
+            stack.enter_context(p)
+        stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
+        stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
+        stack.enter_context(
+            patch(
+                "baloo.review.orchestrator.ReviewService.start_review",
+                new=AsyncMock(return_value=78),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "baloo.review.orchestrator.ReviewService.is_review_cancelled",
+                new=AsyncMock(return_value=False),
+            )
+        )
+        stack.enter_context(
+            patch("baloo.review.orchestrator.ReviewService.complete_review", new=mock_complete)
+        )
+        await process_pr_review(
+            repo_full_name="org/repo",
+            pr_number=1,
+            installation_id=1,
+            trigger_reason="pull_request:opened",
+            notify_progress=True,
+            head_sha="abc123",
+        )
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "Still waiting on 2 existing thread(s)" in completion
+    data = mock_complete.call_args.kwargs["data"]
+    assert data.review_status == "changes_requested"
+    assert data.awaiting_thread_count == 2
+    assert data.findings == []
+
 
 # ---------------------------------------------------------------------------
 # Agent failure must never look like an approval
@@ -1224,3 +1375,27 @@ def test_build_db_findings_keeps_findings_github_could_not_place_inline():
     assert [r["file_path"] for r in rows] == ["baloo/agent/config.py", "main.py"]
     assert rows[0]["line_number"] == 999
     assert rows[0]["severity"] == ReviewSeverity.HIGH
+
+
+def test_build_db_findings_includes_general_findings():
+    from baloo.github.models import GeneralFinding
+    from baloo.review.orchestrator import _build_db_findings
+
+    general = GeneralFinding(
+        body="No integration tests cover this workflow.",
+        severity=ReviewSeverity.HIGH,
+        category=FindingCategory.GUIDELINES,
+    )
+
+    rows = _build_db_findings([], [general])
+
+    assert rows == [
+        {
+            "finding_type": "general",
+            "file_path": None,
+            "line_number": None,
+            "severity": ReviewSeverity.HIGH,
+            "category": FindingCategory.GUIDELINES,
+            "body": general.body,
+        }
+    ]

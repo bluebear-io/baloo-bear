@@ -129,7 +129,11 @@ async def label_pr_outcomes(repo_full_name: str, pr_number: int, installation_id
             stmt = (
                 select(Finding)
                 .join(Review, Finding.review_id == Review.id)
-                .where(Review.repo_full_name == repo_full_name, Review.pr_number == pr_number)
+                .where(
+                    Review.repo_full_name == repo_full_name,
+                    Review.pr_number == pr_number,
+                    Finding.finding_type == "inline",
+                )
             )
             stmt = apply_tenant_filter(stmt, Review, tenant_id)
             result = await session.execute(stmt)

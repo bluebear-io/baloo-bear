@@ -109,7 +109,7 @@ Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Co
 |---|---|---|
 | `REVIEW_AUTO_APPROVE` | `false` | Auto-approve PRs with no CRITICAL/HIGH findings (opt-in) |
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
-| `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API instead of review comments |
+| `REVIEW_USE_CHECKS_API` | `true` | Also post MEDIUM findings to the Checks API; the completion comment contains their full text either way |
 
 ## FP Verification
 

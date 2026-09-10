@@ -43,6 +43,7 @@ from baloo.github.models import (
     DiscussionComment,
     DiscussionThread,
     FindingCategory,
+    GeneralFinding,
     PRContext,
     ReviewComment,
     ReviewResult,
@@ -683,15 +684,18 @@ def _calculate_similarity(s1: str, s2: str) -> float:
     return sim
 
 
-def _build_db_findings(comments: list[ReviewComment]) -> list[dict]:
+def _build_db_findings(
+    comments: list[ReviewComment], general_findings: list[GeneralFinding] | None = None
+) -> list[dict]:
     """Build the findings list for DB storage.
 
     Findings GitHub refused to place inline (line not in the diff) are kept:
     the review still blocked on them, so dropping them left the dashboard
     showing a `changes_requested` review with zero findings and no reason.
     """
-    return [
+    inline_rows = [
         {
+            "finding_type": "inline",
             "file_path": c.path,
             "line_number": c.line,
             "severity": c.severity,
@@ -700,6 +704,18 @@ def _build_db_findings(comments: list[ReviewComment]) -> list[dict]:
         }
         for c in comments
     ]
+    general_rows = [
+        {
+            "finding_type": "general",
+            "file_path": None,
+            "line_number": None,
+            "severity": finding.severity,
+            "category": finding.category,
+            "body": finding.body,
+        }
+        for finding in general_findings or []
+    ]
+    return inline_rows + general_rows
 
 
 def _match_thread(
@@ -1534,6 +1550,8 @@ async def process_pr_review(
             fresh_comments = verified_new_findings
             decision_comments = fresh_comments + [comment for _, comment in follow_up_comments]
             general_findings = review_result.general_findings
+            all_findings = [*decision_comments, *general_findings]
+            medium_details = CommentFormatter.format_collapsible_medium_findings(all_findings)
 
             approve, request_changes = DecisionEngine.make_decision(
                 decision_comments,
@@ -1543,6 +1561,7 @@ async def process_pr_review(
             awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
 
             if awaiting_threads and not request_changes and not decision_comments:
+                approve = False
                 request_changes = True
 
             # A failed agent returns zero findings, which is indistinguishable
@@ -1609,10 +1628,10 @@ async def process_pr_review(
                 metadata=agent_metadata,
             )
 
-            severity_counts = count_by_severity(decision_comments)
+            severity_counts = count_by_severity(all_findings)
 
             logger.info(
-                f"Actionable findings: {len(decision_comments)} total "
+                f"Actionable findings: {len(all_findings)} total "
                 f"(Critical: {severity_counts.get(ReviewSeverity.CRITICAL.value, 0)}, "
                 f"High: {severity_counts.get(ReviewSeverity.HIGH.value, 0)}, "
                 f"Medium: {severity_counts.get(ReviewSeverity.MEDIUM.value, 0)}, "
@@ -1659,6 +1678,7 @@ async def process_pr_review(
             )
 
             # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
+            checks_posted = False
             if routed["checks"] and resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
@@ -1671,6 +1691,7 @@ async def process_pr_review(
                             name="Baloo Code Quality",
                             conclusion="neutral",
                             summary=f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)",
+                            text=CommentFormatter.format_findings_digest(routed["checks"]),
                         )
 
                         await checks_client.add_annotations(
@@ -1682,17 +1703,18 @@ async def process_pr_review(
                     logger.info(
                         f"Successfully posted GitHub Check with {len(routed['checks'])} annotations"
                     )
+                    checks_posted = True
 
                 except Exception as check_error:
                     logger.error(f"Failed to post GitHub Check: {check_error}", exc_info=True)
-                    # Fallback: Post MEDIUM findings as regular comments
-                    logger.warning("Falling back to posting MEDIUM findings as issue comments")
-                    for finding in routed["checks"]:
-                        comment_body = (
-                            f"**[{finding.severity.value}] {finding.category.value}** - {finding.path}:{finding.line}\n\n"
-                            f"{finding.body}"
-                        )
-                        await github_client.post_comment(repo_full_name, pr_number, comment_body)
+                    logger.warning(
+                        "MEDIUM findings remain available in the pull request finding digest"
+                    )
+
+            # Webhook entry points create a progress comment that becomes the
+            # completion digest. Keep direct/internal callers equally lossless.
+            if medium_details and not progress_comment_id:
+                await github_client.post_comment(repo_full_name, pr_number, medium_details)
 
             has_new_feedback = bool(
                 routed["review"] or follow_up_comments or routed["checks"] or general_findings
@@ -1730,8 +1752,15 @@ async def process_pr_review(
             if not request_changes and approve:
                 logger.info("No blocking issues found, posting approval review")
                 approval_msg = "✅ No critical or high severity issues found. Safe to merge!"
-                if routed["checks"]:
-                    approval_msg += f"\n\n💡 {len(routed['checks'])} medium severity suggestion(s) available in the Checks tab."
+                medium_count = severity_counts.get(ReviewSeverity.MEDIUM.value, 0)
+                if medium_count:
+                    location = "Baloo's finding digest"
+                    if checks_posted:
+                        location += " and the Checks tab"
+                    approval_msg += (
+                        f"\n\n💡 {medium_count} medium severity suggestion(s) available in "
+                        f"{location}."
+                    )
 
                 await github_client.post_review(
                     repo_full_name,
@@ -1756,10 +1785,10 @@ async def process_pr_review(
                     )
                 elif has_new_feedback or (routed["review"] or follow_up_comments):
                     # Review posted findings - update with summary
-                    counts = count_by_severity(decision_comments)
+                    counts = count_by_severity(all_findings)
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s.\n\n"
-                        f"Found {len(decision_comments)} issue(s): "
+                        f"Found {len(all_findings)} issue(s): "
                         f"{counts.get(ReviewSeverity.CRITICAL.value, 0)} critical, "
                         f"{counts.get(ReviewSeverity.HIGH.value, 0)} high, "
                         f"{counts.get(ReviewSeverity.MEDIUM.value, 0)} medium, "
@@ -1777,6 +1806,8 @@ async def process_pr_review(
                                     f"\n**[{c.severity.value}] {c.category.value}** "
                                     f"`{c.path}:{c.line}`\n\n{c.body}\n"
                                 )
+                    if medium_details:
+                        completion_msg += f"\n\n{medium_details}"
                 elif not request_changes and approve:
                     completion_msg = (
                         f"✅ Baloo review completed in {review_duration}s. No issues found!"
@@ -1906,7 +1937,8 @@ async def process_pr_review(
                     fidelity_score=(fidelity_result.fidelity_score if fidelity_result else None),
                     error_message=error_detail,
                     error_category=error_category,
-                    findings=_build_db_findings(decision_comments),
+                    awaiting_thread_count=awaiting_threads,
+                    findings=_build_db_findings(decision_comments, general_findings),
                 )
 
                 await ReviewService.complete_review(

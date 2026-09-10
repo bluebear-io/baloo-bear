@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from baloo.github.checks_api import GitHubChecksClient
+from baloo.github.checks_api import MAX_OUTPUT_TEXT_BYTES, GitHubChecksClient
 from baloo.github.models import ReviewComment
 
 
@@ -35,16 +35,18 @@ async def test_create_check_run():
         name="Test Check",
         conclusion="neutral",
         summary="Test summary",
+        text="Full finding details",
     )
 
     assert check_run_id == "12345"
     mock_http.post.assert_called_once()
-    payload = mock_http.post.call_args[1]["json"]
+    payload = mock_http.post.call_args.kwargs["json"]
     assert payload["name"] == "Test Check"
     assert payload["head_sha"] == "abc123def"
     assert payload["status"] == "completed"
     assert payload["conclusion"] == "neutral"
     assert payload["output"]["summary"] == "Test summary"
+    assert payload["output"]["text"] == "Full finding details"
 
 
 @pytest.mark.asyncio
@@ -63,7 +65,7 @@ async def test_add_annotations_includes_category():
     )
 
     mock_http.patch.assert_called_once()
-    annotations = mock_http.patch.call_args[1]["json"]["output"]["annotations"]
+    annotations = mock_http.patch.call_args.kwargs["json"]["output"]["annotations"]
     assert len(annotations) == 2
     assert annotations[0]["path"] == "test.py"
     assert annotations[0]["start_line"] == 10
@@ -84,7 +86,7 @@ async def test_add_annotations_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_add_annotations_truncates_to_50():
+async def test_add_annotations_batches_beyond_50():
     findings = [
         ReviewComment(
             path=f"file{i}.py",
@@ -102,8 +104,14 @@ async def test_add_annotations_truncates_to_50():
         repo_full_name="owner/repo", check_run_id="12345", findings=findings
     )
 
-    annotations = mock_http.patch.call_args[1]["json"]["output"]["annotations"]
-    assert len(annotations) == 50
+    assert mock_http.patch.call_count == 2
+    batches = [
+        call.kwargs["json"]["output"]["annotations"] for call in mock_http.patch.call_args_list
+    ]
+    assert [len(batch) for batch in batches] == [50, 50]
+    assert [annotation["path"] for batch in batches for annotation in batch] == [
+        f"file{i}.py" for i in range(100)
+    ]
 
 
 @pytest.mark.asyncio
@@ -120,5 +128,24 @@ async def test_create_check_run_with_different_conclusions():
             summary="Test",
         )
 
-        payload = mock_http.post.call_args[1]["json"]
+        payload = mock_http.post.call_args.kwargs["json"]
         assert payload["conclusion"] == conclusion
+
+
+@pytest.mark.asyncio
+async def test_create_check_run_limits_output_text_without_splitting_utf8():
+    client, mock_http = _make_client()
+    mock_http.post.return_value = _mock_response({"id": 12345})
+
+    await client.create_check_run(
+        repo_full_name="owner/repo",
+        commit_sha="abc123",
+        name="Baloo Code Quality",
+        conclusion="neutral",
+        summary="One finding",
+        text="🐻" * MAX_OUTPUT_TEXT_BYTES,
+    )
+
+    output_text = mock_http.post.call_args.kwargs["json"]["output"]["text"]
+    assert len(output_text.encode("utf-8")) <= MAX_OUTPUT_TEXT_BYTES
+    assert output_text.endswith("Baloo's pull request completion comment.")

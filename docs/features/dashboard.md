@@ -5,13 +5,15 @@ Baloo includes an optional review history dashboard backed by PostgreSQL. It pro
 ## What It Shows
 
 - **Review history** — Every review with status, duration, model used, and cost
-- **Findings** — Individual findings per review with severity, category, file, and line
+- **Findings** — Expandable full finding text with severity, category, and location; general findings are identified even when they have no file anchor
 - **Cost tracking** — Token usage and dollar cost per review and in aggregate
 - **Fidelity scores** — When fidelity analysis is enabled
 - **Settings** — Effective runtime configuration; allowlisted agent knobs can be edited when the database is enabled
 - **Upgrade notice** — A banner when a newer Baloo-Bear release is available
 
 The dashboard follows the viewer's light/dark preference and has a theme toggle in the header. All CSS and JavaScript are served from the application itself — no CDN — so it renders correctly offline and behind a firewall.
+
+When an otherwise clean review is still blocked by unresolved Baloo threads from an earlier commit, the review page shows the number of outstanding threads instead of presenting the run as an unexplained zero-finding rejection. Historical reviews created before this information was stored are labeled accordingly.
 
 ## Upgrade Notifications
 
