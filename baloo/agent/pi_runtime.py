@@ -22,7 +22,19 @@ from typing import Any
 
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
-from baloo.config.settings import get_settings
+from baloo.agent.tiers import (
+    AGENT_MAX_TURNS,
+    PROVIDER_TIER_MODELS,
+    RETRY_TURN_BUDGET,
+)
+from baloo.config.runtime_settings import resolve_setting
+from baloo.config.settings import Settings, get_settings
+
+
+def _settings_default(name: str) -> Any:
+    """Field default from Settings, so this module doesn't restate config."""
+    return Settings.model_fields[name].default
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +43,15 @@ logger = logging.getLogger(__name__)
 class PIAgentOptions:
     """Configuration for a PI agent session."""
 
-    model: str = "claude-sonnet-4-6"
-    provider: str = "anthropic"
+    # Defaults mirror the config layer rather than restating it: the provider
+    # and thinking level come from the Settings fields, the model from that
+    # provider's standard tier. get_agent_options() sets all of these
+    # explicitly, so these only apply to bare construction.
+    model: str = PROVIDER_TIER_MODELS[_settings_default("agent_provider")]["standard"]
+    provider: str = _settings_default("agent_provider")
     system_prompt: str = ""
-    thinking_level: str = "medium"
-    max_turns: int = 20
+    thinking_level: str = _settings_default("pi_thinking_level")
+    max_turns: int = AGENT_MAX_TURNS
     # Working directory for the agent (where it can read files)
     cwd: str | None = None
     # When True, launch PI with --no-tools (no file read/grep/etc).
@@ -479,6 +495,7 @@ class PIAgentBase:
         if self.options.provider != DATABRICKS_PROVIDER:
             return base
         env = dict(base) if base is not None else dict(os.environ)
+        # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
         env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
         return env
 
@@ -508,7 +525,7 @@ class PIAgentBase:
             cmd.extend(["--tools", "read,grep,find,ls"])
 
             # Load AST tools extension when enabled
-            if s.ast_tools_enabled:
+            if resolve_setting("ast_tools_enabled"):
                 ext_path = (
                     Path(__file__).resolve().parent.parent.parent
                     / "extensions"
@@ -722,11 +739,36 @@ class PIAgentBase:
                 error_category="agent_error",
             )
         else:
+            if structured_output is None:
+                # A run that yields nothing is a real loss for every agent, but
+                # only BalooAgent's failure reaches reviews.review_status — the
+                # fidelity and documentation agents just log to stderr and
+                # return None. Record it here so aborts are countable per agent.
+                #
+                # Text present means the agent did answer and the answer was
+                # malformed — a JSON-quality problem, not the turn cap silencing
+                # it mid-exploration. Keep the two apart so a count of
+                # max_turns_reached means only "cut off with nothing".
+                if result.assistant_text:
+                    category = "json_parse_failed"
+                    detail = f"{len(result.assistant_text)} chars of unparseable text"
+                else:
+                    category = "max_turns_reached" if result.max_turns_reached else "no_output"
+                    detail = "no assistant text"
+                await review_logger.agent_error(
+                    error_message=(
+                        f"No structured output after {result.num_turns} turn(s) "
+                        f"({detail}), ${result.cost_usd:.4f} spent"
+                    ),
+                    error_category=category,
+                )
             await review_logger.agent_completed(
                 tokens_in=metadata.get("input_tokens", 0),
                 tokens_out=metadata.get("output_tokens", 0),
                 cost=metadata.get("cost_usd", 0),
                 duration=metadata.get("duration_seconds", 0),
+                cache_read=metadata.get("cache_read_tokens", 0),
+                cache_write=metadata.get("cache_write_tokens", 0),
             )
 
         return structured_output, metadata
@@ -738,6 +780,18 @@ class PIAgentBase:
     _JSON_RETRY_SYSTEM_PROMPT = (
         "You repair malformed JSON. "
         "Return only valid JSON with the same meaning and fields as the input."
+    )
+
+    # Turns held back so the agent can be told to wrap up and still have room to
+    # answer. Without it the cap arrives unannounced mid-exploration, PI is sent
+    # abort, and the entire run is discarded with zero findings — the turn-30
+    # wall seen in production. Raising max_turns only moves that wall.
+    _WRAPUP_RESERVE = 3
+
+    _WRAPUP_STEER = (
+        "You have {remaining} turn(s) left before this session is cut off. "
+        "Stop investigating now and return your final JSON response using only what "
+        "you have already found. A partial review is useful; no review is not."
     )
 
     _JSON_RETRY_PROMPT_TEMPLATE = """The malformed response is serialized below as a JSON object
@@ -782,7 +836,7 @@ Serialized payload:
             provider=self.options.provider,
             system_prompt=self._JSON_RETRY_SYSTEM_PROMPT,
             thinking_level="off",
-            max_turns=2,
+            max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
         )
 
@@ -880,6 +934,10 @@ Serialized payload:
         all_assistant_texts: list[str] = []
         turn_count = 0
         turn_tools: list[str] = []
+        # Steer the agent to finalize before the cap. A 1- or 2-turn decider has
+        # no room for the nudge, so it is pre-marked as sent and never fires.
+        wrapup_at = self.options.max_turns - self._WRAPUP_RESERVE
+        wrapup_sent = wrapup_at < 1
         # toolCallId -> (tool_name, target) captured at tool_execution_start so we
         # can attribute the outcome reported at tool_execution_end.
         pending_tools: dict[str, tuple[str, str | None]] = {}
@@ -909,6 +967,23 @@ Serialized payload:
                         tokens_out=result.output_tokens,
                     )
                 turn_tools = []
+                if not wrapup_sent and turn_count >= wrapup_at:
+                    wrapup_sent = True
+                    remaining = self.options.max_turns - turn_count
+                    logger.info(
+                        "%s: turn %d of %d — steering agent to wrap up",
+                        self.agent_name,
+                        turn_count,
+                        self.options.max_turns,
+                    )
+                    assert proc.stdin is not None
+                    proc.stdin.write(
+                        self._make_command(
+                            "steer",
+                            message=self._WRAPUP_STEER.format(remaining=remaining),
+                        ).encode("utf-8")
+                    )
+                    await proc.stdin.drain()
                 if turn_count >= self.options.max_turns:
                     result.max_turns_reached = True
                     if last_assistant_text:

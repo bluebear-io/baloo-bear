@@ -1,6 +1,6 @@
 """Decision engine for PR approval/rejection."""
 
-from baloo.config.settings import get_settings
+from baloo.config.runtime_settings import resolve_setting
 from baloo.fidelity.models import FidelityResult
 from baloo.github.models import GeneralFinding, ReviewComment
 from baloo.processor.severity_router import ReviewSeverity, count_by_severity
@@ -26,8 +26,6 @@ class DecisionEngine:
         Returns:
             Tuple of (approve, request_changes)
         """
-        settings = get_settings()
-
         # Count by severity using shared utility; also fold in general findings
         counts = count_by_severity(comments)
         for gf in general_findings or []:
@@ -44,7 +42,7 @@ class DecisionEngine:
         # Clean = no CRITICAL or HIGH (we already checked above)
         has_high_fidelity = (
             fidelity_result is not None
-            and fidelity_result.fidelity_score >= settings.fidelity_approval_threshold
+            and fidelity_result.fidelity_score >= resolve_setting("fidelity_approval_threshold")
         )
 
         if has_high_fidelity:
@@ -53,7 +51,7 @@ class DecisionEngine:
 
         # For medium/low issues, just comment without blocking
         # Don't approve automatically unless configured to do so
-        return (settings.review_auto_approve, False)
+        return (resolve_setting("review_auto_approve"), False)
 
     @staticmethod
     def get_decision_summary(approve: bool, request_changes: bool) -> str:

@@ -3,6 +3,7 @@
 import pytest
 
 from baloo.agent.config import get_agent_options, resolve_short_name
+from baloo.agent.tiers import AGENT_MAX_TURNS, TIER_MAX_TURNS
 from baloo.config.settings import reset_settings
 
 
@@ -15,19 +16,19 @@ class TestGetAgentOptions:
         options = get_agent_options("haiku")
         assert options.model == "claude-haiku-4-5-20251001"
         assert options.provider == "anthropic"
-        assert options.max_turns == 10
+        assert options.max_turns == TIER_MAX_TURNS["economy"]
 
     def test_get_options_with_sonnet_short_name(self):
         options = get_agent_options("sonnet")
         assert options.model == "claude-sonnet-4-6"
         assert options.provider == "anthropic"
-        assert options.max_turns == 30
+        assert options.max_turns == AGENT_MAX_TURNS
 
     def test_get_options_with_opus_short_name(self):
         options = get_agent_options("opus")
         assert options.model == "claude-opus-4-6"
         assert options.provider == "anthropic"
-        assert options.max_turns == 30
+        assert options.max_turns == AGENT_MAX_TURNS
 
     # --- Google short names resolve on AGENT_PROVIDER ---
 
@@ -37,7 +38,7 @@ class TestGetAgentOptions:
         options = get_agent_options("flash")
         assert options.model == "gemini-3.5-flash-lite"
         assert options.provider == "google"
-        assert options.max_turns == 10
+        assert options.max_turns == TIER_MAX_TURNS["economy"]
 
     def test_get_options_with_gemini_pro_short_name_on_google(self, monkeypatch):
         monkeypatch.setenv("AGENT_PROVIDER", "google")
@@ -45,7 +46,7 @@ class TestGetAgentOptions:
         options = get_agent_options("gemini-pro")
         assert options.model == "gemini-3.6-flash"
         assert options.provider == "google"
-        assert options.max_turns == 30
+        assert options.max_turns == AGENT_MAX_TURNS
 
     def test_flash_on_anthropic_maps_to_economy_claude(self, monkeypatch):
         monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
@@ -133,7 +134,7 @@ def test_standard_alias_resolves_to_sonnet():
     opts = get_agent_options("standard")
     assert opts.model == "claude-sonnet-4-6"
     assert opts.provider == "anthropic"
-    assert opts.max_turns == 30
+    assert opts.max_turns == AGENT_MAX_TURNS
 
 
 def test_premium_alias_resolves_on_google(monkeypatch):
@@ -144,7 +145,7 @@ def test_premium_alias_resolves_on_google(monkeypatch):
     opts = get_agent_options("premium")
     assert opts.model == "gemini-3.1-pro-preview"
     assert opts.provider == "google"
-    assert opts.max_turns == 30
+    assert opts.max_turns == AGENT_MAX_TURNS
 
 
 def test_gemini_3_1_pro_alias_resolves_same_as_premium(monkeypatch):
@@ -197,17 +198,17 @@ def test_bedrock_short_names_use_bedrock_tiers(monkeypatch):
     economy = get_agent_options("haiku")
     assert economy.provider == "amazon-bedrock"
     assert economy.model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    assert economy.max_turns == 10
+    assert economy.max_turns == TIER_MAX_TURNS["economy"]
 
     standard = get_agent_options("sonnet")
     assert standard.provider == "amazon-bedrock"
     assert standard.model == "us.anthropic.claude-sonnet-4-6"
-    assert standard.max_turns == 30
+    assert standard.max_turns == AGENT_MAX_TURNS
 
     premium = get_agent_options("opus")
     assert premium.provider == "amazon-bedrock"
     assert premium.model == "us.anthropic.claude-opus-4-6-v1"
-    assert premium.max_turns == 30
+    assert premium.max_turns == AGENT_MAX_TURNS
 
 
 def test_bedrock_default_short_name_agent_model(monkeypatch):
@@ -291,7 +292,7 @@ def test_resolve_short_name_helper():
     provider, model_id, max_turns = resolve_short_name("sonnet", "amazon-bedrock")
     assert provider == "amazon-bedrock"
     assert model_id == "us.anthropic.claude-sonnet-4-6"
-    assert max_turns == 30
+    assert max_turns == AGENT_MAX_TURNS
 
 
 def test_databricks_tiers_resolve_to_unity_catalog_models(monkeypatch):
