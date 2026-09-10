@@ -1,5 +1,6 @@
 """GitHub App authentication utilities."""
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -148,6 +149,7 @@ async def verify_repo_belongs_to_installation(installation_id: int, repo_full_na
 # ponytail: process-local cache — the app slug only changes if the app is renamed,
 # which a restart picks up.
 _app_bot_login: str | None = None
+_app_bot_login_lock = asyncio.Lock()
 
 
 async def get_app_bot_login() -> str:
@@ -159,7 +161,14 @@ async def get_app_bot_login() -> str:
     """
     global _app_bot_login
 
-    if _app_bot_login is None:
+    if _app_bot_login is not None:
+        return _app_bot_login
+
+    # One fetch per process even when a burst of reviews starts at once.
+    async with _app_bot_login_lock:
+        if _app_bot_login is not None:
+            return _app_bot_login
+
         import httpx
 
         async with httpx.AsyncClient() as client:

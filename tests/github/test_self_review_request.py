@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -112,3 +113,20 @@ async def test_bot_login_without_slug_raises():
         await get_app_bot_login()
 
     assert auth_module._app_bot_login is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_callers_fetch_the_login_once():
+    mock_http = AsyncMock(spec=httpx.AsyncClient)
+    mock_http.get.return_value = _mock_response({"slug": "baloo-code-reviewer"})
+    mock_http.__aenter__.return_value = mock_http
+    mock_http.__aexit__.return_value = False
+
+    with (
+        patch("httpx.AsyncClient", return_value=mock_http),
+        patch("baloo.github.auth.generate_jwt", return_value="jwt"),
+    ):
+        logins = await asyncio.gather(*(get_app_bot_login() for _ in range(5)))
+
+    assert logins == [BOT] * 5
+    assert mock_http.get.call_count == 1
