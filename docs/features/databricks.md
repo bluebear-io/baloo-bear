@@ -78,11 +78,13 @@ Databricks-set rate limit of 0.
 
 That is an entitlement problem, not a Baloo misconfiguration — enable the model service in the workspace or pick another tier. A model that does not exist at all returns `404 NOT_FOUND`.
 
-To target a model outside the tier table, set `AGENT_MODEL` to its full ID:
+To target a model service outside the tier table — an operator-owned one with its own rate limits and inference tables, or a newer `system.ai.*` service — set the model setting to its full Unity Catalog name:
 
 ```bash
-AGENT_MODEL=system.ai.claude-opus-4-6
+AGENT_MODEL=main.baloo.claude-review          # or databricks/main.baloo.claude-review
 ```
+
+PI can only address models the generated `models.json` declares, so Baloo declares every Unity Catalog name found in `AGENT_MODEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL` and `DOCUMENTATION_DRIFT_MODEL` alongside the tier models. The name is passed through unvalidated (validation would need the `unity-catalog` token scope); a service that does not exist returns `404 NOT_FOUND` from the gateway.
 
 ## Cost reporting
 
@@ -108,5 +110,6 @@ When `REPO_SANDBOX_MODE` is active, the agent runs under bwrap with a scrubbed e
 | `403 ... required scopes: unity-catalog` | The token is gateway-scoped. Harmless for reviews: Baloo does not list models, it only runs inference. |
 | `501 NOT_IMPLEMENTED ... Use Unity Catalog model services` | A flat `databricks-claude-*` model ID. Use `system.ai.claude-*`. |
 | Review hangs, then fails as `agent_error` with no detail | The `supportsEagerToolInputStreaming` compat flag is missing from `models.json`. Delete `~/.baloo/pi-databricks/models.json` so Baloo regenerates it. |
+| PI fails to resolve the model before any request is made (no gateway response at all) | The model is not declared in `models.json`. Set the model setting to the full `catalog.schema.name` — a name from another provider's catalog, or one written into `models.json` by hand, is not picked up. |
 | `403 ... rate limit of 0` | The model service is not enabled for your workspace. See [Model availability](#model-availability). |
 | App refuses to start: `AGENT_PROVIDER=databricks requires DATABRICKS_HOST` | The provider is selected but the host is unset. Set `DATABRICKS_HOST` in the environment and restart; it cannot be set from the dashboard. |
