@@ -345,40 +345,46 @@ async def handle_webhook(
         # GitHub's native "Re-run" button on Baloo's check run (or "Re-run all checks")
         # delivers `rerequested` to the app that owns the check. Treat it as a request
         # for a fresh review of the current head.
-        action = payload.get("action")
-        if action != "rerequested":
-            return {"status": "ignored", "event": event, "reason": f"action={action}"}
+        try:
+            action = payload.get("action")
+            if action != "rerequested":
+                return {"status": "ignored", "event": event, "reason": f"action={action}"}
 
-        check = payload.get(event) or {}
-        pulls = check.get("pull_requests") or []
-        repo_name = payload["repository"]["full_name"]
-        if not pulls:
-            logger.info("Ignoring %s rerequest on %s: no associated pull request", event, repo_name)
-            return {"status": "ignored", "event": event, "reason": "no pull request"}
-        pr_number = pulls[0]["number"]
-        head_sha = check.get("head_sha") or ""
+            check = payload.get(event) or {}
+            pulls = check.get("pull_requests") or []
+            repo_name = payload["repository"]["full_name"]
+            if not pulls:
+                logger.info(
+                    "Ignoring %s rerequest on %s: no associated pull request", event, repo_name
+                )
+                return {"status": "ignored", "event": event, "reason": "no pull request"}
+            pr_number = pulls[0]["number"]
+            head_sha = check.get("head_sha") or ""
 
-        cancel_existing_review(repo_name, pr_number)
-        active_count = sum(1 for t in active_reviews.values() if not t.done())
-        logger.info(
-            f"Queuing review: {repo_name}#{pr_number} ({event} rerequested by "
-            f"{payload.get('sender', {}).get('login', '?')}) - {active_count} review(s) active"
-        )
-        task = asyncio.create_task(
-            process_pr_review(
-                repo_name,
-                pr_number,
-                payload["installation"]["id"],
-                f"{event}:rerequested",
-                True,
-                None,
-                head_sha,
-                delivery_id,
+            cancel_existing_review(repo_name, pr_number)
+            active_count = sum(1 for t in active_reviews.values() if not t.done())
+            logger.info(
+                f"Queuing review: {repo_name}#{pr_number} ({event} rerequested by "
+                f"{payload.get('sender', {}).get('login', '?')}) - {active_count} review(s) active"
             )
-        )
-        active_reviews[(repo_name, pr_number)] = task
-        background_tasks.add_task(lambda: None)
-        return {"status": "queued", "active_count": active_count}
+            task = asyncio.create_task(
+                process_pr_review(
+                    repo_name,
+                    pr_number,
+                    payload["installation"]["id"],
+                    f"{event}:rerequested",
+                    True,
+                    None,
+                    head_sha,
+                    delivery_id,
+                )
+            )
+            active_reviews[(repo_name, pr_number)] = task
+            background_tasks.add_task(lambda: None)
+            return {"status": "queued", "active_count": active_count}
+        except Exception as e:
+            logger.error(f"Error processing {event} webhook: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
     elif event == "pull_request_review_comment":
         action = payload.get("action")
