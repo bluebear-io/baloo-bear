@@ -10,6 +10,7 @@ import pytest
 from baloo.agent import databricks
 from baloo.agent.databricks import (
     DATABRICKS_PROVIDER,
+    DATABRICKS_TIER_MODELS,
     DatabricksConfigError,
     build_models_config,
     ensure_agent_dir,
@@ -161,3 +162,86 @@ def test_concurrent_writers_do_not_share_a_temp_filename(tmp_path):
 
     assert len(names) == 2
     assert names[0] != names[1]
+
+
+# --- operator-supplied model services -------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "main.baloo.claude-review",
+        "databricks/main.baloo.claude-review",
+        "  main.baloo.claude-review ",
+    ],
+)
+def test_extra_unity_catalog_names_are_declared(raw):
+    ids = [
+        m["id"]
+        for m in build_models_config(WORKSPACE, [raw])["providers"][DATABRICKS_PROVIDER]["models"]
+    ]
+    assert "main.baloo.claude-review" in ids
+    assert set(DATABRICKS_TIER_MODELS.values()) <= set(ids)
+
+
+@pytest.mark.parametrize(
+    "raw", ["sonnet", "claude-haiku-4-5-20251001", "a.b", "a..b", "anthropic/a.b.c", "", None]
+)
+def test_non_unity_catalog_values_are_dropped(raw):
+    ids = [
+        m["id"]
+        for m in build_models_config(WORKSPACE, [raw])["providers"][DATABRICKS_PROVIDER]["models"]
+    ]
+    assert sorted(ids) == sorted(set(DATABRICKS_TIER_MODELS.values()))
+
+
+def test_tier_model_passed_as_extra_is_not_duplicated():
+    tier = DATABRICKS_TIER_MODELS["standard"]
+    ids = [
+        m["id"]
+        for m in build_models_config(WORKSPACE, [tier])["providers"][DATABRICKS_PROVIDER]["models"]
+    ]
+    assert ids.count(tier) == 1
+
+
+def test_configured_model_services_reads_all_model_settings(monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL", "databricks/main.baloo.primary")
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "main.baloo.threads")
+    assert databricks.configured_model_services() == ["main.baloo.primary", "main.baloo.threads"]
+
+
+def test_configured_model_services_is_empty_for_tier_names_only():
+    assert databricks.configured_model_services() == []
+
+
+def test_configured_model_services_survives_a_broken_config_layer():
+    with patch("baloo.config.runtime_settings.resolve_setting", side_effect=RuntimeError("boom")):
+        assert databricks.configured_model_services() == []
+
+
+def test_ensure_agent_dir_declares_configured_services_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL", "main.baloo.claude-review")
+    payload = json.loads(
+        (ensure_agent_dir(WORKSPACE, base_dir=tmp_path) / "models.json").read_text()
+    )
+    assert "main.baloo.claude-review" in [
+        m["id"] for m in payload["providers"][DATABRICKS_PROVIDER]["models"]
+    ]
+
+
+def test_ensure_agent_dir_explicit_empty_extras_bypasses_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENT_MODEL", "main.baloo.claude-review")
+    payload = json.loads(
+        (
+            ensure_agent_dir(WORKSPACE, base_dir=tmp_path, extra_models=()) / "models.json"
+        ).read_text()
+    )
+    assert "main.baloo.claude-review" not in [
+        m["id"] for m in payload["providers"][DATABRICKS_PROVIDER]["models"]
+    ]
+
+
+def test_ensure_agent_dir_is_byte_identical_without_extras(tmp_path):
+    before = json.dumps(build_models_config(WORKSPACE), indent=2) + "\n"
+    assert (ensure_agent_dir(WORKSPACE, base_dir=tmp_path) / "models.json").read_text() == before
