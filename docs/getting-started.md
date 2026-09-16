@@ -75,10 +75,13 @@ Enable these events:
 - `Issue comment`
 - `Pull request review`
 - `Pull request review comment`
+- `Check run` and `Check suite` (for the Re-run button)
 
 Baloo currently reacts to:
 
 - PR opened, synchronized, reopened, and ready-for-review transitions
+- **Re-run** on the `Baloo Code Quality` check in the Checks tab (or "Re-run all checks"), which requests a fresh review of the current head
+- `@baloo review` posted as a PR comment by a collaborator
 - PR comments
 - PR review comments
 - submitted human reviews in `commented` and `changes_requested` states

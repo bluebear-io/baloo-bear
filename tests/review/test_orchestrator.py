@@ -86,7 +86,6 @@ def _make_github_client(pr_context=None):
     gc.resolve_review_thread = AsyncMock()
     gc.is_merge_or_sync_commit = AsyncMock(return_value=(False, ""))
     gc.get_pr_context = AsyncMock(return_value=pr_context or _make_pr_context())
-    gc.request_self_as_reviewer = AsyncMock(return_value=True)
     return gc
 
 
@@ -1275,6 +1274,18 @@ async def test_completion_comment_contains_full_collapsible_medium_finding():
     assert "1 medium suggestion — expand to read" in completion
     assert "`baloo/processor.py:31`" in completion
     assert full_body in completion
+
+
+@pytest.mark.asyncio
+async def test_completion_comment_tells_how_to_rerequest_a_review():
+    gc = _make_github_client()
+    agent = _make_agent(comments=[], approve=True)
+
+    await _run_review(gc, agent, notify_progress=True)
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "`@baloo review`" in completion
+    assert 're-run the "Baloo Code Quality" check' in completion
 
 
 @pytest.mark.asyncio
