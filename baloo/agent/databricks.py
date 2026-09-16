@@ -130,7 +130,9 @@ def configured_model_services() -> list[str]:
 
         values = [resolve_setting(key) for key in MODEL_SETTING_KEYS]
     except Exception as exc:  # noqa: BLE001 - config layer unavailable
-        logger.debug("could not read model settings for models.json: %s", exc)
+        logger.warning(
+            "could not read model settings for models.json; extra models not declared: %s", exc
+        )
         return []
     return [name for name in map(_model_service, values) if name]
 
