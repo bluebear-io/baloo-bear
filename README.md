@@ -86,7 +86,7 @@ Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub Ap
 
 - **Webhook URL**: Your public HTTPS endpoint (e.g. `https://baloo.example.com/webhook`)
 - **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write)
-- **Events**: Pull request
+- **Events**: Pull request, Check run, Check suite (the last two power the Re-run button)
 - Download the private key `.pem` file
 
 ### 2. Deploy with Docker
