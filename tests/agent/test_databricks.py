@@ -184,7 +184,9 @@ def test_extra_unity_catalog_names_are_declared(raw):
     assert set(DATABRICKS_TIER_MODELS.values()) <= set(ids)
 
 
-@pytest.mark.parametrize("raw", ["sonnet", "claude-haiku-4-5-20251001", "a.b", "a..b", "", None])
+@pytest.mark.parametrize(
+    "raw", ["sonnet", "claude-haiku-4-5-20251001", "a.b", "a..b", "anthropic/a.b.c", "", None]
+)
 def test_non_unity_catalog_values_are_dropped(raw):
     ids = [
         m["id"]

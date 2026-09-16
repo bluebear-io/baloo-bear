@@ -17,10 +17,12 @@ Three details are load-bearing and were each confirmed against a live workspace:
 - Model IDs are Unity Catalog FQNs (``system.ai.claude-*``). The older flat
   ``databricks-claude-*`` names now return 501 NOT_IMPLEMENTED.
 
-A custom provider's model list is *replacing*, not additive: PI can only
-address models this file declares. The tier models are always declared; any
-Unity Catalog name in the operator's model settings is declared alongside them,
-which is what makes an operator-owned model service reachable at all.
+A custom provider's model list is *replacing*, not additive, so the tier
+models are always declared here. Any Unity Catalog name in the operator's model
+settings is declared alongside them: PI 0.73 happens to synthesise an undeclared
+model from a sibling entry (with a stderr warning on every spawn), but PI's
+custom-provider contract does not promise that, so an operator-owned model
+service is declared explicitly rather than relying on the fallback.
 
 The token is never written to disk: ``apiKey`` holds the *name* of an
 environment variable, which PI resolves at request time.
@@ -109,6 +111,8 @@ def _model_service(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     candidate = value.strip().removeprefix(f"{DATABRICKS_PROVIDER}/")
+    if "/" in candidate:  # another provider's model, e.g. "anthropic/a.b.c"
+        return None
     parts = candidate.split(".")
     return candidate if len(parts) == 3 and all(parts) else None
 
