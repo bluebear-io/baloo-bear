@@ -1582,7 +1582,11 @@ async def process_pr_review(
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
             summary_text = CommentFormatter.format_summary(
-                decision_comments, agent_metadata, general_findings=general_findings
+                decision_comments,
+                agent_metadata,
+                general_findings=general_findings,
+                commit_sha=pr_context.head_sha,
+                repo_full_name=repo_full_name,
             )
             summary_text = f"{summary_text}\n\n{decision_summary}"
 
@@ -1821,6 +1825,12 @@ async def process_pr_review(
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s. No new issues found."
                     )
+
+                reviewed_commit = CommentFormatter.format_reviewed_commit(
+                    pr_context.head_sha, repo_full_name
+                )
+                if reviewed_commit:
+                    completion_msg += f"\n\n{reviewed_commit}"
 
                 try:
                     await github_client.edit_comment(
