@@ -23,6 +23,8 @@ Posted as inline comments on the exact file and line. The PR review is submitted
 
 Posted as annotations on a GitHub Check called "Baloo Code Quality". These appear in the Checks tab and as non-blocking annotations on the PR diff, but don't block merge. The full text is also available in the Check summary and in an expandable section of Baloo's completion comment.
 
+The check is posted on every review, even with no MEDIUM findings, so the Checks tab always offers GitHub's **Re-run** button as a way to request a fresh review.
+
 If the Checks API fails (e.g., missing permissions), MEDIUM findings are not posted as separate comments — they remain available in Baloo's expandable PR finding digest.
 
 ### LOW → Filtered
@@ -43,7 +45,7 @@ The agent assigns severity based on these guidelines:
 | Variable | Default | Description |
 |---|---|---|
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post. Set to `LOW` to see everything, `HIGH` to reduce noise |
-| `REVIEW_USE_CHECKS_API` | `true` | Also post MEDIUM findings to the Checks API. The completion comment contains their full text either way |
+| `REVIEW_USE_CHECKS_API` | `true` | Post a `Baloo Code Quality` check run on every review (MEDIUM findings become its annotations; the completion comment contains their full text either way). The check's **Re-run** button triggers a fresh review |
 | `REVIEW_AUTO_APPROVE` | `false` | Auto-approve PRs with no CRITICAL/HIGH findings (opt-in) |
 
 ## Approval Decision Logic

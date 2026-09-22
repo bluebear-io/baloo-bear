@@ -262,36 +262,10 @@ async def handle_webhook(
             pr_number = webhook_payload.number
             repo_name = webhook_payload.repository.full_name
 
-            # review_requested fires for every reviewer — only re-review when it's us
-            # (the ↻ re-request button next to baloo in the Reviewers box).
-            if action == "review_requested":
-                from baloo.github.auth import is_this_app
-
-                # Baloo lists itself as a reviewer at the start of every review — reacting
-                # to its own request would loop forever.
-                if await is_this_app(webhook_payload.sender.login):
-                    logger.info(f"Ignoring Baloo's own review request on {repo_name}#{pr_number}")
-                    return {"status": "ignored", "action": action, "reason": "self-request"}
-
-                requested_login = (payload.get("requested_reviewer") or {}).get("login")
-                if not await is_this_app(requested_login):
-                    logger.info(
-                        f"Ignoring review request for {requested_login} on "
-                        f"{repo_name}#{pr_number} — not Baloo"
-                    )
-                    return {"status": "ignored", "action": action, "reason": "other reviewer"}
-
-            # Only process opened, synchronize (new commits), reopened, ready_for_review,
-            # and review_requested (re-request button) actions
-            if action in [
-                "opened",
-                "synchronize",
-                "reopened",
-                "ready_for_review",
-                "review_requested",
-            ]:
-                # Skip draft PRs — an explicit review request overrides that
-                if webhook_payload.pull_request.draft and action != "review_requested":
+            # Only process opened, synchronize (new commits), reopened, and ready_for_review
+            if action in ["opened", "synchronize", "reopened", "ready_for_review"]:
+                # Skip draft PRs
+                if webhook_payload.pull_request.draft:
                     logger.info(f"Skipping draft PR: {repo_name}#{pr_number} (action: {action})")
                     return {"status": "skipped", "reason": "draft PR"}
 
@@ -359,13 +333,57 @@ async def handle_webhook(
             else:
                 logger.info(
                     f"Ignoring PR action: {repo_name}#{pr_number} (action: {action}) "
-                    f"- only process: opened, synchronize, reopened, ready_for_review, "
-                    f"review_requested"
+                    f"- only process: opened, synchronize, reopened, ready_for_review"
                 )
                 return {"status": "ignored", "action": action, "reason": "action not processed"}
 
         except Exception as e:
             logger.error(f"Error processing webhook: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+    elif event in ("check_run", "check_suite"):
+        # GitHub's native "Re-run" button on Baloo's check run (or "Re-run all checks")
+        # delivers `rerequested` to the app that owns the check. Treat it as a request
+        # for a fresh review of the current head.
+        try:
+            action = payload.get("action")
+            if action != "rerequested":
+                return {"status": "ignored", "event": event, "reason": f"action={action}"}
+
+            check = payload.get(event) or {}
+            pulls = check.get("pull_requests") or []
+            repo_name = payload["repository"]["full_name"]
+            if not pulls:
+                logger.info(
+                    "Ignoring %s rerequest on %s: no associated pull request", event, repo_name
+                )
+                return {"status": "ignored", "event": event, "reason": "no pull request"}
+            pr_number = pulls[0]["number"]
+            head_sha = check.get("head_sha") or ""
+
+            cancel_existing_review(repo_name, pr_number)
+            active_count = sum(1 for t in active_reviews.values() if not t.done())
+            logger.info(
+                f"Queuing review: {repo_name}#{pr_number} ({event} rerequested by "
+                f"{payload.get('sender', {}).get('login', '?')}) - {active_count} review(s) active"
+            )
+            task = asyncio.create_task(
+                process_pr_review(
+                    repo_name,
+                    pr_number,
+                    payload["installation"]["id"],
+                    f"{event}:rerequested",
+                    True,
+                    None,
+                    head_sha,
+                    delivery_id,
+                )
+            )
+            active_reviews[(repo_name, pr_number)] = task
+            background_tasks.add_task(lambda: None)
+            return {"status": "queued", "active_count": active_count}
+        except Exception as e:
+            logger.error(f"Error processing {event} webhook: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
 
     elif event == "pull_request_review_comment":

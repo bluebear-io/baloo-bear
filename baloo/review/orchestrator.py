@@ -1141,6 +1141,14 @@ async def _process_thread_reply(
             )
 
 
+# GitHub cannot show the re-request arrow for an app in the Reviewers box, so the
+# completion comment is where developers learn how to ask for another pass.
+_RERUN_FOOTER = (
+    "\n\n🔄 Want another pass? Comment `@baloo review`, "
+    'or re-run the "Baloo Code Quality" check.'
+)
+
+
 async def process_pr_review(
     repo_full_name: str,
     pr_number: int,
@@ -1222,12 +1230,6 @@ async def process_pr_review(
 
             # Initialize GitHub client
             github_client = GitHubAPIClient(installation_id)
-
-            # List Baloo as a reviewer so GitHub shows the re-request (↻) button.
-            # ponytail: done on every run because GitHub clears the request when Baloo
-            # submits its review. Costs one "requested a review" timeline entry per run —
-            # narrow to the first review of each PR if that turns out to be noisy.
-            await github_client.request_self_as_reviewer(repo_full_name, pr_number)
 
             # Post initial comment for main PR events only
             if notify_progress:
@@ -1681,21 +1683,31 @@ async def process_pr_review(
                 f"{len(routed['checks'])} non-blocking (MEDIUM)"
             )
 
-            # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
+            # Post a GitHub Check (non-blocking) on every review if feature enabled. MEDIUM
+            # findings go there as annotations; the check exists even without them so the
+            # Checks tab always offers GitHub's "Re-run" button as a re-review trigger.
             checks_posted = False
-            if routed["checks"] and resolve_setting("review_use_checks_api"):
+            if resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
                     from baloo.github.checks_api import GitHubChecksClient
 
+                    if routed["checks"]:
+                        summary = (
+                            f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)"
+                        )
+                        text = CommentFormatter.format_findings_digest(routed["checks"])
+                    else:
+                        summary = "No MEDIUM severity findings"
+                        text = None
                     async with GitHubChecksClient(installation_id) as checks_client:
                         check_run_id = await checks_client.create_check_run(
                             repo_full_name=repo_full_name,
                             commit_sha=pr_context.head_sha,
                             name="Baloo Code Quality",
                             conclusion="neutral",
-                            summary=f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)",
-                            text=CommentFormatter.format_findings_digest(routed["checks"]),
+                            summary=summary + " — re-run this check to request a fresh review.",
+                            text=text,
                         )
 
                         await checks_client.add_annotations(
@@ -1825,6 +1837,7 @@ async def process_pr_review(
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s. No new issues found."
                     )
+                completion_msg += _RERUN_FOOTER
 
                 reviewed_commit = CommentFormatter.format_reviewed_commit(
                     pr_context.head_sha, repo_full_name
