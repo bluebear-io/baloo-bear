@@ -6,7 +6,7 @@ from baloo.github.models import (
     ReviewComment,
     ReviewSeverity,
 )
-from baloo.processor.formatter import CommentFormatter
+from baloo.processor.formatter import BALOO_ICON_URL, CommentFormatter
 
 
 def test_collapsible_medium_findings_keeps_complete_bodies_and_locations() -> None:
@@ -85,7 +85,7 @@ def test_summary_shows_reviewed_commit_under_the_header() -> None:
     )
 
     lines = [line for line in rendered.splitlines() if line.strip()]
-    assert lines[0] == "## 🐻 Baloo Review Summary"
+    assert lines[0] == f"## {CommentFormatter.baloo_icon()} Baloo Review Summary"
     assert lines[1] == (
         "🔍 Reviewed commit [`abc1234`](https://github.com/octo/repo/commit/abc1234def5678)"
     )
@@ -93,3 +93,8 @@ def test_summary_shows_reviewed_commit_under_the_header() -> None:
 
 def test_summary_omits_reviewed_commit_when_sha_is_missing() -> None:
     assert "Reviewed commit" not in CommentFormatter.format_summary([])
+
+
+def test_baloo_icon_points_at_the_repo_asset() -> None:
+    assert BALOO_ICON_URL.endswith("/main/assets/baloo-icon.png")
+    assert f'src="{BALOO_ICON_URL}"' in CommentFormatter.baloo_icon()

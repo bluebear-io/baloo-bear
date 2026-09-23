@@ -5,6 +5,12 @@ from typing import Any
 
 from baloo.github.models import GeneralFinding, ReviewComment
 
+# Tracked at assets/baloo-icon.png. Served from the public repo rather than the
+# Baloo server, since self-hosted servers may not be reachable by GitHub.
+BALOO_ICON_URL = (
+    "https://raw.githubusercontent.com/bluebear-io/baloo-bear/main/assets/baloo-icon.png"
+)
+
 
 class CommentFormatter:
     """Format review comments and summaries for GitHub."""
@@ -15,6 +21,11 @@ class CommentFormatter:
         "MEDIUM": "🟡",
         "LOW": "🔵",
     }
+
+    @staticmethod
+    def baloo_icon() -> str:
+        """Baloo's icon as inline HTML, served from the public repo so self-hosted installs share it."""
+        return f'<img src="{BALOO_ICON_URL}" width="20" height="20" alt="Baloo">'
 
     @staticmethod
     def format_reviewed_commit(
@@ -105,7 +116,7 @@ class CommentFormatter:
         total = len(comments) + len(general_findings)
 
         summary_parts = []
-        summary_parts.append("## 🐻 Baloo Review Summary\n")
+        summary_parts.append(f"## {CommentFormatter.baloo_icon()} Baloo Review Summary\n")
 
         reviewed_commit = CommentFormatter.format_reviewed_commit(commit_sha, repo_full_name)
         if reviewed_commit:
