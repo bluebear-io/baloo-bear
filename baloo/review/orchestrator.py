@@ -1252,7 +1252,7 @@ async def process_pr_review(
                 progress_comment_id = await github_client.post_comment(
                     repo_full_name,
                     pr_number,
-                    "🐻 Baloo is reviewing your code... This may take a moment.",
+                    f"{CommentFormatter.baloo_icon()} Baloo is reviewing your code... This may take a moment.",
                 )
 
             # Fetch PR context
@@ -1822,7 +1822,7 @@ async def process_pr_review(
                     # Review posted findings - update with summary
                     counts = count_by_severity(all_findings)
                     completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s.\n\n"
+                        f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s.\n\n"
                         f"Found {len(all_findings)} issue(s): "
                         f"{counts.get(ReviewSeverity.CRITICAL.value, 0)} critical, "
                         f"{counts.get(ReviewSeverity.HIGH.value, 0)} high, "
@@ -1849,13 +1849,11 @@ async def process_pr_review(
                     )
                 elif awaiting_threads:
                     completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s. "
+                        f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. "
                         f"Still waiting on {awaiting_threads} existing thread(s)."
                     )
                 else:
-                    completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s. No new issues found."
-                    )
+                    completion_msg = f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. No new issues found."
                 completion_msg += _RERUN_FOOTER
 
                 if reviewed_commit:
@@ -2037,7 +2035,7 @@ async def process_pr_review(
         # Try to update progress comment with error
         if progress_comment_id:
             try:
-                user_msg = f"🐻 Baloo encountered an error during review: {str(e)}"
+                user_msg = f"{CommentFormatter.baloo_icon()} Baloo encountered an error during review: {str(e)}"
                 async with GitHubAPIClient(installation_id) as _gc:
                     await _gc.edit_comment(repo_full_name, progress_comment_id, user_msg)
             except Exception:
