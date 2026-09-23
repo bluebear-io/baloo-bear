@@ -227,6 +227,19 @@ def _has_existing_static_fidelity_report(
     )
 
 
+def _fidelity_body_with_commit(report_body: str, reviewed_commit: str) -> str:
+    """Stamp the reviewed commit on a fidelity report that describes one.
+
+    Static reports ("no ticket in PR", "no plan file") are posted once and then
+    deduped for the life of the PR, so a commit stamped on one would freeze at
+    whichever commit happened to come first and read as stale forever. They make
+    no claim about a commit anyway, so they are left alone.
+    """
+    if not reviewed_commit or _static_fidelity_sentinel_for_body(report_body) is not None:
+        return report_body
+    return f"{report_body.rstrip()}\n\n{reviewed_commit}"
+
+
 def _total_review_cost_usd(
     review_metadata: dict,
     fidelity_metadata: dict,
@@ -995,10 +1008,13 @@ async def _post_or_update_documentation_drift_report(
     pr_number: int,
     issue_comments: list[DiscussionComment],
     result: DocumentationDriftResult,
+    reviewed_commit: str = "",
 ) -> str:
     """Upsert the single PR-level documentation drift report comment."""
     existing = _existing_documentation_drift_comment(issue_comments)
     report_body = format_documentation_drift_report(result)
+    if reviewed_commit:
+        report_body = f"{report_body.rstrip()}\n\n{reviewed_commit}"
 
     if existing is not None:
         await github_client.edit_comment(repo_full_name, existing.id, report_body)
@@ -1791,6 +1807,9 @@ async def process_pr_review(
                 )
             # Update progress comment with completion status
             review_duration = int(time.time() - review_start_time)
+            reviewed_commit = CommentFormatter.format_reviewed_commit(
+                pr_context.head_sha, repo_full_name
+            )
             if progress_comment_id:
                 if agent_had_error:
                     completion_msg = (
@@ -1839,9 +1858,6 @@ async def process_pr_review(
                     )
                 completion_msg += _RERUN_FOOTER
 
-                reviewed_commit = CommentFormatter.format_reviewed_commit(
-                    pr_context.head_sha, repo_full_name
-                )
                 if reviewed_commit:
                     completion_msg += f"\n\n{reviewed_commit}"
 
@@ -1865,7 +1881,9 @@ async def process_pr_review(
                         )
                     else:
                         await github_client.post_comment(
-                            repo_full_name, pr_number, fidelity_report_text
+                            repo_full_name,
+                            pr_number,
+                            _fidelity_body_with_commit(fidelity_report_text, reviewed_commit),
                         )
                         logger.info(f"Posted fidelity report for {repo_full_name}#{pr_number}")
                 except Exception as fidelity_err:
@@ -1879,6 +1897,7 @@ async def process_pr_review(
                         pr_number,
                         pr_context.issue_comments,
                         documentation_result,
+                        reviewed_commit=reviewed_commit,
                     )
                     if documentation_report_text:
                         logger.info(

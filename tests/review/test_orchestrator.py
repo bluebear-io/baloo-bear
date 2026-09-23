@@ -1410,3 +1410,82 @@ def test_build_db_findings_includes_general_findings():
             "body": general.body,
         }
     ]
+
+
+class TestReviewedCommitOnReports:
+    """The reviewed commit is stamped on the reports that describe a commit."""
+
+    def test_fidelity_report_gets_the_commit(self):
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        body = _fidelity_body_with_commit(
+            "## Fidelity Report\n\nEverything matches the plan.\n", "🔍 Reviewed commit `abc1234`"
+        )
+
+        assert body.endswith("🔍 Reviewed commit `abc1234`")
+        assert "Everything matches the plan." in body
+
+    def test_static_fidelity_report_is_left_alone(self):
+        from baloo.fidelity.fidelity_report import NO_TICKET_FIDELITY_SENTINEL
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        static = f"{NO_TICKET_FIDELITY_SENTINEL}\n\n**No ticket ID found in PR.**\n"
+
+        assert _fidelity_body_with_commit(static, "🔍 Reviewed commit `abc1234`") == static
+
+    def test_fidelity_report_unchanged_without_a_commit(self):
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        report = "## Fidelity Report\n\nAll good.\n"
+
+        assert _fidelity_body_with_commit(report, "") == report
+
+    async def test_posted_drift_report_carries_the_commit(self):
+        from baloo.documentation.models import DocumentationDriftFinding, DocumentationDriftResult
+        from baloo.review.orchestrator import _post_or_update_documentation_drift_report
+
+        gc = _make_github_client()
+        result = DocumentationDriftResult(
+            required_updates=[
+                DocumentationDriftFinding(
+                    doc_path="README.md",
+                    verdict="required",
+                    rationale="Behavior changed.",
+                )
+            ]
+        )
+
+        await _post_or_update_documentation_drift_report(
+            gc, "org/repo", 1, [], result, reviewed_commit="🔍 Reviewed commit `abc1234`"
+        )
+
+        assert gc.post_comment.call_args.args[2].endswith("🔍 Reviewed commit `abc1234`")
+
+    async def test_edited_drift_report_refreshes_the_commit(self):
+        from baloo.documentation.models import DocumentationDriftResult
+        from baloo.documentation.report import DOCUMENTATION_DRIFT_SENTINEL
+        from baloo.review.orchestrator import _post_or_update_documentation_drift_report
+
+        gc = _make_github_client()
+        existing = DiscussionComment(
+            id=99,
+            author="baloo-code-reviewer[bot]",
+            body=f"{DOCUMENTATION_DRIFT_SENTINEL}\nold\n\n🔍 Reviewed commit `0000000`",
+            created_at=_now(),
+            updated_at=_now(),
+            source="issue_comment",
+            is_baloo=True,
+        )
+
+        await _post_or_update_documentation_drift_report(
+            gc,
+            "org/repo",
+            1,
+            [existing],
+            DocumentationDriftResult(),
+            reviewed_commit="🔍 Reviewed commit `abc1234`",
+        )
+
+        edited = gc.edit_comment.call_args.args[2]
+        assert edited.endswith("🔍 Reviewed commit `abc1234`")
+        assert "0000000" not in edited
