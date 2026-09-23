@@ -453,6 +453,21 @@ class TestEarlyEventFilter:
         assert resp.json()["reason"] == "event type not processed"
         validate.assert_not_awaited()
 
+    def test_declined_event_keeps_its_own_reason(self, client):
+        # pull_request_review is dropped too, but stays distinguishable in the
+        # delivery logs from an event type Baloo simply does not recognise.
+        validate = AsyncMock(return_value=None)
+
+        resp = _post_raw(
+            client,
+            {"action": "submitted", "installation": {"id": 1}},
+            "pull_request_review",
+            validate,
+        )
+
+        assert resp.json()["reason"] == "comment events disabled"
+        validate.assert_not_awaited()
+
     def test_rerequested_check_still_reaches_verification(self, client):
         # The filter must not swallow the one action the re-review path depends on.
         validate = AsyncMock(return_value={"status": "skipped", "reason": "stops here"})

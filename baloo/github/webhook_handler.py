@@ -244,6 +244,13 @@ _ACTIONABLE_EVENT_ACTIONS: dict[str, frozenset[str]] = {
 }
 
 
+#: Events GitHub delivers that Baloo deliberately never acts on. Kept separate from
+#: an unrecognised event type so webhook delivery logs still tell the two apart.
+_DECLINED_EVENT_REASONS: dict[str, str] = {
+    "pull_request_review": "comment events disabled",
+}
+
+
 def _early_ignore_response(event: str | None, payload: dict) -> dict[str, str | int] | None:
     """Return the ignore response for a delivery Baloo will not act on, else None.
 
@@ -251,6 +258,11 @@ def _early_ignore_response(event: str | None, payload: dict) -> dict[str, str | 
     tenant verification — the signature check above already proved the payload
     came from GitHub, and nothing here reads repository content or acts on it.
     """
+    declined = _DECLINED_EVENT_REASONS.get(event or "")
+    if declined is not None:
+        logger.debug("Ignoring %s event — reviews trigger only on new code", event)
+        return {"status": "ignored", "event": event or "", "reason": declined}
+
     actionable = _ACTIONABLE_EVENT_ACTIONS.get(event or "")
     if actionable is None:
         logger.info("Ignoring event type: %s - unsupported event", event)
@@ -567,10 +579,8 @@ async def handle_webhook(
         )
         return {"status": "queued", "event": event, "action": "review_command"}
 
-    elif event == "pull_request_review":
-        logger.debug("Ignoring %s event — reviews trigger only on new code", event)
-        return {"status": "ignored", "event": event, "reason": "comment events disabled"}
-
-    # Log ignored event types
-    logger.info(f"Ignoring event type: {event} - unsupported event")
-    return {"status": "ignored", "event": event, "reason": "event type not processed"}
+    # Not reachable: _early_ignore_response drops every event the branches above do
+    # not dispatch. Kept so a new key in _ACTIONABLE_EVENT_ACTIONS without a matching
+    # branch is logged loudly instead of falling off the end and returning null.
+    logger.warning("Event %s passed the filter with no dispatch branch", event)
+    return {"status": "ignored", "event": event or "", "reason": "event type not processed"}
