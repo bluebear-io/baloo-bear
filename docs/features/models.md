@@ -122,7 +122,7 @@ Each provider needs its own credentials:
 Controls the depth of reasoning the model uses:
 
 ```bash
-PI_THINKING_LEVEL=medium  # off, minimal, low, medium, high
+PI_THINKING_LEVEL=medium  # off, minimal, low, medium, high, xhigh, max
 ```
 
 Higher thinking = better analysis but slower and more expensive. `medium` is the default and recommended for most use cases.

@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     )
     pi_thinking_level: str = Field(
         default="medium",
-        description="PI thinking level: off, minimal, low, medium, high",
+        description="PI thinking level: off, minimal, low, medium, high, xhigh, max",
     )
 
     # Review Configuration

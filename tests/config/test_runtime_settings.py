@@ -303,3 +303,22 @@ def test_validate_override_leaves_model_ids_untouched() -> None:
     # provider token is canonicalized.
     arn = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/AbC123"
     assert validate_override("agent_model", f"  {arn} ") == arn
+
+
+@pytest.mark.parametrize("level", ["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+def test_thinking_level_accepts_every_pi_level(level):
+    # pi >= 0.80 adds xhigh and max; pi clamps them to what the model supports,
+    # so accepting them here can never produce a rejected RPC command.
+    assert validate_override("pi_thinking_level", level) == level
+
+
+def test_thinking_level_rejects_unknown_value():
+    with pytest.raises(RuntimeSettingsError):
+        validate_override("pi_thinking_level", "ultra")
+
+
+def test_dashboard_thinking_choices_match_allowed_values():
+    from baloo.config.runtime_settings import ALLOWED_VALUES
+    from baloo.dashboard.router import THINKING_LEVEL_CHOICES
+
+    assert {value for value, _ in THINKING_LEVEL_CHOICES} == ALLOWED_VALUES["pi_thinking_level"]
