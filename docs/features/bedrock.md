@@ -4,7 +4,7 @@ This guide walks through configuring Baloo to run every agent through Amazon Bed
 
 ## How Baloo talks to Bedrock
 
-Baloo runs the [PI](https://github.com/mariozechner/pi-coding-agent) coding agent as a sandboxed subprocess. PI has a native `amazon-bedrock` provider that uses the AWS SDK, so Baloo does not call Bedrock directly — it selects the provider and passes AWS credentials through to that subprocess.
+Baloo runs the [PI](https://github.com/earendil-works/pi) coding agent as a sandboxed subprocess. PI has a native `amazon-bedrock` provider that uses the AWS SDK, so Baloo does not call Bedrock directly — it selects the provider and passes AWS credentials through to that subprocess.
 
 Two consequences follow from the sandbox:
 

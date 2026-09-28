@@ -56,7 +56,7 @@ Inline comments appear on the exact lines:
 
 | Feature                   | Description                                                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
+| **Agentic review**        | Uses [PI](https://github.com/earendil-works/pi) to read files, grep patterns, and explore the repo — not just the diff |
 | **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
 | **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                              |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |

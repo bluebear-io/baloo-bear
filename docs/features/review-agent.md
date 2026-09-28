@@ -1,6 +1,6 @@
 # Review Agent
 
-Baloo uses [PI](https://github.com/mariozechner/pi-coding-agent) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
+Baloo uses [PI](https://github.com/earendil-works/pi) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
 
 ## How It Works
 

@@ -10,7 +10,7 @@ Baloo runs the [PI](https://github.com/earendil-works/pi) coding agent as a sand
 2. It sets `PI_CODING_AGENT_DIR` to that directory for the PI subprocess, which is how PI discovers the file.
 3. PI speaks the Anthropic Messages dialect to the gateway, which serves Claude models from Unity Catalog.
 
-The generated file contains **no secret**. Its `apiKey` field holds the *name* `DATABRICKS_TOKEN`, which PI resolves from the environment at request time.
+The generated file contains **no secret**. Its `apiKey` field holds the reference `$DATABRICKS_TOKEN`, which PI resolves from the environment at request time. The `$` prefix is required: pi treats a bare `DATABRICKS_TOKEN` as a literal key, and the gateway then answers 401 instead of PI reporting a configuration error.
 
 Three settings in that file are load-bearing, each confirmed against a live workspace:
 
@@ -105,7 +105,7 @@ When `REPO_SANDBOX_MODE` is active, the agent runs under bwrap with a scrubbed e
 
 | Symptom | Cause |
 |---|---|
-| `401 Credential was not sent or was of an unsupported type` | Token missing or unreadable. Confirm `DATABRICKS_TOKEN` is set and reaches the subprocess (sandbox allowlist). |
+| `401 Credential was not sent or was of an unsupported type` | Token missing or unreadable. Confirm `DATABRICKS_TOKEN` is set and reaches the subprocess (sandbox allowlist), and that the generated `models.json` has `"apiKey": "$DATABRICKS_TOKEN"` (with the `$`): a bare name is sent to the gateway verbatim. |
 | `401 invalid x-api-key` | Requests are going to Anthropic, not the gateway — the `databricks` provider was not registered. Check that `PI_CODING_AGENT_DIR` is set and `models.json` exists. |
 | `403 ... required scopes: unity-catalog` | The token is gateway-scoped. Harmless for reviews: Baloo does not list models, it only runs inference. |
 | `501 NOT_IMPLEMENTED ... Use Unity Catalog model services` | A flat `databricks-claude-*` model ID. Use `system.ai.claude-*`. |
