@@ -76,10 +76,12 @@ def _get_lock(key: str) -> asyncio.Lock:
 
 # --- Pure path helpers (no IO) ----------------------------------------------
 def _slug(repo_full_name: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repo_full_name):
-        raise ValueError("Invalid repository name")
     owner, _, repo = repo_full_name.partition("/")
-    if repo in {".", ".."}:
+    if (
+        not re.fullmatch(r"[A-Za-z0-9-]{1,39}", owner)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", repo)
+        or repo in {".", ".."}
+    ):
         raise ValueError("Invalid repository name")
     return f"{owner}__{repo}"
 
@@ -89,10 +91,14 @@ def _contained_path(root: str, installation_id: int | str, *parts: str) -> Path:
     if not re.fullmatch(r"[0-9]+", str(installation_id)):
         raise ValueError("Invalid installation ID")
     base = Path(root).resolve()
-    namespace = base / str(installation_id)
+    namespace = base / str(int(installation_id))
     if namespace.resolve() != namespace:
         raise ValueError("Installation directory must not be a symlink")
-    path = (namespace.joinpath(*parts)).resolve()
+    # Check lexical containment before resolve() performs filesystem access.
+    candidate = os.path.abspath(namespace.joinpath(*parts))
+    if not candidate.startswith(str(namespace) + os.sep):
+        raise ValueError("Repository path escapes installation directory")
+    path = Path(candidate).resolve()
     if not path.is_relative_to(namespace):
         raise ValueError("Repository path escapes installation directory")
     return path

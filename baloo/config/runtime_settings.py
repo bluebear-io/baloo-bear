@@ -142,7 +142,7 @@ def coerce_setting_value(key: str, raw: str) -> Any:
 #: convenience, and anything that only lives in the browser is not validation.
 ALLOWED_VALUES: dict[str, frozenset[str]] = {
     "review_min_severity": frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"}),
-    "pi_thinking_level": frozenset({"off", "minimal", "low", "medium", "high"}),
+    "pi_thinking_level": frozenset({"off", "minimal", "low", "medium", "high", "xhigh", "max"}),
 }
 
 #: Prefix is interpolated into a regex in fidelity/ticket_extractor.py, so it is

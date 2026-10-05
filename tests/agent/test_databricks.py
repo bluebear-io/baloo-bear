@@ -63,9 +63,12 @@ def test_eager_tool_input_streaming_is_disabled():
     assert _provider()["compat"]["supportsEagerToolInputStreaming"] is False
 
 
-def test_api_key_is_an_env_var_name_not_a_secret():
+def test_api_key_is_an_env_var_reference_not_a_secret():
     # models.json is written to disk, so it must reference the token by name.
-    assert _provider()["apiKey"] == databricks.DATABRICKS_TOKEN_ENV
+    # The ``$`` prefix is load-bearing: pi >= 0.75 treats a bare uppercase
+    # string as a literal key and the gateway answers 401.
+    assert _provider()["apiKey"] == "$DATABRICKS_TOKEN"
+    assert _provider()["apiKey"] == databricks.DATABRICKS_TOKEN_REF
     assert not _provider()["apiKey"].startswith("dapi")
 
 

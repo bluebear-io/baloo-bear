@@ -320,3 +320,23 @@ async def test_invalid_checkout_falls_back_before_auth_or_io(tmp_path, monkeypat
         assert not checkout.available
         assert checkout.path is None
     assert not root.exists()
+
+
+@pytest.mark.parametrize("repo", ["-" * 10000 + "/r", "o/" + "-" * 10000])
+def test_repository_name_length_is_bounded(repo):
+    with pytest.raises(ValueError):
+        rp._slug(repo)
+
+
+def test_lexical_escape_rejected_before_resolving_candidate(tmp_path, monkeypatch):
+    original_resolve = Path.resolve
+    outside = tmp_path / "outside"
+
+    def guarded_resolve(path, *args, **kwargs):
+        assert ".." not in path.parts
+        assert path != outside
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", guarded_resolve)
+    with pytest.raises(ValueError):
+        rp._contained_path(str(tmp_path), 1, "../outside")

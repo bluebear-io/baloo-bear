@@ -56,26 +56,32 @@ TIER_ALIASES: dict[str, str] = {
 
 # Per-provider model IDs for each tier. Bedrock uses US inference-profile IDs;
 # override with a bare Bedrock model ID or provider/model string when needed.
+# Every ID here must exist in the pinned pi's catalog (`pi --list-models`):
+# pi rejects a model it does not know before making any request. Last checked
+# against pi 0.87.1.
 PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
     "anthropic": {
+        # Haiku 4.5 is still the current Haiku; there is no Claude 5 Haiku.
         "economy": "claude-haiku-4-5-20251001",
-        "standard": "claude-sonnet-4-6",
-        "premium": "claude-opus-4-6",
+        "standard": "claude-sonnet-5",
+        "premium": "claude-opus-5-5",
     },
     "google": {
         "economy": "gemini-3.5-flash-lite",
-        "standard": "gemini-3.6-flash",
+        "standard": "gemini-3.8-flash",
+        # Still the only Gemini 3.x Pro in pi's catalog.
         "premium": "gemini-3.1-pro-preview",
     },
     "amazon-bedrock": {
         "economy": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "standard": "us.anthropic.claude-sonnet-4-6",
-        "premium": "us.anthropic.claude-opus-4-6-v1",
+        "standard": "us.anthropic.claude-sonnet-5",
+        "premium": "us.anthropic.claude-opus-5-5",
     },
     "openai": {
-        "economy": "gpt-5.6-luna",
-        "standard": "gpt-5.6-terra",
-        "premium": "gpt-5.6-sol",
+        # GPT-6 has no Terra: Sol took over that price point and Astra sits above it.
+        "economy": "gpt-6-luna",
+        "standard": "gpt-6-sol",
+        "premium": "gpt-6-astra",
     },
     # Registered with PI via a generated models.json — see baloo/agent/databricks.py.
     DATABRICKS_PROVIDER: dict(DATABRICKS_TIER_MODELS),
