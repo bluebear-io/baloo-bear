@@ -319,7 +319,7 @@ class TestBalooAgentModelSelection:
             mock_exec.return_value = _mock_pi_process(events)
             await agent.review_pr(sample_pr_context, model_override="sonnet")
 
-            assert agent.options.model == "claude-sonnet-4-6"
+            assert agent.options.model == "claude-sonnet-5"
 
     @pytest.mark.asyncio
     async def test_uses_opus_for_security_pr(self):
@@ -355,7 +355,7 @@ class TestBalooAgentModelSelection:
             mock_exec.return_value = _mock_pi_process(events)
             await agent.review_pr(security_context, model_override="opus")
 
-            assert agent.options.model == "claude-opus-4-6"
+            assert agent.options.model == "claude-opus-5-5"
 
 
 class TestBalooAgentSeveritySummary:
