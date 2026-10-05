@@ -38,10 +38,9 @@ Website: [BlueBear Security](https://www.bluebear.io)
 
 When a PR is opened or updated, Baloo posts a review:
 
-```
-🐻 Baloo review completed in 45s.
-Found 2 issue(s): 0 critical, 1 high, 1 medium, 0 low.
-```
+> <img src="https://raw.githubusercontent.com/bluebear-io/baloo-bear/main/assets/baloo-icon.png" width="20" height="20" alt="Baloo"> Baloo review completed in 45s.
+>
+> Found 2 issue(s): 0 critical, 1 high, 1 medium, 0 low.
 
 Inline comments appear on the exact lines:
 
