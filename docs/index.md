@@ -85,8 +85,9 @@ Inline comments appear on the exact lines:
 Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub App**:
 
 - **Webhook URL**: Your public HTTPS endpoint (e.g. `https://baloo.example.com/webhook`)
-- **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write)
-- **Events**: Pull request
+- **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write), Issues (read/write)
+- **Events**: Pull request, Pull request review comment, Issue comment, Check run, Check suite
+  (Issue comment powers the `@baloo review` command; Check run/suite power the Re-run button)
 - Download the private key `.pem` file
 
 ### 2. Deploy with Docker
