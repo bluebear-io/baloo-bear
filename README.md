@@ -14,7 +14,7 @@ Baloo is an open source **GitHub App for AI pull request review**. It installs o
 
 Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model credentials for Anthropic, Amazon Bedrock, Google, OpenAI, or a Databricks AI Gateway.
 
-Website: [BlueBear Security](https://www.bluebear.io)
+Website: [Bluebear Security](https://www.bluebear.io)
 
 ## Why Baloo?
 

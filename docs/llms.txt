@@ -39,7 +39,7 @@ Canonical website: https://www.bluebear.io
 
 ## Repository
 
-- [BlueBear Security](https://www.bluebear.io): Project owner and primary website.
+- [Bluebear Security](https://www.bluebear.io): Project owner and primary website.
 - [Source Code](https://github.com/bluebear-io/baloo-bear): GitHub repository.
 - [Issues](https://github.com/bluebear-io/baloo-bear/issues): Bugs and feature requests.
 - [Discussions](https://github.com/bluebear-io/baloo-bear/discussions): Questions and design discussions.
