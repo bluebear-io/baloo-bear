@@ -1,6 +1,6 @@
 site_name: Baloo
 site_description: Self-hosted AI code review GitHub App for pull request security, guidelines, and implementation feedback
-site_url: https://bluebear-io.github.io/baloo-bear
+site_url: https://oss.bluebear.io/baloo-bear
 repo_url: https://github.com/bluebear-io/baloo-bear
 repo_name: bluebear-io/baloo-bear
 exclude_docs: |

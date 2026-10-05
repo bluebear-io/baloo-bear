@@ -89,7 +89,7 @@ gitleaks git --staged --pre-commit --no-banner --redact   # skipped if gitleaks 
 
 ## Docs Site
 
-The public docs at <https://bluebear-io.github.io/baloo-bear/> are built with MkDocs from `docs/` and deployed by `.github/workflows/docs.yml` on every push to `main`. The home and contributing pages are generated from the repo-root `README.md` and `CONTRIBUTING.md`, so edit those files, not `docs/index.md` or `docs/contributing.md` (both are gitignored).
+The public docs at <https://oss.bluebear.io/baloo-bear/> are built with MkDocs from `docs/` and deployed by `.github/workflows/docs.yml` on every push to `main`. The home and contributing pages are generated from the repo-root `README.md` and `CONTRIBUTING.md`, so edit those files, not `docs/index.md` or `docs/contributing.md` (both are gitignored).
 
 To preview locally:
 
