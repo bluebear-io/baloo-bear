@@ -12,7 +12,7 @@
 
 Baloo is an open source **GitHub App for AI pull request review**. It installs on your repositories, reads PR diffs and relevant project context, and posts actionable review comments that catch bugs, security issues, missing error handling, and repository guideline violations before humans review the code.
 
-Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model API keys for Claude or Gemini.
+Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model credentials for Anthropic, Amazon Bedrock, Google, OpenAI, or a Databricks AI Gateway.
 
 Website: [BlueBear Security](https://www.bluebear.io)
 
@@ -21,9 +21,9 @@ Website: [BlueBear Security](https://www.bluebear.io)
 - **Catches what linters can't** — logic errors, silent failures, security antipatterns, missing error handling
 - **Respects your conventions** — reads `AGENTS.md` and `CONTRIBUTING.md` from your repo and enforces them
 - **Follows per-PR review briefs** — when a PR includes `## Review guidance for Baloo`, Baloo verifies those falsifiable, context-aware checks and cites them in findings
-- **Posts like a teammate** — inline comments on specific lines, severity labels, approval/request-changes decisions
-- **Runs on every push** — new commits get reviewed automatically, with discussion thread tracking across iterations
-- **Self-hosted & private** — your code never leaves your infrastructure; bring your own API keys
+- **Posts like a teammate** — inline comments on specific lines, severity labels, and an approval when no CRITICAL or HIGH issues remain (if auto-approve is on). Baloo never blocks a merge; humans decide
+- **Runs on every push** — new commits on non-draft PRs get reviewed automatically (merge-from-base commits are skipped), with discussion thread tracking across iterations; comment `@baloo review` to ask for another pass
+- **Self-hosted** — no Baloo-hosted backend; review context goes only to the model provider you configure, with your own credentials
 
 ## Use Cases
 
@@ -58,13 +58,13 @@ Inline comments appear on the exact lines:
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
 | **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
-| **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                              |
+| **Severity routing**      | CRITICAL/HIGH → inline comments, no approval; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                 |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
 | **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
 | **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |
 | **Fidelity analysis**     | Optionally compares PR against design plan documents                                                                              |
 | **Documentation drift**   | Optionally asks authors to update mapped docs when implementation changes make them stale                                         |
-| **FP reduction**          | Optional second LLM pass to verify findings and drop false positives                                                              |
+| **FP reduction**          | Second LLM pass (on by default) that verifies findings and drops false positives                                                  |
 | **Dashboard**             | Optional PostgreSQL-backed review history UI with cost tracking                                                                   |
 | **Dependabot-aware**      | Specialized review logic for dependency update PRs                                                                                |
 | **Local dry-run**         | Run [`scripts/local_review.py`](scripts/local_review.py) against a local git diff — no GitHub webhook or posted comments          |
@@ -122,7 +122,7 @@ Install the GitHub App on your repositories. Open a PR — Baloo will review it 
                                   ┌────────▼──────────┐
                                   │   PI Agent (RPC)  │
                                   │   read / grep /   │
-                                  │   find / ls       │
+                                  │   find / ls / ast │
                                   └────────┬──────────┘
                                            │
                                   ┌────────▼──────────┐
@@ -148,7 +148,9 @@ baloo/
 ├── documentation/ # Documentation drift analysis (optional)
 ├── fidelity/    # Plan-vs-implementation analysis (optional)
 ├── github/      # Webhooks, API client, auth, Checks API
-└── processor/   # Findings filter, severity routing, decisions, FP verification
+├── outcomes/    # Post-merge labeling of how findings were resolved
+├── processor/   # Findings filter, severity routing, decisions, FP verification
+└── review/      # Review orchestration: run agents, route findings, post results
 ```
 
 ## Configuration
