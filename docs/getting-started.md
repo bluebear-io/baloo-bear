@@ -57,7 +57,7 @@ Set these repository permissions:
 
 - `Pull requests: Read and write`
 - `Contents: Read-only`
-- `Issues: Read and write`
+- `Issues: Read-only` (needed to subscribe to the `Issue comment` event)
 - `Checks: Read and write`
 
 These are needed because Baloo:
@@ -65,6 +65,7 @@ These are needed because Baloo:
 - reads PRs and posts review comments
 - reads repository files such as `AGENTS.md` and `CONTRIBUTING.md`
 - posts general PR comments
+- receives `@baloo review` commands
 - posts medium-severity findings to the Checks tab
 
 ## 5. Subscribe to GitHub Events
@@ -72,9 +73,8 @@ These are needed because Baloo:
 Enable these events:
 
 - `Pull request`
-- `Issue comment`
-- `Pull request review`
-- `Pull request review comment`
+- `Issue comment` (for the `@baloo review` command)
+- `Pull request review comment` (for replies to Baloo's inline threads)
 - `Check run` and `Check suite` (for the Re-run button)
 
 Baloo currently reacts to:
@@ -82,9 +82,7 @@ Baloo currently reacts to:
 - PR opened, synchronized, reopened, and ready-for-review transitions
 - **Re-run** on the `Baloo Code Quality` check in the Checks tab (or "Re-run all checks"), which requests a fresh review of the current head
 - `@baloo review` posted as a PR comment by a collaborator
-- PR comments
-- PR review comments
-- submitted human reviews in `commented` and `changes_requested` states
+- replies to Baloo's inline review threads
 
 ## 6. Configure Baloo
 
