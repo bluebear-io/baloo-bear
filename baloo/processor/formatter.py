@@ -17,6 +17,20 @@ class CommentFormatter:
     }
 
     @staticmethod
+    def format_reviewed_commit(
+        commit_sha: str | None,
+        repo_full_name: str | None = None,
+    ) -> str:
+        """Render the head commit a review ran against so readers can validate it."""
+        if not commit_sha:
+            return ""
+        short_sha = commit_sha[:7]
+        if repo_full_name:
+            url = f"https://github.com/{repo_full_name}/commit/{commit_sha}"
+            return f"🔍 Reviewed commit [`{short_sha}`]({url})"
+        return f"🔍 Reviewed commit `{short_sha}`"
+
+    @staticmethod
     def format_findings_digest(
         findings: Sequence[ReviewComment | GeneralFinding],
     ) -> str:
@@ -62,6 +76,8 @@ class CommentFormatter:
         comments: list[ReviewComment],
         metadata: dict[str, Any] | None = None,
         general_findings: list[GeneralFinding] | None = None,
+        commit_sha: str | None = None,
+        repo_full_name: str | None = None,
     ) -> str:
         """
         Format a review summary markdown.
@@ -69,6 +85,9 @@ class CommentFormatter:
         Args:
             comments: List of review comments
             metadata: Optional agent metadata (costs, tokens)
+            general_findings: Findings not anchored to a specific line
+            commit_sha: Head commit the review ran against, shown for validation
+            repo_full_name: Repo used to link the commit SHA
 
         Returns:
             Formatted Markdown summary
@@ -87,6 +106,10 @@ class CommentFormatter:
 
         summary_parts = []
         summary_parts.append("## 🐻 Baloo Review Summary\n")
+
+        reviewed_commit = CommentFormatter.format_reviewed_commit(commit_sha, repo_full_name)
+        if reviewed_commit:
+            summary_parts.append(f"{reviewed_commit}\n")
 
         if not comments and not general_findings:
             summary_parts.append("✅ **No issues found!** Code looks good.")

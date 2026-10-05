@@ -4,7 +4,7 @@ Baloo uses [PI](https://github.com/mariozechner/pi-coding-agent) as its agentic 
 
 ## How It Works
 
-1. **Webhook arrives** — GitHub sends a `pull_request` event
+1. **Webhook arrives** — GitHub sends a `pull_request` event (or a `check_run` / `check_suite` `rerequested` event from the Checks tab's Re-run button)
 2. **Context assembly** — Baloo fetches the PR diff, file list, metadata, and any prior discussion threads
 3. **Agent spawns** — A PI process starts in RPC mode with **read-only tools**: `read`, `grep`, `find`, `ls`
 4. **Agentic review** — The agent reads changed files in full, greps for security patterns, explores project structure, checks for tests and configs

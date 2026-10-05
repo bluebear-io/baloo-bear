@@ -102,7 +102,11 @@ class BalooAgent(PIAgentBase):
 
             # Generate summary using shared formatter
             summary = CommentFormatter.format_summary(
-                comments, metadata, general_findings=general_findings
+                comments,
+                metadata,
+                general_findings=general_findings,
+                commit_sha=pr_context.head_sha,
+                repo_full_name=pr_context.repo_full_name,
             )
 
             # Make approval decision using centralized engine

@@ -1,17 +1,42 @@
 """GitHub App authentication utilities."""
 
-import asyncio
 import hashlib
 import hmac
 import logging
 import time
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import jwt
 
 from baloo.config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+#: Repo verification runs on the webhook hot path, so it gets a tighter budget
+#: than the general GitHub client: a hung connect must not hold a delivery open.
+_VERIFY_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+#: One pooled client for verification. A fresh ``AsyncClient`` per delivery meant
+#: a new TCP+TLS handshake per event, which is what began timing out once the app
+#: subscribed to check_run/check_suite and the delivery rate jumped.
+_verify_client: httpx.AsyncClient | None = None
+
+
+def _get_verify_client() -> httpx.AsyncClient:
+    """Return the pooled client used for installation/repo verification."""
+    global _verify_client
+    if _verify_client is None or _verify_client.is_closed:
+        _verify_client = httpx.AsyncClient(timeout=_VERIFY_TIMEOUT)
+    return _verify_client
+
+
+async def close_verify_client() -> None:
+    """Close the pooled verification client (called from the app lifespan)."""
+    global _verify_client
+    if _verify_client is not None and not _verify_client.is_closed:
+        await _verify_client.aclose()
+    _verify_client = None
 
 
 def generate_jwt() -> str:
@@ -124,9 +149,11 @@ class GitHubAuth:
 
 
 async def verify_repo_belongs_to_installation(installation_id: int, repo_full_name: str) -> bool:
-    """Return True if repo_full_name is accessible under the given installation token."""
-    import httpx
+    """Return True if repo_full_name is accessible under the given installation token.
 
+    Raises ``httpx.RequestError`` if GitHub cannot be reached; a transport failure
+    is not a security verdict and must not be reported as "repo not accessible".
+    """
     auth = GitHubAuth()
     try:
         token = auth.get_installation_token(installation_id)
@@ -138,68 +165,8 @@ async def verify_repo_belongs_to_installation(installation_id: int, repo_full_na
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://api.github.com/repos/{repo_full_name}",
-            headers=headers,
-        )
+    response = await _get_verify_client().get(
+        f"https://api.github.com/repos/{repo_full_name}",
+        headers=headers,
+    )
     return response.status_code == 200
-
-
-# ponytail: process-local cache — the app slug only changes if the app is renamed,
-# which a restart picks up.
-_app_bot_login: str | None = None
-_app_bot_login_lock = asyncio.Lock()
-
-
-async def get_app_bot_login() -> str:
-    """
-    Return the app's reviewer login, e.g. "baloo-code-reviewer[bot]".
-
-    Cached for the process; resolved from GET /app so it follows whichever
-    GitHub App these credentials belong to.
-    """
-    global _app_bot_login
-
-    if _app_bot_login is not None:
-        return _app_bot_login
-
-    # One fetch per process even when a burst of reviews starts at once.
-    async with _app_bot_login_lock:
-        if _app_bot_login is not None:
-            return _app_bot_login
-
-        import httpx
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.github.com/app",
-                headers={
-                    "Authorization": f"Bearer {generate_jwt()}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-            )
-        response.raise_for_status()
-        slug = response.json().get("slug")
-        if not slug:
-            raise ValueError("GET /app returned no slug")
-        _app_bot_login = f"{slug}[bot]"
-
-    return _app_bot_login
-
-
-async def is_this_app(login: str | None) -> bool:
-    """
-    True if `login` is this app's own bot account.
-
-    Falls back to the fuzzy `is_baloo_actor` heuristic when the login can't be
-    resolved, so an unreachable GET /app degrades instead of dropping events.
-    """
-    from baloo.github.discussions import is_baloo_actor
-
-    try:
-        return login == await get_app_bot_login()
-    except Exception:
-        logger.warning("Could not resolve app bot login — falling back to name heuristic")
-        return is_baloo_actor(login)

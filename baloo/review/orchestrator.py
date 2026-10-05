@@ -227,6 +227,19 @@ def _has_existing_static_fidelity_report(
     )
 
 
+def _fidelity_body_with_commit(report_body: str, reviewed_commit: str) -> str:
+    """Stamp the reviewed commit on a fidelity report that describes one.
+
+    Static reports ("no ticket in PR", "no plan file") are posted once and then
+    deduped for the life of the PR, so a commit stamped on one would freeze at
+    whichever commit happened to come first and read as stale forever. They make
+    no claim about a commit anyway, so they are left alone.
+    """
+    if not reviewed_commit or _static_fidelity_sentinel_for_body(report_body) is not None:
+        return report_body
+    return f"{report_body.rstrip()}\n\n{reviewed_commit}"
+
+
 def _total_review_cost_usd(
     review_metadata: dict,
     fidelity_metadata: dict,
@@ -995,10 +1008,13 @@ async def _post_or_update_documentation_drift_report(
     pr_number: int,
     issue_comments: list[DiscussionComment],
     result: DocumentationDriftResult,
+    reviewed_commit: str = "",
 ) -> str:
     """Upsert the single PR-level documentation drift report comment."""
     existing = _existing_documentation_drift_comment(issue_comments)
     report_body = format_documentation_drift_report(result)
+    if reviewed_commit:
+        report_body = f"{report_body.rstrip()}\n\n{reviewed_commit}"
 
     if existing is not None:
         await github_client.edit_comment(repo_full_name, existing.id, report_body)
@@ -1141,6 +1157,14 @@ async def _process_thread_reply(
             )
 
 
+# GitHub cannot show the re-request arrow for an app in the Reviewers box, so the
+# completion comment is where developers learn how to ask for another pass.
+_RERUN_FOOTER = (
+    "\n\n🔄 Want another pass? Comment `@baloo review`, "
+    'or re-run the "Baloo Code Quality" check.'
+)
+
+
 async def process_pr_review(
     repo_full_name: str,
     pr_number: int,
@@ -1222,12 +1246,6 @@ async def process_pr_review(
 
             # Initialize GitHub client
             github_client = GitHubAPIClient(installation_id)
-
-            # List Baloo as a reviewer so GitHub shows the re-request (↻) button.
-            # ponytail: done on every run because GitHub clears the request when Baloo
-            # submits its review. Costs one "requested a review" timeline entry per run —
-            # narrow to the first review of each PR if that turns out to be noisy.
-            await github_client.request_self_as_reviewer(repo_full_name, pr_number)
 
             # Post initial comment for main PR events only
             if notify_progress:
@@ -1582,7 +1600,11 @@ async def process_pr_review(
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
             summary_text = CommentFormatter.format_summary(
-                decision_comments, agent_metadata, general_findings=general_findings
+                decision_comments,
+                agent_metadata,
+                general_findings=general_findings,
+                commit_sha=pr_context.head_sha,
+                repo_full_name=repo_full_name,
             )
             summary_text = f"{summary_text}\n\n{decision_summary}"
 
@@ -1677,21 +1699,31 @@ async def process_pr_review(
                 f"{len(routed['checks'])} non-blocking (MEDIUM)"
             )
 
-            # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
+            # Post a GitHub Check (non-blocking) on every review if feature enabled. MEDIUM
+            # findings go there as annotations; the check exists even without them so the
+            # Checks tab always offers GitHub's "Re-run" button as a re-review trigger.
             checks_posted = False
-            if routed["checks"] and resolve_setting("review_use_checks_api"):
+            if resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
                     from baloo.github.checks_api import GitHubChecksClient
 
+                    if routed["checks"]:
+                        summary = (
+                            f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)"
+                        )
+                        text = CommentFormatter.format_findings_digest(routed["checks"])
+                    else:
+                        summary = "No MEDIUM severity findings"
+                        text = None
                     async with GitHubChecksClient(installation_id) as checks_client:
                         check_run_id = await checks_client.create_check_run(
                             repo_full_name=repo_full_name,
                             commit_sha=pr_context.head_sha,
                             name="Baloo Code Quality",
                             conclusion="neutral",
-                            summary=f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)",
-                            text=CommentFormatter.format_findings_digest(routed["checks"]),
+                            summary=summary + " — re-run this check to request a fresh review.",
+                            text=text,
                         )
 
                         await checks_client.add_annotations(
@@ -1775,6 +1807,9 @@ async def process_pr_review(
                 )
             # Update progress comment with completion status
             review_duration = int(time.time() - review_start_time)
+            reviewed_commit = CommentFormatter.format_reviewed_commit(
+                pr_context.head_sha, repo_full_name
+            )
             if progress_comment_id:
                 if agent_had_error:
                     completion_msg = (
@@ -1821,6 +1856,10 @@ async def process_pr_review(
                     completion_msg = (
                         f"🐻 Baloo review completed in {review_duration}s. No new issues found."
                     )
+                completion_msg += _RERUN_FOOTER
+
+                if reviewed_commit:
+                    completion_msg += f"\n\n{reviewed_commit}"
 
                 try:
                     await github_client.edit_comment(
@@ -1842,7 +1881,9 @@ async def process_pr_review(
                         )
                     else:
                         await github_client.post_comment(
-                            repo_full_name, pr_number, fidelity_report_text
+                            repo_full_name,
+                            pr_number,
+                            _fidelity_body_with_commit(fidelity_report_text, reviewed_commit),
                         )
                         logger.info(f"Posted fidelity report for {repo_full_name}#{pr_number}")
                 except Exception as fidelity_err:
@@ -1856,6 +1897,7 @@ async def process_pr_review(
                         pr_number,
                         pr_context.issue_comments,
                         documentation_result,
+                        reviewed_commit=reviewed_commit,
                     )
                     if documentation_report_text:
                         logger.info(
