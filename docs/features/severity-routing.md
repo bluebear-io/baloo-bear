@@ -1,23 +1,25 @@
 # Severity Routing
 
-Baloo routes findings to different GitHub surfaces based on severity, so developers see critical issues prominently while non-blocking suggestions stay out of the way.
+Baloo routes findings to different GitHub surfaces based on severity, so developers see critical issues prominently while lesser suggestions stay out of the way.
+
+Baloo never submits a "Request Changes" review and never blocks a merge. Its review is either an approval or a plain comment; merge decisions stay with humans.
 
 ## Routing Rules
 
-| Severity | Where It Goes | Blocks PR? |
+| Severity | Where It Goes | Prevents Baloo's approval? |
 |---|---|---|
-| **CRITICAL** | Inline review comment + "Request Changes" | ✅ Yes |
-| **HIGH** | Inline review comment + "Request Changes" | ✅ Yes |
+| **CRITICAL** | Inline review comment, summary marked "❌ Changes Requested" | ✅ Yes |
+| **HIGH** | Inline review comment, summary marked "❌ Changes Requested" | ✅ Yes |
 | **MEDIUM** | GitHub Checks API annotation + collapsible PR digest | ❌ No |
 | **LOW** | Filtered out (not posted) | ❌ No |
 
-General findings (no file/line anchor, e.g. missing tests) are not posted inline or to the Checks API — they appear under a "💬 General Observations" section in the review summary and are stored in the dashboard. CRITICAL/HIGH general findings still count toward the "Request Changes" decision.
+General findings (no file/line anchor, e.g. missing tests) are not posted inline or to the Checks API — they appear under a "💬 General Observations" section in the review summary and are stored in the dashboard. CRITICAL/HIGH general findings still withhold approval.
 
 ## How It Looks
 
 ### CRITICAL / HIGH → Review Comments
 
-Posted as inline comments on the exact file and line. The PR review is submitted with "Request Changes" status, which blocks merge (if branch protection requires it).
+Posted as inline comments on the exact file and line. The review is submitted as a comment (not "Request Changes") whose summary says "❌ Changes Requested", and Baloo does not approve the PR. Nothing is blocked: if branch protection requires an approval, a human still provides it.
 
 ### MEDIUM → Checks API
 
@@ -35,8 +37,8 @@ Findings below the minimum severity threshold are not posted. This reduces noise
 
 The agent assigns severity based on these guidelines:
 
-- **CRITICAL** — Security vulnerabilities, data loss, silent failures, guidelines violations
-- **HIGH** — Bugs or logic errors that can break functionality
+- **CRITICAL** — Reserved for confirmed exploitable vulnerabilities or certain catastrophic data loss
+- **HIGH** — Security concerns, serious bugs, silent failure patterns, or clear guidelines violations
 - **MEDIUM** — Quality, maintainability, or performance issues
 - **LOW** — Style or minor polish
 
@@ -52,7 +54,7 @@ The agent assigns severity based on these guidelines:
 
 ```
 Agent returned an error  →  Comment only (⚠️ warning posted; PR is NOT approved)
-CRITICAL or HIGH found (inline or general)  →  Request Changes
+CRITICAL or HIGH found (inline or general)  →  Comment only, summary marked "Changes Requested" (no approval)
 No blocking issues + high fidelity score  →  Approve
 No blocking issues + auto-approve enabled  →  Approve
 Otherwise  →  Comment only (no approval or rejection)

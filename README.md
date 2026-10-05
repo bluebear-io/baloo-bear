@@ -1,8 +1,8 @@
 # Baloo: self-hosted AI code review for GitHub pull requests
 
 <p align="center">
-  <a href="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/bluebear-io/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/bluebear-io/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://api.scorecard.dev/projects/github.com/bluebear-io/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/bluebear-io/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
@@ -12,18 +12,18 @@
 
 Baloo is an open source **GitHub App for AI pull request review**. It installs on your repositories, reads PR diffs and relevant project context, and posts actionable review comments that catch bugs, security issues, missing error handling, and repository guideline violations before humans review the code.
 
-Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model API keys for Claude or Gemini.
+Baloo is built for teams that want a **self-hosted AI code review agent** instead of a hosted SaaS reviewer. You run the service, control the GitHub App installation scope, and provide your own model credentials for Anthropic, Amazon Bedrock, Google, OpenAI, or a Databricks AI Gateway.
 
-Website: [BlueBear Security](https://www.bluebear.io)
+Website: [Bluebear Security](https://www.bluebear.io)
 
 ## Why Baloo?
 
 - **Catches what linters can't** — logic errors, silent failures, security antipatterns, missing error handling
 - **Respects your conventions** — reads `AGENTS.md` and `CONTRIBUTING.md` from your repo and enforces them
 - **Follows per-PR review briefs** — when a PR includes `## Review guidance for Baloo`, Baloo verifies those falsifiable, context-aware checks and cites them in findings
-- **Posts like a teammate** — inline comments on specific lines, severity labels, approval/request-changes decisions
-- **Runs on every push** — new commits get reviewed automatically, with discussion thread tracking across iterations
-- **Self-hosted & private** — your code never leaves your infrastructure; bring your own API keys
+- **Posts like a teammate** — inline comments on specific lines, severity labels, and an approval when no CRITICAL or HIGH issues remain (if auto-approve is on). Baloo never blocks a merge; humans decide
+- **Runs on every push** — new commits on non-draft PRs get reviewed automatically (merge-from-base commits are skipped), with discussion thread tracking across iterations; comment `@baloo review` to ask for another pass
+- **Self-hosted** — no Baloo-hosted backend; review context goes only to the model provider you configure, with your own credentials
 
 ## Use Cases
 
@@ -57,13 +57,13 @@ Inline comments appear on the exact lines:
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | **Agentic review**        | Uses [PI](https://github.com/earendil-works/pi) to read files, grep patterns, and explore the repo — not just the diff |
 | **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
-| **Severity routing**      | CRITICAL/HIGH → request changes; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                              |
+| **Severity routing**      | CRITICAL/HIGH → inline comments, no approval; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                 |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |
 | **Per-PR review briefs**  | Reads `## Review guidance for Baloo` in the PR description and verifies falsifiable, diff-specific checks                         |
 | **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |
 | **Fidelity analysis**     | Optionally compares PR against design plan documents                                                                              |
 | **Documentation drift**   | Optionally asks authors to update mapped docs when implementation changes make them stale                                         |
-| **FP reduction**          | Optional second LLM pass to verify findings and drop false positives                                                              |
+| **FP reduction**          | Second LLM pass (on by default) that verifies findings and drops false positives                                                  |
 | **Dashboard**             | Optional PostgreSQL-backed review history UI with cost tracking                                                                   |
 | **Dependabot-aware**      | Specialized review logic for dependency update PRs                                                                                |
 | **Local dry-run**         | Run [`scripts/local_review.py`](scripts/local_review.py) against a local git diff — no GitHub webhook or posted comments          |
@@ -84,14 +84,15 @@ Inline comments appear on the exact lines:
 Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub App**:
 
 - **Webhook URL**: Your public HTTPS endpoint (e.g. `https://baloo.example.com/webhook`)
-- **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write)
-- **Events**: Pull request, Check run, Check suite (the last two power the Re-run button)
+- **Permissions**: Pull requests (read/write), Contents (read), Checks (read/write), Issues (read)
+- **Events**: Pull request, Pull request review comment, Issue comment, Check run, Check suite
+  (Issue comment powers the `@baloo review` command; Check run/suite power the Re-run button)
 - Download the private key `.pem` file
 
 ### 2. Deploy with Docker
 
 ```bash
-git clone https://github.com/Blue-Bear-Security/baloo-bear.git
+git clone https://github.com/bluebear-io/baloo-bear.git
 cd baloo-bear
 cp .env.example .env
 # Edit .env with your GitHub App ID, private key path, webhook secret, and API keys
@@ -120,7 +121,7 @@ Install the GitHub App on your repositories. Open a PR — Baloo will review it 
                                   ┌────────▼──────────┐
                                   │   PI Agent (RPC)  │
                                   │   read / grep /   │
-                                  │   find / ls       │
+                                  │   find / ls / ast │
                                   └────────┬──────────┘
                                            │
                                   ┌────────▼──────────┐
@@ -146,7 +147,9 @@ baloo/
 ├── documentation/ # Documentation drift analysis (optional)
 ├── fidelity/    # Plan-vs-implementation analysis (optional)
 ├── github/      # Webhooks, API client, auth, Checks API
-└── processor/   # Findings filter, severity routing, decisions, FP verification
+├── outcomes/    # Post-merge labeling of how findings were resolved
+├── processor/   # Findings filter, severity routing, decisions, FP verification
+└── review/      # Review orchestration: run agents, route findings, post results
 ```
 
 ## Configuration
@@ -250,9 +253,9 @@ Yes. Use [`scripts/local_review.py`](scripts/local_review.py) to run a dry revie
 
 ## Support
 
-- **Issues & Bug Reports**: [GitHub Issues](https://github.com/Blue-Bear-Security/baloo-bear/issues)
-- **Feature Requests**: [GitHub Issues](https://github.com/Blue-Bear-Security/baloo-bear/issues)
-- **Questions**: Open a [GitHub Discussion](https://github.com/Blue-Bear-Security/baloo-bear/discussions) or file an issue
+- **Issues & Bug Reports**: [GitHub Issues](https://github.com/bluebear-io/baloo-bear/issues)
+- **Feature Requests**: [GitHub Issues](https://github.com/bluebear-io/baloo-bear/issues)
+- **Questions**: Open a [GitHub Discussion](https://github.com/bluebear-io/baloo-bear/discussions) or file an issue
 
 ## Contributing
 

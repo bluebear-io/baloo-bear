@@ -193,7 +193,7 @@ If the database is disabled, behavior is unchanged: env vars only.
 | Variable | Default | Description |
 |---|---|---|
 | `FEEDBACK_SIGNALS_ENABLED` | `true` | Write and read feedback signals (requires `DATABASE_ENABLED`) |
-| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days before unmatched feedback signals expire |
+| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days after creation before a feedback signal expires |
 
 ## AST Tools
 
@@ -265,7 +265,7 @@ Use this endpoint for load balancer health probes.
 
 ### Webhook Security
 
-Every webhook is validated before processing:
+Every webhook passes the signature check. Duplicate deliveries, app lifecycle events (`ping`, `installation`, …), and events or actions Baloo never acts on are then acknowledged and dropped without further checks, since nothing is read or acted on. Every webhook Baloo does act on is validated before processing:
 1. HMAC-SHA256 signature verification (confirms payload is from GitHub)
 2. `installation_id` present in payload
 3. Installation filter — if `INSTALLATION_ID` is set, drop webhooks for other installations

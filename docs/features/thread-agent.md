@@ -17,7 +17,7 @@ Signals are:
 - **Per-repo** — one developer's feedback benefits all future reviews
 - **Category-scoped** — e.g., "Silent Failures in retry code"
 - **Optionally file-scoped** — can target specific directories
-- **Time-limited** — signals expire after 6 months without use
+- **Time-limited** — signals expire 180 days after they are created (`FEEDBACK_SIGNALS_TTL_DAYS`), whether or not they were used
 
 ## Escalation Cap
 
@@ -32,7 +32,7 @@ Baloo replies at most twice per thread (original finding + 2 replies = 3 total B
 | `THREAD_AGENT_MAX_REPLIES` | `3` | Max Baloo messages per thread before escalation |
 | `THREAD_AGENT_MAX_CONCURRENT` | `3` | Max parallel thread agent calls |
 | `FEEDBACK_SIGNALS_ENABLED` | `true` | Write and read feedback signals (requires DATABASE_ENABLED) |
-| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days before unmatched signals expire |
+| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days after creation before a signal expires |
 
 ## Cost
 

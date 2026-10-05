@@ -88,7 +88,7 @@ For Docker, the host files are outside the container and must first be mounted i
 services:
   baloo:
     volumes:
-      - /opt/baloo/aws:/etc/baloo/aws:ro
+      - ./aws:/etc/baloo/aws:ro
     environment:
       AWS_PROFILE: bedrock
       AWS_SHARED_CREDENTIALS_FILE: /etc/baloo/aws/credentials
