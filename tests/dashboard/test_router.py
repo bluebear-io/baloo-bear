@@ -144,7 +144,7 @@ def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
     by_role = {row["role"]: row for row in _models_in_use()}
     assert "Fallback" not in by_role
     assert by_role["Primary review"]["configured"] == "sonnet"
-    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
+    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-5"
     assert by_role["FP verification"]["configured"] == "haiku"
     assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
     assert by_role["Thread agent"]["configured"] == "haiku"

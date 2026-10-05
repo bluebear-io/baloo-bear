@@ -288,6 +288,8 @@ THINKING_LEVEL_CHOICES = (
     ("low", "Low"),
     ("medium", "Medium"),
     ("high", "High"),
+    ("xhigh", "Extra high"),
+    ("max", "Max"),
 )
 
 _EXPLICIT_CHOICES = {

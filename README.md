@@ -38,10 +38,9 @@ Website: [BlueBear Security](https://www.bluebear.io)
 
 When a PR is opened or updated, Baloo posts a review:
 
-```
-🐻 Baloo review completed in 45s.
-Found 2 issue(s): 0 critical, 1 high, 1 medium, 0 low.
-```
+> <img src="https://raw.githubusercontent.com/bluebear-io/baloo-bear/main/assets/baloo-icon.png" width="20" height="20" alt="Baloo"> Baloo review completed in 45s.
+>
+> Found 2 issue(s): 0 critical, 1 high, 1 medium, 0 low.
 
 Inline comments appear on the exact lines:
 
@@ -56,7 +55,7 @@ Inline comments appear on the exact lines:
 
 | Feature                   | Description                                                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **Agentic review**        | Uses [PI](https://github.com/mariozechner/pi-coding-agent) to read files, grep patterns, and explore the repo — not just the diff |
+| **Agentic review**        | Uses [PI](https://github.com/earendil-works/pi) to read files, grep patterns, and explore the repo — not just the diff |
 | **Multi-provider**        | Runs every agent through the configured Anthropic, Amazon Bedrock, Google, OpenAI, or Databricks AI Gateway provider                                     |
 | **Severity routing**      | CRITICAL/HIGH → inline comments, no approval; MEDIUM → Checks annotations + collapsible PR digest; LOW → filtered                 |
 | **Guideline enforcement** | Reads repo-level `AGENTS.md` / `CONTRIBUTING.md` and flags violations                                                             |

@@ -16,10 +16,10 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 
 | Provider | Economy | Standard | Premium |
 |---|---|---|---|
-| `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-4-6` | `claude-opus-4-6` |
-| `google` | `gemini-3.5-flash-lite` | `gemini-3.6-flash` | `gemini-3.1-pro-preview` |
-| `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-4-6` | `us.anthropic.claude-opus-4-6-v1` |
-| `openai` | `gpt-5.6-luna` | `gpt-5.6-terra` | `gpt-5.6-sol` |
+| `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-5` | `claude-opus-5-5` |
+| `google` | `gemini-3.5-flash-lite` | `gemini-3.8-flash` | `gemini-3.1-pro-preview` |
+| `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-5` | `us.anthropic.claude-opus-5-5` |
+| `openai` | `gpt-6-luna` | `gpt-6-sol` | `gpt-6-astra` |
 | `databricks` | `system.ai.claude-haiku-4-5` | `system.ai.claude-sonnet-4-6` | `system.ai.claude-opus-4-6` |
 
 Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — a well-tested set. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
@@ -34,7 +34,7 @@ Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / 
 
 Provider selection is all-or-nothing: `AGENT_PROVIDER` applies to every agent, and short names are tiers on it. Moving an existing deployment (for example Anthropic → Bedrock) is normally a one-variable change.
 
-**1. Make sure your model settings are tier short names.** Anything set to a bare provider-specific ID (`claude-sonnet-4-6`) or an explicit `provider/model` string is passed through as-is and will not translate. Short names (`sonnet`, `haiku`, `opus`) travel across providers; the defaults already use them.
+**1. Make sure your model settings are tier short names.** Anything set to a bare provider-specific ID (`claude-sonnet-5`) or an explicit `provider/model` string is passed through as-is and will not translate. Short names (`sonnet`, `haiku`, `opus`) travel across providers; the defaults already use them.
 
 **2. Change the provider.** Either set the environment variable and restart:
 
@@ -58,8 +58,8 @@ pi's provider token is `amazon-bedrock`. Point Baloo at it with:
 AGENT_PROVIDER=amazon-bedrock
 AGENT_MODEL=sonnet
 # or a specific inference profile / ARN:
-# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
-# AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-4-6
+# AGENT_MODEL=us.anthropic.claude-sonnet-5
+# AGENT_MODEL=amazon-bedrock/us.anthropic.claude-sonnet-5
 AWS_REGION=us-east-1
 ```
 
@@ -98,7 +98,7 @@ AGENT_PROVIDER=anthropic
 AGENT_MODEL=sonnet
 
 # Or a full provider/model string (provider must match AGENT_PROVIDER)
-AGENT_MODEL=anthropic/claude-sonnet-4-6
+AGENT_MODEL=anthropic/claude-sonnet-5
 
 # Premium model for highest quality
 AGENT_MODEL=opus
@@ -123,7 +123,7 @@ Each provider needs its own credentials:
 Controls the depth of reasoning the model uses:
 
 ```bash
-PI_THINKING_LEVEL=medium  # off, minimal, low, medium, high
+PI_THINKING_LEVEL=medium  # off, minimal, low, medium, high, xhigh, max
 ```
 
 Higher thinking = better analysis but slower and more expensive. `medium` is the default and recommended for most use cases.

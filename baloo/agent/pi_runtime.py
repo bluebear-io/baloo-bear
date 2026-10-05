@@ -404,6 +404,14 @@ def _provider_error_detail(msg: dict[str, Any]) -> str:
     return ""
 
 
+#: Read-only built-in pi tools every review agent gets.
+BUILTIN_TOOLS: tuple[str, ...] = ("read", "grep", "find", "ls")
+
+#: Tools registered by extensions/baloo-ast-tools.ts. Must match the ``name``
+#: fields in that file and the tool list in ``AST_TOOLS_PROMPT_SECTION``.
+AST_TOOLS: tuple[str, ...] = ("ast_outline", "ast_grep", "ast_symbols")
+
+
 class PIAgentBase:
     """Base class for agents using PI's RPC subprocess protocol.
 
@@ -522,9 +530,12 @@ class PIAgentBase:
         if self.options.no_tools:
             cmd.append("--no-tools")
         else:
-            cmd.extend(["--tools", "read,grep,find,ls"])
+            tools = list(BUILTIN_TOOLS)
 
-            # Load AST tools extension when enabled
+            # Load AST tools extension when enabled. The extension's tools must
+            # also be named in --tools: the flag is an allowlist over built-in
+            # *and* extension tools, so without them the extension loads but
+            # registers nothing the model can call.
             if resolve_setting("ast_tools_enabled"):
                 ext_path = (
                     Path(__file__).resolve().parent.parent.parent
@@ -532,6 +543,9 @@ class PIAgentBase:
                     / "baloo-ast-tools.ts"
                 )
                 cmd.extend(["--extension", str(ext_path)])
+                tools.extend(AST_TOOLS)
+
+            cmd.extend(["--tools", ",".join(tools)])
 
         cmd.extend(["--system-prompt", self.options.system_prompt])
 

@@ -19,13 +19,16 @@ Three details are load-bearing and were each confirmed against a live workspace:
 
 A custom provider's model list is *replacing*, not additive, so the tier
 models are always declared here. Any Unity Catalog name in the operator's model
-settings is declared alongside them: PI 0.73 happens to synthesise an undeclared
+settings is declared alongside them: PI 0.73 happened to synthesise an undeclared
 model from a sibling entry (with a stderr warning on every spawn), but PI's
 custom-provider contract does not promise that, so an operator-owned model
 service is declared explicitly rather than relying on the fallback.
 
-The token is never written to disk: ``apiKey`` holds the *name* of an
-environment variable, which PI resolves at request time.
+The token is never written to disk: ``apiKey`` holds a ``$``-prefixed
+environment-variable reference, which PI resolves at request time. The ``$``
+is required: since pi 0.75 a bare uppercase string such as ``DATABRICKS_TOKEN``
+is a *literal* key, and the gateway then answers 401 rather than pi reporting a
+config error.
 """
 
 from __future__ import annotations
@@ -44,6 +47,10 @@ DATABRICKS_PROVIDER = "databricks"
 #: Environment variable holding the workspace PAT. Referenced by name inside
 #: models.json so the secret stays out of the generated file.
 DATABRICKS_TOKEN_ENV = "DATABRICKS_TOKEN"
+
+#: The ``apiKey`` value pi resolves from the environment. ``$NAME`` is pi's
+#: env-var interpolation syntax; without the ``$`` the string is used verbatim.
+DATABRICKS_TOKEN_REF = f"${DATABRICKS_TOKEN_ENV}"
 
 #: Path the AI Gateway serves the Anthropic-dialect passthrough on.
 _GATEWAY_PATH = "/ai-gateway/anthropic"
@@ -150,9 +157,9 @@ def build_models_config(host: str, extra_models: Iterable[str] = ()) -> dict:
             DATABRICKS_PROVIDER: {
                 "baseUrl": f"{normalize_host(host)}{_GATEWAY_PATH}",
                 "api": "anthropic-messages",
-                # The *name* of the env var, not the token. PI resolves it per
-                # request, so the secret never lands in the generated file.
-                "apiKey": DATABRICKS_TOKEN_ENV,
+                # A ``$``-prefixed env-var reference, not the token. PI resolves
+                # it per request, so the secret never lands in the generated file.
+                "apiKey": DATABRICKS_TOKEN_REF,
                 "authHeader": True,
                 "headers": {"x-databricks-use-coding-agent-mode": "true"},
                 "compat": {

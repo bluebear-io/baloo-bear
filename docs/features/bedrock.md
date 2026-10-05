@@ -4,7 +4,7 @@ This guide walks through configuring Baloo to run every agent through Amazon Bed
 
 ## How Baloo talks to Bedrock
 
-Baloo runs the [PI](https://github.com/mariozechner/pi-coding-agent) coding agent as a sandboxed subprocess. PI has a native `amazon-bedrock` provider that uses the AWS SDK, so Baloo does not call Bedrock directly — it selects the provider and passes AWS credentials through to that subprocess.
+Baloo runs the [PI](https://github.com/earendil-works/pi) coding agent as a sandboxed subprocess. PI has a native `amazon-bedrock` provider that uses the AWS SDK, so Baloo does not call Bedrock directly — it selects the provider and passes AWS credentials through to that subprocess.
 
 Two consequences follow from the sandbox:
 
@@ -111,13 +111,13 @@ Leave `AGENT_MODEL` as a tier short name and let Baloo resolve it to the Bedrock
 | Short name | Resolves to (Bedrock) |
 |---|---|
 | `haiku` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
-| `sonnet` | `us.anthropic.claude-sonnet-4-6` |
-| `opus` | `us.anthropic.claude-opus-4-6-v1` |
+| `sonnet` | `us.anthropic.claude-sonnet-5` |
+| `opus` | `us.anthropic.claude-opus-5-5` |
 
 These use the `us.` cross-region inference prefix. If your account or data-residency policy requires a different routing prefix (`eu.`, `apac.`, `global.`) or an application inference profile ARN, set `AGENT_MODEL` to that full ID instead of a short name — a value containing a specific model ID is passed through unchanged:
 
 ```bash
-AGENT_MODEL=eu.anthropic.claude-sonnet-4-6
+AGENT_MODEL=eu.anthropic.claude-sonnet-5
 # or an ARN
 AGENT_MODEL=arn:aws:bedrock:eu-central-1:<account-id>:application-inference-profile/<id>
 ```

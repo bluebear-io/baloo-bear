@@ -1,6 +1,6 @@
 # Review Agent
 
-Baloo uses [PI](https://github.com/mariozechner/pi-coding-agent) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
+Baloo uses [PI](https://github.com/earendil-works/pi) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
 
 ## How It Works
 
@@ -71,4 +71,4 @@ saying it was not reviewed, never an approval. See
 |---|---|---|
 | `AGENT_PROVIDER` | `anthropic` | LLM provider for all agents (see [Models](models.md)) |
 | `AGENT_MODEL` | `sonnet` | Model to use (see [Models](models.md)) |
-| `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high |
+| `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high, xhigh, max |
