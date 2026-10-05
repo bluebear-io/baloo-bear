@@ -24,7 +24,7 @@ Optional but recommended:
 ## 2. Install Dependencies
 
 ```bash
-git clone https://github.com/Blue-Bear-Security/baloo-bear.git
+git clone https://github.com/bluebear-io/baloo-bear.git
 cd baloo-bear
 uv sync
 npm install
@@ -77,3 +77,16 @@ The installed pre-commit hook runs:
 ```bash
 gitleaks git --staged --pre-commit --no-banner --redact
 ```
+
+## Docs Site
+
+The public docs at <https://bluebear-io.github.io/baloo-bear/> are built with MkDocs from `docs/` and deployed by `.github/workflows/docs.yml` on every push to `main`. The home and contributing pages are generated from the repo-root `README.md` and `CONTRIBUTING.md`, so edit those files, not `docs/index.md` or `docs/contributing.md` (both are gitignored).
+
+To preview locally:
+
+```bash
+scripts/sync-docs-site.sh
+uvx --with mkdocs-material==9.7.6 mkdocs serve
+```
+
+A new page under `docs/` must also be added to the `nav` in `mkdocs.yml`, to `docs/README.md`, and to `docs/llms.txt`.

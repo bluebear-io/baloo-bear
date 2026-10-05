@@ -116,7 +116,7 @@ Run the same review pipeline locally with no GitHub comments:
 uv run python scripts/local_review.py --git-workdir /path/to/your-repo --base origin/main --head HEAD
 ```
 
-Use this to iterate on the change (and on the review brief) before Baloo posts publicly. See the [project README](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/README.md#local-review-dry-run) for flags.
+Use this to iterate on the change (and on the review brief) before Baloo posts publicly. See the [project README](https://github.com/bluebear-io/baloo-bear/blob/main/README.md#local-review-dry-run) for flags.
 
 ## Engage the discussion threads
 

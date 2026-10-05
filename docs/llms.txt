@@ -1,6 +1,6 @@
 # Baloo
 
-> Baloo is a self-hosted AI code review GitHub App for pull requests. It reviews diffs and repository context, posts GitHub-native review feedback, and supports Claude and Gemini model configurations.
+> Baloo is a self-hosted AI code review GitHub App for pull requests. It reviews diffs and repository context, posts GitHub-native review feedback, and supports Anthropic, Amazon Bedrock, Google, OpenAI, and Databricks model providers.
 
 Baloo is intended for teams that want automated pull request review without installing a hosted code review SaaS. Operators deploy Baloo, configure a GitHub App, choose model credentials, and control repository installation scope.
 
@@ -8,35 +8,38 @@ Canonical website: https://www.bluebear.io
 
 ## Start Here
 
-- [Project README](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/README.md): Overview, features, quick start, use cases, and FAQ.
-- [Getting Started](https://blue-bear-security.github.io/baloo-bear/getting-started/): End-to-end setup with Docker Compose, ngrok, and a GitHub App.
-- [How to Get the Most Out of Baloo](https://blue-bear-security.github.io/baloo-bear/how-to-get-the-most/): Repo conventions, per-PR review briefs, and workflows that produce high-signal reviews.
-- [Configuration](https://blue-bear-security.github.io/baloo-bear/configuration/): Environment variables, defaults, and deployment settings.
+- [Project README](https://github.com/bluebear-io/baloo-bear/blob/main/README.md): Overview, features, quick start, use cases, and FAQ.
+- [Getting Started](https://bluebear-io.github.io/baloo-bear/getting-started/): End-to-end setup with Docker Compose, ngrok, and a GitHub App.
+- [How to Get the Most Out of Baloo](https://bluebear-io.github.io/baloo-bear/how-to-get-the-most/): Repo conventions, per-PR review briefs, and workflows that produce high-signal reviews.
+- [Configuration](https://bluebear-io.github.io/baloo-bear/configuration/): Environment variables, defaults, and deployment settings.
 
 ## Core Concepts
 
-- [Review Agent](https://blue-bear-security.github.io/baloo-bear/features/review-agent/): How Baloo performs agentic PR review.
-- [Guidelines Enforcement](https://blue-bear-security.github.io/baloo-bear/features/guidelines/): How Baloo reads `AGENTS.md` and `CONTRIBUTING.md`.
-- [Model Configuration](https://blue-bear-security.github.io/baloo-bear/features/models/): Supported providers (Anthropic, Amazon Bedrock, Google, OpenAI), model tiers, and provider switching.
-- [Amazon Bedrock Setup](https://blue-bear-security.github.io/baloo-bear/features/bedrock/): Step-by-step guide to run Baloo on Amazon Bedrock, including auth methods and sandbox caveats.
-- [Severity Routing](https://blue-bear-security.github.io/baloo-bear/features/severity-routing/): How findings map to review comments, Checks API annotations, and approval decisions.
+- [Review Agent](https://bluebear-io.github.io/baloo-bear/features/review-agent/): How Baloo performs agentic PR review.
+- [Guidelines Enforcement](https://bluebear-io.github.io/baloo-bear/features/guidelines/): How Baloo reads `AGENTS.md` and `CONTRIBUTING.md`.
+- [Model Configuration](https://bluebear-io.github.io/baloo-bear/features/models/): Supported providers (Anthropic, Amazon Bedrock, Google, OpenAI, Databricks), model tiers, and provider switching.
+- [Amazon Bedrock Setup](https://bluebear-io.github.io/baloo-bear/features/bedrock/): Step-by-step guide to run Baloo on Amazon Bedrock, including auth methods and sandbox caveats.
+- [Databricks Setup](https://bluebear-io.github.io/baloo-bear/features/databricks/): Step-by-step guide to run Baloo through a Databricks AI Gateway.
+- [Severity Routing](https://bluebear-io.github.io/baloo-bear/features/severity-routing/): How findings map to review comments, Checks API annotations, and approval decisions.
+- [Discussion Tracking](https://bluebear-io.github.io/baloo-bear/features/discussions/): How Baloo follows up on its earlier review threads across commits.
 
 ## Security and Operations
 
-- [Security Policy](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/SECURITY.md): Vulnerability reporting and disclosure expectations.
-- [Docker Deployment Guide](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/DOCKER.md): Container setup, private key options, and production notes.
-- [Development](https://blue-bear-security.github.io/baloo-bear/development/): Contributor commands, test workflow, and local development.
+- [Security Policy](https://github.com/bluebear-io/baloo-bear/blob/main/SECURITY.md): Vulnerability reporting and disclosure expectations.
+- [Docker Deployment Guide](https://github.com/bluebear-io/baloo-bear/blob/main/DOCKER.md): Container setup, private key options, and production notes.
+- [Development](https://bluebear-io.github.io/baloo-bear/development/): Contributor commands, test workflow, and local development.
 
 ## Optional Features
 
-- [False-Positive Verification](https://blue-bear-security.github.io/baloo-bear/features/fp-verification/): Optional second-pass LLM verification.
-- [Fidelity Analysis](https://blue-bear-security.github.io/baloo-bear/features/fidelity/): Comparing implementation against plan documents.
-- [Documentation Drift](https://blue-bear-security.github.io/baloo-bear/features/documentation-drift/): PR-time stale docs detection using a repo-owned catalog.
-- [Dashboard](https://blue-bear-security.github.io/baloo-bear/features/dashboard/): PostgreSQL-backed review history and cost tracking.
+- [False-Positive Verification](https://bluebear-io.github.io/baloo-bear/features/fp-verification/): Second-pass LLM verification of findings (on by default).
+- [Fidelity Analysis](https://bluebear-io.github.io/baloo-bear/features/fidelity/): Comparing implementation against plan documents.
+- [Documentation Drift](https://bluebear-io.github.io/baloo-bear/features/documentation-drift/): PR-time stale docs detection using a repo-owned catalog.
+- [Dashboard](https://bluebear-io.github.io/baloo-bear/features/dashboard/): PostgreSQL-backed review history and cost tracking.
+- [Thread Agent](https://bluebear-io.github.io/baloo-bear/features/thread-agent/): Replies when developers answer Baloo's inline comments (off by default).
 
 ## Repository
 
 - [BlueBear Security](https://www.bluebear.io): Project owner and primary website.
-- [Source Code](https://github.com/Blue-Bear-Security/baloo-bear): GitHub repository.
-- [Issues](https://github.com/Blue-Bear-Security/baloo-bear/issues): Bugs and feature requests.
-- [Discussions](https://github.com/Blue-Bear-Security/baloo-bear/discussions): Questions and design discussions.
+- [Source Code](https://github.com/bluebear-io/baloo-bear): GitHub repository.
+- [Issues](https://github.com/bluebear-io/baloo-bear/issues): Bugs and feature requests.
+- [Discussions](https://github.com/bluebear-io/baloo-bear/discussions): Questions and design discussions.

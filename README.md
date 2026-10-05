@@ -1,8 +1,8 @@
 # Baloo: self-hosted AI code review for GitHub pull requests
 
 <p align="center">
-  <a href="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/Blue-Bear-Security/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/Blue-Bear-Security/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/bluebear-io/baloo-bear/actions/workflows/ci.yml"><img src="https://github.com/bluebear-io/baloo-bear/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://api.scorecard.dev/projects/github.com/bluebear-io/baloo-bear"><img src="https://api.scorecard.dev/projects/github.com/bluebear-io/baloo-bear/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
@@ -93,7 +93,7 @@ Go to **GitHub Settings → Developer settings → GitHub Apps → New GitHub Ap
 ### 2. Deploy with Docker
 
 ```bash
-git clone https://github.com/Blue-Bear-Security/baloo-bear.git
+git clone https://github.com/bluebear-io/baloo-bear.git
 cd baloo-bear
 cp .env.example .env
 # Edit .env with your GitHub App ID, private key path, webhook secret, and API keys
@@ -252,9 +252,9 @@ Yes. Use [`scripts/local_review.py`](scripts/local_review.py) to run a dry revie
 
 ## Support
 
-- **Issues & Bug Reports**: [GitHub Issues](https://github.com/Blue-Bear-Security/baloo-bear/issues)
-- **Feature Requests**: [GitHub Issues](https://github.com/Blue-Bear-Security/baloo-bear/issues)
-- **Questions**: Open a [GitHub Discussion](https://github.com/Blue-Bear-Security/baloo-bear/discussions) or file an issue
+- **Issues & Bug Reports**: [GitHub Issues](https://github.com/bluebear-io/baloo-bear/issues)
+- **Feature Requests**: [GitHub Issues](https://github.com/bluebear-io/baloo-bear/issues)
+- **Questions**: Open a [GitHub Discussion](https://github.com/bluebear-io/baloo-bear/discussions) or file an issue
 
 ## Contributing
 

@@ -94,8 +94,8 @@ To publish to a registry manually:
 
 ```bash
 docker build -t baloo:latest .
-docker tag baloo:latest ghcr.io/blue-bear-security/baloo-bear:latest
-docker push ghcr.io/blue-bear-security/baloo-bear:latest
+docker tag baloo:latest ghcr.io/bluebear-io/baloo-bear:latest
+docker push ghcr.io/bluebear-io/baloo-bear:latest
 ```
 
 The repository workflow in `.github/workflows/deploy.yml` uses GHCR as the default publishing target.
