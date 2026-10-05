@@ -6,6 +6,8 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'requirements-docs.in'
+      - 'requirements-docs.txt'
       - 'README.md'
       - 'CONTRIBUTING.md'
       - 'scripts/sync-docs-site.sh'
@@ -33,7 +35,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs
-        run: pip install mkdocs-material==9.7.6
+        run: pip install --require-hashes -r requirements-docs.txt
 
       - name: Sync root files to docs/
         run: scripts/sync-docs-site.sh

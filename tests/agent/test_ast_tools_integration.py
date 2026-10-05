@@ -41,6 +41,8 @@ def test_extension_flag_added_when_ast_tools_enabled():
     ext_idx = cmd.index("--extension")
     ext_path = cmd[ext_idx + 1]
     assert ext_path.endswith("baloo-ast-tools.ts")
+    assert "--no-extensions" in cmd
+    assert "--no-approve" in cmd
     # --tools is an allowlist over built-in AND extension tools. Without the
     # AST names here the extension loads but the model can never call them
     # (verified against pi 0.73.1 and 0.85.1 via getAllTools()).

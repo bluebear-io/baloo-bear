@@ -15,7 +15,7 @@ ENV BALOO_COMMIT_SHA=${BALOO_COMMIT_SHA}
 ENV BALOO_BUILD_DATE=${BALOO_BUILD_DATE}
 ENV PATH="/app/node_modules/.bin:${PATH}"
 
-# Copy Node.js from the pinned official Node image. PI requires Node >=20.6.
+# Copy Node.js from the pinned official Node image. PI requires Node >=22.19.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
