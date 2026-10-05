@@ -79,10 +79,10 @@ Enable these events:
 
 Baloo currently reacts to:
 
-- PR opened, synchronized, reopened, and ready-for-review transitions
+- PR opened, synchronized, reopened, and ready-for-review transitions (draft PRs and merge-from-base commits are skipped)
 - **Re-run** on the `Baloo Code Quality` check in the Checks tab (or "Re-run all checks"), which requests a fresh review of the current head
 - `@baloo review` posted as a PR comment by a collaborator
-- replies to Baloo's inline review threads
+- replies to Baloo's inline review threads, when the [thread agent](features/thread-agent.md) is enabled (`THREAD_AGENT_ENABLED`, off by default)
 
 ## 6. Configure Baloo
 
@@ -186,7 +186,7 @@ A simple smoke test:
 1. Open a PR
 2. Wait for Baloo to review it
 3. Push another commit to the same PR
-4. Add a PR comment
+4. Comment `@baloo review` on the PR
 
 Expected results:
 
@@ -196,6 +196,7 @@ Expected results:
 - Baloo posts review output
 - medium findings appear in the Checks tab when present
 - the second push triggers another review
+- the `@baloo review` comment gets a 👀 reaction and triggers another review
 
 ## 11. Optional Repository Conventions
 

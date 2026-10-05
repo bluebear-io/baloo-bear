@@ -13,7 +13,7 @@ The contents are injected into the review agent's prompt. The agent then flags a
 
 ## What Gets Flagged
 
-Guidelines violations are reported as **CRITICAL** severity with category **"Guidelines"**. Examples:
+Guidelines violations are reported as **HIGH** severity with category **"Guidelines"**. Examples:
 
 - Branch name missing required ticket ID (e.g., `fix/thing` when the repo requires `fix/PROJ-123/thing`)
 - Commit messages missing required ticket references

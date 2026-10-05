@@ -27,8 +27,15 @@ Optional but recommended:
 git clone https://github.com/bluebear-io/baloo-bear.git
 cd baloo-bear
 uv sync
-npm install
+npm install                       # PI agent runtime + git hooks
+npm --prefix extensions install   # AST tools used by the review agent
 cp .env.example .env
+```
+
+`PI_BINARY_PATH` defaults to `pi`, so put the locally installed CLI on your `PATH` (the Docker image does the same), or set `PI_BINARY_PATH` to its full path:
+
+```bash
+export PATH="$PWD/node_modules/.bin:$PATH"
 ```
 
 ## 3. Run Baloo Directly
@@ -58,7 +65,7 @@ CI checks `requirements-prod.txt` against a fresh export, and the Docker image i
 
 ## 5. Git Hooks
 
-The repository uses Husky and `gitleaks` for local pre-commit secret scanning.
+The repository uses Husky for a pre-commit hook that lints, checks formatting, and scans for secrets.
 
 If `gitleaks` is not installed yet:
 
@@ -75,7 +82,9 @@ npm install
 The installed pre-commit hook runs:
 
 ```bash
-gitleaks git --staged --pre-commit --no-banner --redact
+uv run ruff check baloo tests
+uv run black --check baloo tests
+gitleaks git --staged --pre-commit --no-banner --redact   # skipped if gitleaks is not installed
 ```
 
 ## Docs Site
