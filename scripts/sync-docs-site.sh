@@ -14,6 +14,7 @@ sed -e 's|docs/README.md|docs/getting-started.md|g' \
     -e "s|(AGENTS.md)|($GH/AGENTS.md)|g" \
     -e "s|(SECURITY.md)|($GH/SECURITY.md)|g" \
     -e "s|(LICENSE)|($GH/LICENSE)|g" \
+    -e "s|href=\"LICENSE\"|href=\"$GH/LICENSE\"|g" \
     -e "s|(DOCKER.md)|($GH/DOCKER.md)|g" \
     -e "s|(\.env.example)|($GH/.env.example)|g" \
     -e "s|(scripts/local_review.py)|($GH/scripts/local_review.py)|g" \
