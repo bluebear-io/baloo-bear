@@ -8,6 +8,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from baloo.agent import repo_provision as rp
 
 
@@ -266,3 +268,55 @@ async def test_concurrent_worktrees_at_different_shas_coexist(tmp_path, monkeypa
         assert a.path != b.path
         assert (Path(a.path) / "hello.txt").read_text() == "hi\n"
         assert (Path(b.path) / "hello.txt").read_text() == "bye\n"
+
+
+@pytest.mark.parametrize(
+    "repo", ["../escape", "o/../../escape", "/tmp/escape", "o/..", "o/r\\escape"]
+)
+def test_cache_rejects_unsafe_repository_names(tmp_path, repo):
+    with pytest.raises(ValueError):
+        rp.cache_dir(str(tmp_path), 1, repo)
+
+
+@pytest.mark.parametrize("installation", ["../2", "/tmp", "1/../../2", "", "-1"])
+def test_cache_rejects_unsafe_installation_ids(tmp_path, installation):
+    with pytest.raises(ValueError):
+        rp.cache_dir(str(tmp_path), installation, "o/r")
+
+
+@pytest.mark.parametrize(
+    "unique,sha", [("../escape", "abc123"), ("1", "../../escape"), ("1", "--all")]
+)
+def test_worktree_rejects_unsafe_identifiers(tmp_path, unique, sha):
+    with pytest.raises(ValueError):
+        rp.worktree_dir(str(tmp_path), 1, "o/r", unique, sha)
+
+
+@pytest.mark.parametrize("component", ["1", "1/o__r.git", "1/worktrees"])
+def test_paths_reject_symlink_escape(tmp_path, component):
+    root = tmp_path / "cache"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = root / component
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError):
+        if component.endswith("worktrees"):
+            rp.worktree_dir(str(root), 1, "o/r", "1", "abc123")
+        else:
+            rp.cache_dir(str(root), 1, "o/r")
+    assert list(outside.iterdir()) == []
+
+
+async def test_invalid_checkout_falls_back_before_auth_or_io(tmp_path, monkeypatch):
+    root = tmp_path / "cache"
+    _enable_cache(monkeypatch, root, tmp_path / "unused")
+
+    def unexpected_token(_):
+        pytest.fail("Invalid checkout must not request credentials")
+
+    monkeypatch.setattr(rp, "_get_token", unexpected_token)
+    async with rp.provision_repo("../escape", "o/r", "abc123") as checkout:
+        assert not checkout.available
+        assert checkout.path is None
+    assert not root.exists()

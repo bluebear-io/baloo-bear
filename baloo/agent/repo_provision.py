@@ -24,6 +24,7 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import shutil
 import threading
 import uuid
@@ -75,8 +76,26 @@ def _get_lock(key: str) -> asyncio.Lock:
 
 # --- Pure path helpers (no IO) ----------------------------------------------
 def _slug(repo_full_name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repo_full_name):
+        raise ValueError("Invalid repository name")
     owner, _, repo = repo_full_name.partition("/")
+    if repo in {".", ".."}:
+        raise ValueError("Invalid repository name")
     return f"{owner}__{repo}"
+
+
+def _contained_path(root: str, installation_id: int | str, *parts: str) -> Path:
+    """Reject traversal and existing symlinks out of the installation namespace."""
+    if not re.fullmatch(r"[0-9]+", str(installation_id)):
+        raise ValueError("Invalid installation ID")
+    base = Path(root).resolve()
+    namespace = base / str(installation_id)
+    if namespace.resolve() != namespace:
+        raise ValueError("Installation directory must not be a symlink")
+    path = (namespace.joinpath(*parts)).resolve()
+    if not path.is_relative_to(namespace):
+        raise ValueError("Repository path escapes installation directory")
+    return path
 
 
 def _norm(path: str | os.PathLike) -> str:
@@ -89,7 +108,7 @@ def cache_key(installation_id: int | str, repo_full_name: str) -> str:
 
 
 def cache_dir(root: str, installation_id: int | str, repo_full_name: str) -> Path:
-    return Path(root) / str(installation_id) / f"{_slug(repo_full_name)}.git"
+    return _contained_path(root, installation_id, f"{_slug(repo_full_name)}.git")
 
 
 def worktree_dir(
@@ -99,9 +118,13 @@ def worktree_dir(
     unique_id: str,
     head_sha: str,
 ) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", unique_id):
+        raise ValueError("Invalid review identifier")
+    if not re.fullmatch(r"[0-9a-fA-F]+", head_sha):
+        raise ValueError("Invalid commit SHA")
     short = head_sha[:12]
     name = f"{_slug(repo_full_name)}-{unique_id}-{short}"
-    return Path(root) / str(installation_id) / "worktrees" / name
+    return _contained_path(root, installation_id, "worktrees", name)
 
 
 # --- Git command builders + auth --------------------------------------------
@@ -302,17 +325,17 @@ async def provision_repo(
         return
 
     root = s.repo_cache_root
-    cdir = cache_dir(root, installation_id, repo_full_name)
-    ckey = _norm(cdir)
     max_bytes = int(s.repo_cache_max_disk_gb) * 1024**3
     unique = str(review_id) if review_id is not None else uuid.uuid4().hex[:8]
-    wt = worktree_dir(root, installation_id, repo_full_name, unique, head_sha)
 
     checkout = Checkout(path=None, available=False)
     wt_created = False
 
     # --- Provisioning (may raise; no yield here) ---
     try:
+        cdir = cache_dir(root, installation_id, repo_full_name)
+        ckey = _norm(cdir)
+        wt = worktree_dir(root, installation_id, repo_full_name, unique, head_sha)
         token = await asyncio.to_thread(_get_token, installation_id)
         remote = _remote_url(repo_full_name)
         cdir.parent.mkdir(parents=True, exist_ok=True)

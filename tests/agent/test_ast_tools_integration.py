@@ -37,6 +37,9 @@ def test_extension_flag_added_when_ast_tools_enabled():
     ext_idx = cmd.index("--extension")
     ext_path = cmd[ext_idx + 1]
     assert ext_path.endswith("baloo-ast-tools.ts")
+    assert cmd[cmd.index("--tools") + 1] == "read,grep,find,ls,ast_outline,ast_grep,ast_symbols"
+    assert "--no-extensions" in cmd
+    assert "--no-approve" in cmd
 
 
 def test_extension_flag_omitted_when_ast_tools_disabled():
@@ -58,6 +61,7 @@ def test_extension_flag_omitted_when_ast_tools_disabled():
         cmd = agent._build_pi_command()
 
     assert "--extension" not in cmd
+    assert cmd[cmd.index("--tools") + 1] == "read,grep,find,ls"
 
 
 def test_extension_flag_omitted_when_no_tools():

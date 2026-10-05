@@ -514,6 +514,8 @@ class PIAgentBase:
             "--mode",
             "rpc",
             "--no-session",
+            "--no-extensions",
+            "--no-approve",
             "--provider",
             self.options.provider,
             "--model",
@@ -522,7 +524,7 @@ class PIAgentBase:
         if self.options.no_tools:
             cmd.append("--no-tools")
         else:
-            cmd.extend(["--tools", "read,grep,find,ls"])
+            tool_names = "read,grep,find,ls"
 
             # Load AST tools extension when enabled
             if resolve_setting("ast_tools_enabled"):
@@ -532,6 +534,8 @@ class PIAgentBase:
                     / "baloo-ast-tools.ts"
                 )
                 cmd.extend(["--extension", str(ext_path)])
+                tool_names += ",ast_outline,ast_grep,ast_symbols"
+            cmd.extend(["--tools", tool_names])
 
         cmd.extend(["--system-prompt", self.options.system_prompt])
 
@@ -845,6 +849,8 @@ Serialized payload:
             "--mode",
             "rpc",
             "--no-session",
+            "--no-extensions",
+            "--no-approve",
             "--provider",
             retry_opts.provider,
             "--model",
