@@ -13,8 +13,11 @@ Baloo tracks prior review conversations across PR iterations. When a new commit 
 
 Baloo uses fuzzy matching to link new findings to existing threads:
 
-1. **Exact match** — Same file + same line number
-2. **Fuzzy match** — Same file + nearby line (±5 lines) + similar issue content (Jaccard similarity on extracted terms)
+1. **Exact match** — Same file + same line + near-identical issue content (similarity above 0.8)
+2. **Nearby match** — Same file + within ±5 lines + at least loosely similar content (similarity ≥ 0.2)
+3. **Moved-anchor match** — Same file + within ±18 lines + clearly the same issue (similarity ≥ 0.55), for when edits above the hunk shift the line
+
+Similarity is Jaccard similarity on terms extracted from the finding. When several threads qualify, the most similar, then closest, wins.
 
 Matching accounts for line drift when code is modified between iterations.
 
@@ -38,14 +41,14 @@ The review agent is instructed to:
 
 Open threads affect the approval decision:
 
-- If Baloo has open threads awaiting response and no new findings, it still holds the "Request Changes" status
+- If Baloo has open threads awaiting response and no new findings, it still withholds approval and marks the summary "Changes Requested" (Baloo never submits a blocking "Request Changes" review)
 - The summary reports how many threads remain open
 
 ## Example Flow
 
 ```
 Push 1: Baloo finds SQL injection on auth.py:55
-  → Posts inline comment, requests changes
+  → Posts inline comment, withholds approval
 
 Developer replies: "We use an ORM, this is safe"
 
@@ -59,3 +62,5 @@ Push 2: Baloo re-reviews
 ## Configuration
 
 Discussion tracking is always on. There are no feature flags — it's core to how Baloo behaves across PR iterations.
+
+One part depends on [FP Verification](fp-verification.md) (on by default): before deciding, Baloo re-checks threads still awaiting a reply against the new diff, and when the issue is gone it posts a resolution reply and resolves the thread. With `FP_VERIFICATION_ENABLED=false`, those threads stay open until someone resolves them.
