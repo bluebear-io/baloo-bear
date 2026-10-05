@@ -50,7 +50,7 @@ Example:
 AGENT_PROVIDER=amazon-bedrock
 AGENT_MODEL=sonnet
 # or a specific Bedrock ID / ARN:
-# AGENT_MODEL=us.anthropic.claude-sonnet-4-6
+# AGENT_MODEL=us.anthropic.claude-sonnet-5
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
@@ -101,7 +101,7 @@ Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Co
 | `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks` |
 | `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `PI_BINARY_PATH` | `pi` | Path to PI binary |
-| `PI_THINKING_LEVEL` | `medium` | PI thinking level: `off`, `minimal`, `low`, `medium`, `high` |
+| `PI_THINKING_LEVEL` | `medium` | PI thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. The top two are clamped to what the selected model supports |
 
 ## Review Behavior
 

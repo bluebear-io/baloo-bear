@@ -64,7 +64,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
         model: Override model selection (default from settings).
                Accepts short names ("flash", "haiku", "sonnet", "gemini-pro", "opus")
                or full "provider/model" strings (e.g. "google/gemini-2.5-flash").
-        thinking_level: Thinking level (off, minimal, low, medium, high).
+        thinking_level: Thinking level (off, minimal, low, medium, high, xhigh, max).
                         Defaults to PI_THINKING_LEVEL.
 
     Returns:

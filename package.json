@@ -10,6 +10,6 @@
     "husky": "^9.1.7"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "0.73.1"
+    "@earendil-works/pi-coding-agent": "0.87.1"
   }
 }
