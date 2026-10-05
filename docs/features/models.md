@@ -22,7 +22,7 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 | `openai` | `gpt-6-luna` | `gpt-6-sol` | `gpt-6-astra` |
 | `databricks` | `system.ai.claude-haiku-4-5` | `system.ai.claude-sonnet-4-6` | `system.ai.claude-opus-4-6` |
 
-Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — the set Baloo already runs in production. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
+Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — a well-tested set. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
 
 ## Choosing a Model
 
@@ -116,6 +116,7 @@ Each provider needs its own credentials:
 | Google | `GEMINI_API_KEY` |
 | OpenAI | `OPENAI_API_KEY` |
 | Amazon Bedrock | AWS credentials / IRSA / bearer token (see [Amazon Bedrock](#amazon-bedrock)) |
+| Databricks | `DATABRICKS_HOST` + `DATABRICKS_TOKEN` (see [Databricks Setup](databricks.md)) |
 
 ## Thinking Level
 

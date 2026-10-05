@@ -28,7 +28,7 @@ You do not need a Python development environment just to try Baloo as a service.
 ## 2. Clone the Repository
 
 ```bash
-git clone https://github.com/Blue-Bear-Security/baloo-bear.git
+git clone https://github.com/bluebear-io/baloo-bear.git
 cd baloo-bear
 ```
 
@@ -57,7 +57,7 @@ Set these repository permissions:
 
 - `Pull requests: Read and write`
 - `Contents: Read-only`
-- `Issues: Read and write`
+- `Issues: Read-only` (needed to subscribe to the `Issue comment` event)
 - `Checks: Read and write`
 
 These are needed because Baloo:
@@ -65,6 +65,7 @@ These are needed because Baloo:
 - reads PRs and posts review comments
 - reads repository files such as `AGENTS.md` and `CONTRIBUTING.md`
 - posts general PR comments
+- receives `@baloo review` commands
 - posts medium-severity findings to the Checks tab
 
 ## 5. Subscribe to GitHub Events
@@ -72,19 +73,16 @@ These are needed because Baloo:
 Enable these events:
 
 - `Pull request`
-- `Issue comment`
-- `Pull request review`
-- `Pull request review comment`
+- `Issue comment` (for the `@baloo review` command)
+- `Pull request review comment` (for replies to Baloo's inline threads)
 - `Check run` and `Check suite` (for the Re-run button)
 
 Baloo currently reacts to:
 
-- PR opened, synchronized, reopened, and ready-for-review transitions
+- PR opened, synchronized, reopened, and ready-for-review transitions (draft PRs and merge-from-base commits are skipped)
 - **Re-run** on the `Baloo Code Quality` check in the Checks tab (or "Re-run all checks"), which requests a fresh review of the current head
 - `@baloo review` posted as a PR comment by a collaborator
-- PR comments
-- PR review comments
-- submitted human reviews in `commented` and `changes_requested` states
+- replies to Baloo's inline review threads, when the [thread agent](features/thread-agent.md) is enabled (`THREAD_AGENT_ENABLED`, off by default)
 
 ## 6. Configure Baloo
 
@@ -188,7 +186,7 @@ A simple smoke test:
 1. Open a PR
 2. Wait for Baloo to review it
 3. Push another commit to the same PR
-4. Add a PR comment
+4. Comment `@baloo review` on the PR
 
 Expected results:
 
@@ -198,6 +196,7 @@ Expected results:
 - Baloo posts review output
 - medium findings appear in the Checks tab when present
 - the second push triggers another review
+- the `@baloo review` comment gets a 👀 reaction and triggers another review
 
 ## 11. Optional Repository Conventions
 
@@ -256,4 +255,4 @@ After the canary repository works:
 
 For direct code-level development and test commands, see [docs/development.md](development.md).
 
-For more container details, see [DOCKER.md](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/DOCKER.md).
+For more container details, see [DOCKER.md](https://github.com/bluebear-io/baloo-bear/blob/main/DOCKER.md).

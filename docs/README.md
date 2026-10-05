@@ -19,7 +19,8 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 - **[Databricks Setup](features/databricks.md)** — Step-by-step guide to run Baloo on a Databricks AI Gateway
 - **[Severity Routing](features/severity-routing.md)** — How findings are routed to reviews, Checks API, or filtered
 - **[Discussion Tracking](features/discussions.md)** — Thread follow-ups, duplicate detection, and conversation context
-- **[FP Verification](features/fp-verification.md)** — LLM-powered false-positive reduction (optional)
+- **[Thread Agent](features/thread-agent.md)** — Replies when developers answer Baloo's inline comments (optional)
+- **[FP Verification](features/fp-verification.md)** — LLM-powered false-positive reduction (on by default)
 - **[Dashboard](features/dashboard.md)** — Review history UI with cost tracking (optional)
 
 ## Reference

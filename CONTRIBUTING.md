@@ -14,10 +14,11 @@ cp .env.example .env
 uv run python main.py
 ```
 
-To enable local git hooks:
+Install the PI agent runtime and the local git hooks:
 
 ```bash
 npm install
+npm --prefix extensions install   # AST tools used by the review agent
 ```
 
 Common checks before opening a pull request:
@@ -61,7 +62,7 @@ fix(webhook): handle 422 errors with fallback to issue comments
 
 docs: update deployment instructions for Docker
 
-chore(deps): update claude-sdk to 0.1.4
+chore(deps): bump undici from 7.29.0 to 7.30.0
 ```
 
 ### Footers

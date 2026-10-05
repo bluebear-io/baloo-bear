@@ -1,8 +1,8 @@
 site_name: Baloo
 site_description: Self-hosted AI code review GitHub App for pull request security, guidelines, and implementation feedback
-site_url: https://blue-bear-security.github.io/baloo-bear
-repo_url: https://github.com/Blue-Bear-Security/baloo-bear
-repo_name: Blue-Bear-Security/baloo-bear
+site_url: https://bluebear-io.github.io/baloo-bear
+repo_url: https://github.com/bluebear-io/baloo-bear
+repo_name: bluebear-io/baloo-bear
 exclude_docs: |
   README.md
 
@@ -58,6 +58,7 @@ nav:
       - Databricks Setup: features/databricks.md
       - Severity Routing: features/severity-routing.md
       - Discussion Tracking: features/discussions.md
+      - Thread Agent: features/thread-agent.md
       - FP Verification: features/fp-verification.md
       - Dashboard: features/dashboard.md
   - Configuration: configuration.md
