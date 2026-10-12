@@ -18,8 +18,9 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 | `ANTHROPIC_API_KEY` | ✅* | — | Anthropic API key (for Claude models) |
 | `GEMINI_API_KEY` | — | — | Google Gemini API key (when using the Google provider) |
 | `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
+| `OPENROUTER_API_KEY` | — | — | OpenRouter API key (when `AGENT_PROVIDER=openrouter`) |
 
-\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead) or `AGENT_PROVIDER=databricks` (use `DATABRICKS_TOKEN`).
+\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead) `AGENT_PROVIDER=databricks` (use `DATABRICKS_TOKEN`), or `AGENT_PROVIDER=openrouter` (use `OPENROUTER_API_KEY`).
 
 ## Amazon Bedrock
 
@@ -82,6 +83,32 @@ DATABRICKS_TOKEN=dapi...
 
 Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Cost reporting is `$0` for this provider** — see [Databricks Setup](features/databricks.md#cost-reporting).
 
+## OpenRouter
+
+For a step-by-step setup guide (ZDR enforcement, provider pinning, cost reporting) see [OpenRouter Setup](features/openrouter.md).
+
+pi has a built-in OpenRouter provider. Baloo adds a generated `models.json` that restricts every request to Zero Data Retention endpoints (`zdr: true`, `data_collection: deny`). That restriction is not configurable.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENROUTER_API_KEY` | — | OpenRouter API key. Passed through to the agent sandbox; never written to the generated config |
+| `OPENROUTER_PROVIDER_ORDER` | — | Comma-separated OpenRouter provider slugs to try in order, e.g. `novita,deepinfra`. Empty lets OpenRouter choose among ZDR endpoints |
+| `OPENROUTER_ALLOW_FALLBACKS` | `true` | Let OpenRouter fall back to other ZDR providers when the ordered ones are unavailable. Set `false` to keep each review on one provider and its prompt cache |
+
+Example:
+
+```bash
+AGENT_PROVIDER=openrouter
+AGENT_MODEL=sonnet
+# or any OpenRouter model ID:
+# AGENT_MODEL=moonshotai/kimi-k2.6
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_PROVIDER_ORDER=novita,deepinfra
+OPENROUTER_ALLOW_FALLBACKS=false
+```
+
+Short names resolve to `z-ai/glm-5.3-flash` / `z-ai/glm-5.3` / `moonshotai/kimi-k2.7-code`. Dashboard cost figures are estimates at pi's catalog prices; see [Cost reporting](features/openrouter.md#cost-reporting).
+
 ## Application
 
 | Variable | Default | Description |
@@ -98,7 +125,7 @@ Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Co
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks` |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks`, `openrouter` |
 | `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `PI_BINARY_PATH` | `pi` | Path to PI binary |
 | `PI_THINKING_LEVEL` | `medium` | PI thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. The top two are clamped to what the selected model supports |
@@ -161,7 +188,7 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 | Group | Keys | Control |
 |---|---|---|
-| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL` | select / text |
+| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`, `OPENROUTER_PROVIDER_ORDER`, `OPENROUTER_ALLOW_FALLBACKS` | select / text / toggle |
 | Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
 | Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS`, `MAX_CONCURRENT_REVIEWS`, `FEEDBACK_SIGNALS_TTL_DAYS`, `TICKET_ID_PREFIX`, `FIDELITY_PLAN_PATH_PATTERN` | select / number / text |
 

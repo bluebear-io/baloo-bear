@@ -1,6 +1,6 @@
 # Baloo
 
-> Baloo is a self-hosted AI code review GitHub App for pull requests. It reviews diffs and repository context, posts GitHub-native review feedback, and supports Anthropic, Amazon Bedrock, Google, OpenAI, and Databricks model providers.
+> Baloo is a self-hosted AI code review GitHub App for pull requests. It reviews diffs and repository context, posts GitHub-native review feedback, and supports Anthropic, Amazon Bedrock, Google, OpenAI, Databricks, and OpenRouter model providers.
 
 Baloo is intended for teams that want automated pull request review without installing a hosted code review SaaS. Operators deploy Baloo, configure a GitHub App, choose model credentials, and control repository installation scope.
 
@@ -17,9 +17,10 @@ Canonical website: https://www.bluebear.io
 
 - [Review Agent](https://oss.bluebear.io/baloo-bear/features/review-agent/): How Baloo performs agentic PR review.
 - [Guidelines Enforcement](https://oss.bluebear.io/baloo-bear/features/guidelines/): How Baloo reads `AGENTS.md` and `CONTRIBUTING.md`.
-- [Model Configuration](https://oss.bluebear.io/baloo-bear/features/models/): Supported providers (Anthropic, Amazon Bedrock, Google, OpenAI, Databricks), model tiers, and provider switching.
+- [Model Configuration](https://oss.bluebear.io/baloo-bear/features/models/): Supported providers (Anthropic, Amazon Bedrock, Google, OpenAI, Databricks, OpenRouter), model tiers, and provider switching.
 - [Amazon Bedrock Setup](https://oss.bluebear.io/baloo-bear/features/bedrock/): Step-by-step guide to run Baloo on Amazon Bedrock, including auth methods and sandbox caveats.
 - [Databricks Setup](https://oss.bluebear.io/baloo-bear/features/databricks/): Step-by-step guide to run Baloo through a Databricks AI Gateway.
+- [OpenRouter Setup](https://oss.bluebear.io/baloo-bear/features/openrouter/): Run Baloo on open-weight models through OpenRouter, restricted to Zero Data Retention endpoints.
 - [Severity Routing](https://oss.bluebear.io/baloo-bear/features/severity-routing/): How findings map to review comments, Checks API annotations, and approval decisions.
 - [Discussion Tracking](https://oss.bluebear.io/baloo-bear/features/discussions/): How Baloo follows up on its earlier review threads across commits.
 

@@ -195,6 +195,7 @@ def test_agent_provider_row_has_labeled_selector_choices() -> None:
         ("google", "Google Gemini"),
         ("openai", "OpenAI"),
         ("databricks", "Databricks AI Gateway"),
+        ("openrouter", "OpenRouter (ZDR endpoints only)"),
     )
 
 

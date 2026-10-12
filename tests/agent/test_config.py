@@ -318,3 +318,53 @@ def test_databricks_provider_model_string(monkeypatch):
     opts = get_agent_options("databricks/system.ai.claude-opus-4-6")
     assert opts.provider == "databricks"
     assert opts.model == "system.ai.claude-opus-4-6"
+
+
+def test_openrouter_tiers_resolve_to_zdr_open_models(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    assert get_agent_options("haiku").model == "z-ai/glm-5.3-flash"
+    assert get_agent_options("sonnet").model == "z-ai/glm-5.3"
+    assert get_agent_options("opus").model == "moonshotai/kimi-k2.7-code"
+    assert get_agent_options("sonnet").provider == "openrouter"
+
+
+def test_openrouter_model_ids_keep_their_vendor_slash(monkeypatch):
+    # OpenRouter IDs are vendor/model. Both the prefixed and bare forms must
+    # reach pi intact rather than having the vendor read as a provider.
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    prefixed = get_agent_options("openrouter/moonshotai/kimi-k2.6")
+    assert (prefixed.provider, prefixed.model) == ("openrouter", "moonshotai/kimi-k2.6")
+    bare = get_agent_options("moonshotai/kimi-k2.6")
+    assert (bare.provider, bare.model) == ("openrouter", "moonshotai/kimi-k2.6")
+
+
+def test_openrouter_gets_a_higher_turn_cap_on_review_tiers(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == 50
+    assert get_agent_options("opus").max_turns == 50
+    # Economy agents finish in one turn; their cap is a loop guard, not a budget.
+    assert get_agent_options("haiku").max_turns == TIER_MAX_TURNS["economy"]
+    # A bare model ID follows the provider's standard tier.
+    assert get_agent_options("moonshotai/kimi-k2.6").max_turns == 50
+
+
+def test_other_providers_keep_the_default_turn_cap(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == AGENT_MAX_TURNS
+    assert get_agent_options("claude-sonnet-5").max_turns == AGENT_MAX_TURNS

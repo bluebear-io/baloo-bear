@@ -28,6 +28,9 @@ MUTABLE_KEYS = frozenset(
         # an attacker-controlled host and have Baloo ship DATABRICKS_TOKEN there.
         # Set it in the environment and restart.
         "pi_thinking_level",
+        # Routing only; ZDR itself is hardcoded and cannot be turned off here.
+        "openrouter_provider_order",
+        "openrouter_allow_fallbacks",
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
