@@ -5,10 +5,10 @@ import logging
 from baloo.agent.pi_runtime import PIAgentOptions
 from baloo.agent.prompts import AST_TOOLS_PROMPT_SECTION, REVIEW_SYSTEM_PROMPT
 from baloo.agent.tiers import (
-    AGENT_MAX_TURNS,
     PROVIDER_TIER_MODELS,
     TIER_ALIASES,
-    TIER_MAX_TURNS,
+    provider_max_turns,
+    tier_max_turns,
 )
 from baloo.config.runtime_settings import resolve_setting
 
@@ -41,7 +41,7 @@ def resolve_short_name(name: str, provider: str | None = None) -> tuple[str, str
             f"cannot be resolved. Set an explicit model ID for this provider, or use "
             f"AGENT_PROVIDER from: {', '.join(sorted(PROVIDER_TIER_MODELS))}."
         )
-    return effective, catalog[tier], TIER_MAX_TURNS[tier]
+    return effective, catalog[tier], tier_max_turns(effective, tier)
 
 
 def _build_system_prompt() -> str:
@@ -101,7 +101,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
                 provider=effective_provider,
                 system_prompt=system_prompt,
                 thinking_level=level,
-                max_turns=AGENT_MAX_TURNS,
+                max_turns=provider_max_turns(effective_provider),
             )
 
     # 3. Full model ID passthrough on the effective provider
@@ -111,7 +111,7 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
             provider=effective_provider,
             system_prompt=system_prompt,
             thinking_level=level,
-            max_turns=AGENT_MAX_TURNS,
+            max_turns=provider_max_turns(effective_provider),
         )
 
     # 4. Default from settings (env + DB overlay) — resolve short names first
@@ -131,5 +131,5 @@ def get_agent_options(model: str = None, thinking_level: str | None = None) -> P
         provider=effective_provider,
         system_prompt=system_prompt,
         thinking_level=level,
-        max_turns=AGENT_MAX_TURNS,
+        max_turns=provider_max_turns(effective_provider),
     )

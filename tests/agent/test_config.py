@@ -344,3 +344,27 @@ def test_openrouter_model_ids_keep_their_vendor_slash(monkeypatch):
     assert (prefixed.provider, prefixed.model) == ("openrouter", "moonshotai/kimi-k2.6")
     bare = get_agent_options("moonshotai/kimi-k2.6")
     assert (bare.provider, bare.model) == ("openrouter", "moonshotai/kimi-k2.6")
+
+
+def test_openrouter_gets_a_higher_turn_cap_on_review_tiers(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == 50
+    assert get_agent_options("opus").max_turns == 50
+    # Economy agents finish in one turn; their cap is a loop guard, not a budget.
+    assert get_agent_options("haiku").max_turns == TIER_MAX_TURNS["economy"]
+    # A bare model ID follows the provider's standard tier.
+    assert get_agent_options("moonshotai/kimi-k2.6").max_turns == 50
+
+
+def test_other_providers_keep_the_default_turn_cap(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == AGENT_MAX_TURNS
+    assert get_agent_options("claude-sonnet-5").max_turns == AGENT_MAX_TURNS

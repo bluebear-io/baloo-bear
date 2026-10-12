@@ -12,6 +12,8 @@ A `provider/model` string is accepted, but its provider **must match** `AGENT_PR
 | `sonnet`, `standard`, `gemini-pro` | Standard | 30 | Default code reviews |
 | `opus`, `premium`, `gemini-3.1-pro` | Premium | 30 | Complex / security-sensitive reviews |
 
+On `openrouter` the Standard and Premium caps are 50. A turn there costs roughly a quarter of a Sonnet turn, so the higher ceiling buys more complete reviews of large PRs for little spend.
+
 Resolved model IDs depend on `AGENT_PROVIDER`:
 
 | Provider | Economy | Standard | Premium |

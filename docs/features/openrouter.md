@@ -25,7 +25,7 @@ Both are hardcoded and cannot be turned off from settings or the dashboard. The 
 | Standard | `sonnet`, `standard` | `z-ai/glm-5.3` |
 | Premium | `opus`, `premium` | `moonshotai/kimi-k2.7-code` |
 
-Any OpenRouter model ID in PI's catalog also works, with or without the `openrouter/` prefix (`AGENT_MODEL=moonshotai/kimi-k2.6`). Every model inherits the ZDR routing. Check that a model has ZDR endpoints in OpenRouter's [ZDR endpoint list](https://openrouter.ai/api/v1/endpoints/zdr) before selecting it; otherwise every request fails with no available provider.
+Standard and Premium reviews may run up to 50 turns (30 on other providers), since turns on these models are cheap. Any OpenRouter model ID in PI's catalog also works, with or without the `openrouter/` prefix (`AGENT_MODEL=moonshotai/kimi-k2.6`). Every model inherits the ZDR routing. Check that a model has ZDR endpoints in OpenRouter's [ZDR endpoint list](https://openrouter.ai/api/v1/endpoints/zdr) before selecting it; otherwise every request fails with no available provider.
 
 ## Step 1 — Configure
 

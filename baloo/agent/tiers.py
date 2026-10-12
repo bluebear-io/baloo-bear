@@ -30,6 +30,26 @@ TIER_MAX_TURNS: dict[str, int] = {
 #: provider/model string). Follows the standard tier.
 AGENT_MAX_TURNS = TIER_MAX_TURNS["standard"]
 
+#: Per-provider ceilings that replace ``TIER_MAX_TURNS``. The cap trades
+#: findings for spend, so it is set by what a turn costs: on OpenRouter's open
+#: models a turn is ~1.5 cents against ~6 for Sonnet 5, and GLM-5.3 needed 29 of
+#: 30 turns on a large PR in the 2026-10-12 trial. Raising it for Anthropic too
+#: would only move the wall at four times the price (see the standard tier).
+PROVIDER_MAX_TURNS: dict[str, dict[str, int]] = {
+    "openrouter": {"standard": 50, "premium": 50},
+}
+
+
+def tier_max_turns(provider: str, tier: str) -> int:
+    """Return the turn ceiling for ``tier`` on ``provider``."""
+    return PROVIDER_MAX_TURNS.get(provider, {}).get(tier, TIER_MAX_TURNS[tier])
+
+
+def provider_max_turns(provider: str) -> int:
+    """Ceiling for a model not resolved through a tier; follows the standard tier."""
+    return tier_max_turns(provider, "standard")
+
+
 #: One prompt, one answer. Used by agents with no tool loop to run — the
 #: provider smoke probe and the sync scope decider.
 SINGLE_TURN = 1
