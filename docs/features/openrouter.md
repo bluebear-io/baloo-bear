@@ -13,7 +13,7 @@ OpenRouter is a built-in PI provider, so authentication and the model catalog co
 - `zdr: true` makes OpenRouter route only to endpoints that do not retain prompts. If no ZDR endpoint can serve a request, it fails rather than falling back to one that does.
 - `data_collection: "deny"` excludes any endpoint that stores or trains on prompts.
 
-Both are hardcoded and cannot be turned off from settings or the dashboard. The file holds no secret.
+Both are hardcoded and cannot be turned off from settings or the dashboard. The file also caps each configured model's output at 65,536 tokens (see [Troubleshooting](#troubleshooting)). It holds no secret.
 
 **Turn on ZDR at the account level too.** In OpenRouter, open *Settings → Privacy* and enable the ZDR-only option for the key Baloo uses. If the generated file ever failed to reach PI, PI would still run OpenRouter as a built-in provider but without the per-request constraint. The account setting closes that gap.
 
@@ -59,5 +59,6 @@ PI computes cost from its own catalog prices, not from what OpenRouter actually 
 | Symptom | Cause |
 |---|---|
 | `No endpoints found matching your data policy` | The model has no ZDR endpoint, or none among `OPENROUTER_PROVIDER_ORDER` with fallbacks disabled. |
+| `No endpoints found … Filter by Context Length removed …` | The request asked for more output tokens than the remaining endpoints allow. pi requests the model's catalog maximum (943K for `z-ai/glm-5.3`), so Baloo caps every model it is configured with at 65,536 output tokens. A model passed only on the command line (e.g. a dry run's `--model`) is not in settings and is not capped. |
 | `401` from OpenRouter | `OPENROUTER_API_KEY` is missing or wrong. In the sandbox only allowlisted env vars reach PI; the key is on that list. |
 | Reviews cost much more than expected | Check the cache-read share in OpenRouter's Activity. A low share usually means requests are hopping providers; pin them and disable fallbacks. |
