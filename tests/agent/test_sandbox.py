@@ -194,23 +194,35 @@ def test_bwrap_prefix_binds_aws_credential_files(tmp_path, monkeypatch):
     assert prefix[idx + 1] == token_path
 
 
-def test_databricks_ro_bind_args_binds_the_generated_agent_dir():
-    args = sandbox._databricks_ro_bind_args({"HOME": "/home/baloo"})
-    path = "/home/baloo/.baloo/pi-databricks"
-    # --ro-bind-try, so this is a harmless no-op for every other provider.
-    assert args == ["--ro-bind-try", path, path]
+def test_generated_agent_dir_bind_args_bind_every_generated_dir():
+    args = sandbox._generated_agent_dir_ro_bind_args({"HOME": "/home/baloo"})
+    db = "/home/baloo/.baloo/pi-databricks"
+    orr = "/home/baloo/.baloo/pi-openrouter"
+    # --ro-bind-try, so each is a harmless no-op for every other provider.
+    assert args == ["--ro-bind-try", db, db, "--ro-bind-try", orr, orr]
 
 
-def test_databricks_ro_bind_args_falls_back_to_path_home(monkeypatch):
+def test_generated_agent_dir_bind_args_fall_back_to_path_home(monkeypatch):
     # ensure_agent_dir() uses Path.home(), which falls back to the passwd entry
     # when HOME is unset. Bailing out here instead would write the config but
-    # never bind it, and PI would fail with Unknown provider "databricks".
+    # never bind it: Databricks fails with Unknown provider "databricks", and
+    # OpenRouter silently loses its ZDR routing.
     from pathlib import Path
 
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: Path("/home/frompasswd")))
-    args = sandbox._databricks_ro_bind_args({})
-    path = "/home/frompasswd/.baloo/pi-databricks"
-    assert args == ["--ro-bind-try", path, path]
+    args = sandbox._generated_agent_dir_ro_bind_args({})
+    assert "/home/frompasswd/.baloo/pi-databricks" in args
+    assert "/home/frompasswd/.baloo/pi-openrouter" in args
+
+
+def test_generated_agent_dir_bind_matches_where_openrouter_writes(tmp_path):
+    # The bind and the writer must agree on the path, or pi runs without ZDR.
+    from baloo.agent import openrouter
+
+    written = openrouter.ensure_agent_dir(
+        provider_order="", allow_fallbacks=True, base_dir=tmp_path
+    )
+    assert str(written) in sandbox._generated_agent_dir_ro_bind_args({"HOME": str(tmp_path)})
 
 
 def test_bwrap_prefix_binds_the_databricks_agent_dir(tmp_path, monkeypatch):
@@ -238,4 +250,18 @@ def test_build_subprocess_env_keeps_databricks_credentials():
 
     assert env["DATABRICKS_TOKEN"] == "dapi-keep"
     assert env["PI_CODING_AGENT_DIR"] == "/home/baloo/.baloo/pi-databricks"
+    assert "GITHUB_PRIVATE_KEY" not in env
+
+
+def test_build_subprocess_env_keeps_openrouter_credentials():
+    base = {
+        "PATH": "/usr/bin",
+        "OPENROUTER_API_KEY": "sk-or-keep",
+        "PI_CODING_AGENT_DIR": "/home/baloo/.baloo/pi-openrouter",
+        "GITHUB_PRIVATE_KEY": "SECRET",
+    }
+    env = sandbox.build_subprocess_env(base)
+
+    assert env["OPENROUTER_API_KEY"] == "sk-or-keep"
+    assert env["PI_CODING_AGENT_DIR"] == "/home/baloo/.baloo/pi-openrouter"
     assert "GITHUB_PRIVATE_KEY" not in env

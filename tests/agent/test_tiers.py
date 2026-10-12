@@ -39,6 +39,7 @@ def test_tier_models_exist_in_the_pinned_pi_catalog(tmp_path):
         "ANTHROPIC_API_KEY": "placeholder",
         "GEMINI_API_KEY": "placeholder",
         "OPENAI_API_KEY": "placeholder",
+        "OPENROUTER_API_KEY": "placeholder",
         "AWS_ACCESS_KEY_ID": "placeholder",
         "AWS_SECRET_ACCESS_KEY": "placeholder",
         "AWS_REGION": "us-east-1",

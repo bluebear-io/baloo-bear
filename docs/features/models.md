@@ -21,6 +21,7 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 | `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-5` | `us.anthropic.claude-opus-5-5` |
 | `openai` | `gpt-6-luna` | `gpt-6-sol` | `gpt-6-astra` |
 | `databricks` | `system.ai.claude-haiku-4-5` | `system.ai.claude-sonnet-4-6` | `system.ai.claude-opus-4-6` |
+| `openrouter` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` | `moonshotai/kimi-k2.7-code` |
 
 Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — a well-tested set. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
 
@@ -87,6 +88,21 @@ DATABRICKS_TOKEN=dapi...
 Model IDs are Unity Catalog model services (`system.ai.claude-*`); the older flat `databricks-claude-*` names return `501 NOT_IMPLEMENTED`. Availability is per workspace — an unprovisioned model reports a `rate limit of 0`.
 
 Cost is reported as `$0` for Databricks: it bills DBUs at a per-contract rate, so there is no correct USD-per-token constant to hardcode. See [Cost reporting](databricks.md#cost-reporting).
+
+## OpenRouter
+
+For the full walkthrough (ZDR enforcement, provider pinning, cost reporting) see [OpenRouter Setup](openrouter.md). In short:
+
+```bash
+AGENT_PROVIDER=openrouter
+AGENT_MODEL=sonnet
+OPENROUTER_API_KEY=sk-or-...
+# Recommended: pin upstream providers so the prompt cache holds
+OPENROUTER_PROVIDER_ORDER=novita,deepinfra
+OPENROUTER_ALLOW_FALLBACKS=false
+```
+
+Every request is restricted to Zero Data Retention endpoints; that is not configurable. OpenRouter model IDs contain a vendor slash (`z-ai/glm-5.3`); both that form and `openrouter/z-ai/glm-5.3` work.
 
 ## Configuration
 

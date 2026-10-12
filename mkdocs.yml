@@ -56,6 +56,7 @@ nav:
       - Model Configuration: features/models.md
       - Amazon Bedrock Setup: features/bedrock.md
       - Databricks Setup: features/databricks.md
+      - OpenRouter Setup: features/openrouter.md
       - Severity Routing: features/severity-routing.md
       - Discussion Tracking: features/discussions.md
       - Thread Agent: features/thread-agent.md

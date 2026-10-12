@@ -33,16 +33,19 @@ config error.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+
+from baloo.agent.pi_agent_dir import write_models_json
 
 logger = logging.getLogger(__name__)
 
 DATABRICKS_PROVIDER = "databricks"
+
+#: Directory under ``~/.baloo`` holding the generated models.json.
+AGENT_DIR_NAME = "pi-databricks"
 
 #: Environment variable holding the workspace PAT. Referenced by name inside
 #: models.json so the secret stays out of the generated file.
@@ -202,35 +205,6 @@ def ensure_agent_dir(
     """
     if extra_models is None:
         extra_models = configured_model_services()
-    home = Path(base_dir) if base_dir is not None else Path.home()
-    agent_dir = home / ".baloo" / "pi-databricks"
-    agent_dir.mkdir(parents=True, exist_ok=True)
-
-    config_path = agent_dir / "models.json"
-    payload = json.dumps(build_models_config(host, extra_models), indent=2) + "\n"
-
-    # Skip the write when the content already matches, so the steady state is a
-    # pure read and concurrent reviews don't touch the file at all.
-    try:
-        if config_path.read_text(encoding="utf-8") == payload:
-            return agent_dir
-    except FileNotFoundError:
-        pass
-
-    # Write via a uniquely-named temp file in the same directory, then rename.
-    # os.replace is atomic on POSIX, so a PI subprocess reading models.json
-    # concurrently sees either the old file or the new one, never a truncated
-    # one. The temp name must be unique: a shared name would let two concurrent
-    # first-run writers interleave into the same file and rename the mess into
-    # place, reintroducing the race this avoids.
-    fd, tmp_name = tempfile.mkstemp(dir=agent_dir, prefix=".models-", suffix=".json")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-        os.replace(tmp_name, config_path)
-    except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
-    logger.info("wrote Databricks provider config to %s", config_path)
-
-    return agent_dir
+    return write_models_json(
+        AGENT_DIR_NAME, build_models_config(host, extra_models), base_dir=base_dir
+    )

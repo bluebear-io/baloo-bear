@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from baloo.agent import databricks
+from baloo.agent import databricks, pi_agent_dir
 from baloo.agent.databricks import (
     DATABRICKS_PROVIDER,
     DATABRICKS_TIER_MODELS,
@@ -140,7 +140,7 @@ def test_ensure_agent_dir_never_publishes_a_partial_file(tmp_path, monkeypatch):
         seen.append(str(dst))
         return real_replace(src, dst)
 
-    monkeypatch.setattr(databricks.os, "replace", spy)
+    monkeypatch.setattr(pi_agent_dir.os, "replace", spy)
     agent_dir = ensure_agent_dir(WORKSPACE, base_dir=tmp_path)
 
     assert seen == [str(agent_dir / "models.json")]
@@ -152,14 +152,14 @@ def test_concurrent_writers_do_not_share_a_temp_filename(tmp_path):
     # A fixed temp name (e.g. models.tmp) would let two first-run writers
     # interleave into the same file and rename the mess into place.
     names: list[str] = []
-    real_mkstemp = databricks.tempfile.mkstemp
+    real_mkstemp = pi_agent_dir.tempfile.mkstemp
 
     def spy(*args, **kwargs):
         fd, name = real_mkstemp(*args, **kwargs)
         names.append(name)
         return fd, name
 
-    with patch.object(databricks.tempfile, "mkstemp", spy):
+    with patch.object(pi_agent_dir.tempfile, "mkstemp", spy):
         ensure_agent_dir(WORKSPACE, base_dir=tmp_path)
         ensure_agent_dir("https://other.databricks.com", base_dir=tmp_path)
 

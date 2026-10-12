@@ -8,6 +8,7 @@ make the other import it back. One definition, both sides read it.
 from __future__ import annotations
 
 from baloo.agent.databricks import DATABRICKS_PROVIDER, DATABRICKS_TIER_MODELS
+from baloo.agent.openrouter import OPENROUTER_PROVIDER, OPENROUTER_TIER_MODELS
 
 # Turn ceiling for every agent role that runs a full review. It is a ceiling,
 # not a target: a review that finishes in three turns costs three turns.
@@ -85,4 +86,6 @@ PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
     },
     # Registered with PI via a generated models.json — see baloo/agent/databricks.py.
     DATABRICKS_PROVIDER: dict(DATABRICKS_TIER_MODELS),
+    # Built into pi; Baloo only adds ZDR routing — see baloo/agent/openrouter.py.
+    OPENROUTER_PROVIDER: dict(OPENROUTER_TIER_MODELS),
 }

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from baloo.agent import openrouter
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
 from baloo.agent.tiers import (
@@ -494,17 +495,23 @@ class PIAgentBase:
 
         Databricks is not a native PI provider: it is registered through a
         generated models.json that PI only finds via ``PI_CODING_AGENT_DIR``.
-        Every spawn site must go through here — a subprocess started without it
-        fails with ``Unknown provider "databricks"``.
+        OpenRouter is native, but its ZDR routing lives in the same kind of
+        file. Every spawn site must go through here — a subprocess started
+        without it fails with ``Unknown provider "databricks"``, or for
+        OpenRouter silently sends requests without the ZDR constraint.
 
         ``base`` of ``None`` means "inherit the parent env", which is preserved
         for providers that need nothing extra.
         """
-        if self.options.provider != DATABRICKS_PROVIDER:
+        if self.options.provider == DATABRICKS_PROVIDER:
+            # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
+            agent_dir = ensure_agent_dir(get_settings().databricks_host)
+        elif self.options.provider == openrouter.OPENROUTER_PROVIDER:
+            agent_dir = openrouter.ensure_agent_dir()
+        else:
             return base
         env = dict(base) if base is not None else dict(os.environ)
-        # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
-        env["PI_CODING_AGENT_DIR"] = str(ensure_agent_dir(get_settings().databricks_host))
+        env["PI_CODING_AGENT_DIR"] = str(agent_dir)
         return env
 
     def _build_pi_command(self, sandbox_decision: tuple[str, bool] | None = None) -> list[str]:

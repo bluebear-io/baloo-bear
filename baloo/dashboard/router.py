@@ -97,6 +97,8 @@ SETTING_CATEGORIES = {
         "pi_binary_path",
         "pi_thinking_level",
         "databricks_host",
+        "openrouter_provider_order",
+        "openrouter_allow_fallbacks",
     },
     "Review": {
         "ticket_id_prefix",
@@ -151,6 +153,7 @@ AGENT_PROVIDER_CHOICES = (
     ("google", "Google Gemini"),
     ("openai", "OpenAI"),
     ("databricks", "Databricks AI Gateway"),
+    ("openrouter", "OpenRouter (ZDR endpoints only)"),
 )
 
 

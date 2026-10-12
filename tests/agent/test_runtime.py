@@ -1130,6 +1130,20 @@ class TestDatabricksWiring:
         assert env is not None
         assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
 
+    def test_openrouter_sets_agent_dir(self, tmp_path):
+        # Without PI_CODING_AGENT_DIR pi still runs OpenRouter (it is built in),
+        # just without the ZDR routing — so this must never be skipped.
+        agent = PIAgentBase(PIAgentOptions(provider="openrouter", model="z-ai/glm-5.3"))
+        with patch(
+            "baloo.agent.pi_runtime.openrouter.ensure_agent_dir",
+            return_value=tmp_path / "pi-openrouter",
+        ):
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
+        assert env == {
+            "PATH": "/usr/bin",
+            "PI_CODING_AGENT_DIR": str(tmp_path / "pi-openrouter"),
+        }
+
     def test_with_provider_env_leaves_other_providers_inheriting(self):
         agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
         assert agent._with_provider_env(None) is None

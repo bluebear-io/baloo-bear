@@ -60,7 +60,8 @@ class Settings(BaseSettings):
     agent_provider: str = Field(
         default="anthropic",
         description=(
-            "LLM provider for all agents " "(anthropic, google, openai, amazon-bedrock, databricks)"
+            "LLM provider for all agents "
+            "(anthropic, google, openai, amazon-bedrock, databricks, openrouter)"
         ),
     )
     databricks_host: str = Field(
@@ -68,6 +69,20 @@ class Settings(BaseSettings):
         description=(
             "Databricks workspace URL, e.g. https://dbc-xxxxxxxx-xxxx.cloud.databricks.com. "
             "Required when AGENT_PROVIDER=databricks; pair with a DATABRICKS_TOKEN PAT."
+        ),
+    )
+    openrouter_provider_order: str = Field(
+        default="",
+        description=(
+            "Comma-separated OpenRouter provider slugs to try in order, e.g. novita,deepinfra. "
+            "Empty lets OpenRouter choose. Routing is always restricted to ZDR endpoints."
+        ),
+    )
+    openrouter_allow_fallbacks: bool = Field(
+        default=True,
+        description=(
+            "Let OpenRouter fall back to other ZDR providers when the ordered ones are "
+            "unavailable. Disable to keep each review on one provider and its prompt cache."
         ),
     )
     agent_model: str = Field(

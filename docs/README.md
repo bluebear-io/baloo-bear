@@ -17,6 +17,7 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 - **[Model Configuration](features/models.md)** — Supported providers, models, tiers, and provider switching
 - **[Amazon Bedrock Setup](features/bedrock.md)** — Step-by-step guide to run Baloo on Bedrock
 - **[Databricks Setup](features/databricks.md)** — Step-by-step guide to run Baloo on a Databricks AI Gateway
+- **[OpenRouter Setup](features/openrouter.md)** — Run Baloo on open-weight models (GLM, Kimi) through OpenRouter, ZDR endpoints only
 - **[Severity Routing](features/severity-routing.md)** — How findings are routed to reviews, Checks API, or filtered
 - **[Discussion Tracking](features/discussions.md)** — Thread follow-ups, duplicate detection, and conversation context
 - **[Thread Agent](features/thread-agent.md)** — Replies when developers answer Baloo's inline comments (optional)
