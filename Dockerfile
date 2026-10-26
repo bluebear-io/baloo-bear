@@ -2,7 +2,7 @@
 # Pin to specific version for security patching - update periodically
 FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 as node-runtime
 
-FROM python:3.14.7-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56 as base
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d as base
 
 # Build arguments for version tracking
 ARG BALOO_VERSION=dev
