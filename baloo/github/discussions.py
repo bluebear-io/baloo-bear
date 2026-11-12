@@ -36,25 +36,21 @@ def parse_timestamp(value: str | None) -> datetime:
 
 def is_baloo_actor(login: str | None, body: str | None = None) -> bool:
     """
-    Best-effort heuristic for determining if a comment was authored by Baloo.
+    Return True if a comment was authored by Baloo, judged by the author's login.
+
+    The body is deliberately ignored. Other bots on the same PR (coding agents,
+    other reviewers) routinely mention Baloo by name, and treating those
+    comments as Baloo's made the thread agent claim another bot's words as its
+    own and reply on its behalf.
 
     Args:
         login: GitHub login of the author
-        body: Comment body text
+        body: Comment body text (unused; kept for call-site compatibility)
 
     Returns:
-        True if the comment was likely authored by Baloo
+        True if the comment was authored by Baloo
     """
-    normalized_login = (login or "").lower()
-    normalized_body = (body or "").lower()
-
-    if "baloo" in normalized_login:
-        return True
-
-    if normalized_login.endswith("[bot]") and "baloo" in normalized_body:
-        return True
-
-    return False
+    return "baloo" in (login or "").lower()
 
 
 def build_discussion_comment(

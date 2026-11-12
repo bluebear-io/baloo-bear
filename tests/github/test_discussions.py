@@ -263,11 +263,19 @@ class TestParseTimestampEdgeCases:
 
 
 class TestIsBalooActorBotSuffix:
-    def test_bot_suffix_with_baloo_in_body_returns_true(self):
+    def test_other_bot_mentioning_baloo_in_body_returns_false(self):
         from baloo.github.discussions import is_baloo_actor
 
-        result = is_baloo_actor("some-app[bot]", "Review by baloo code reviewer")
-        assert result is True
+        result = is_baloo_actor(
+            "bear-metal-app[bot]",
+            "After Baloo's review rounds, the exemption only applies to aws logs.",
+        )
+        assert result is False
+
+    def test_baloo_app_login_returns_true(self):
+        from baloo.github.discussions import is_baloo_actor
+
+        assert is_baloo_actor("baloo-code-reviewer[bot]", "Got it.") is True
 
     def test_bot_suffix_without_baloo_in_body_returns_false(self):
         from baloo.github.discussions import is_baloo_actor
