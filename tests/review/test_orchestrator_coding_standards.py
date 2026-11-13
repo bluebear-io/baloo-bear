@@ -38,9 +38,8 @@ def _checkout(tmp_path, skills: dict[str, str]):
 
 
 def _judge_answer(**overrides):
-    violation = {
+    occurrence = {
         "file_path": "svc/a.py",
-        "instruction_quote": "Never swallow exceptions.",
         "start_line": 4,
         "end_line": 5,
         "caused_by_line": 0,
@@ -48,8 +47,12 @@ def _judge_answer(**overrides):
         "violates": True,
         "fix_hint": "Re-raise the exception or return an error status.",
     }
-    violation.update(overrides)
-    return {"violations": [violation]}
+    occurrence.update(overrides)
+    return {
+        "checklist": [
+            {"instruction_quote": "Never swallow exceptions.", "occurrences": [occurrence]}
+        ]
+    }
 
 
 async def _review(tmp_path, *, enabled, skills, judge, agent_comments=None):

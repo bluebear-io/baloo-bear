@@ -945,6 +945,17 @@ class TestSandboxWiring:
         base.update(overrides)
         return SimpleNamespace(**base)
 
+    def test_context_files_and_skills_load_only_when_not_isolated(self):
+        default = PIAgentBase(PIAgentOptions())
+        isolated = PIAgentBase(PIAgentOptions(no_context_files=True))
+        with patch("baloo.agent.pi_runtime.get_settings", return_value=self._settings()):
+            default_cmd = default._build_pi_command()
+            isolated_cmd = isolated._build_pi_command()
+        assert "--no-context-files" not in default_cmd
+        assert "--no-skills" not in default_cmd
+        assert "--no-context-files" in isolated_cmd
+        assert "--no-skills" in isolated_cmd
+
     def test_no_sandbox_when_mode_off(self):
         agent = PIAgentBase(PIAgentOptions(cwd="/work/tree"))
         with patch("baloo.agent.pi_runtime.get_settings", return_value=self._settings()):

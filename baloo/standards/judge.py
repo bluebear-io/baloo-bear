@@ -114,7 +114,10 @@ async def judge_skill(
     answer, metadata = await _run_query(
         build_message(skill_name, skill_content, files), model, review_logger
     )
-    raw = _model_violations(answer, metadata)
+    try:
+        raw = checklist_violations(answer)
+    except JudgeError as error:
+        raise JudgeError(str(error), metadata) from error
     violations = resolve_violations(raw, skill_name, files)
     logger.info(
         "Coding standards judge for skill %s: files=%d violations=%d raw=%d cost=$%.4f",
@@ -133,17 +136,38 @@ async def _run_query(
     options = get_agent_options(model=model, thinking_level="off")
     options.system_prompt = CODING_STANDARDS_SYSTEM_PROMPT
     options.no_tools = True
+    options.no_context_files = True
     options.max_turns = RETRY_TURN_BUDGET
     options.name = "CodingStandardsJudge"
     return await PIAgentBase(options).run_query(prompt, review_logger=review_logger)
 
 
-def _model_violations(answer: Any, metadata: dict[str, Any]) -> list[Any]:
-    if answer is None:
-        raise JudgeError("judge returned no parseable JSON answer", metadata)
-    if not isinstance(answer, dict) or not isinstance(answer.get("violations"), list):
-        raise JudgeError("judge answer has no violations list", metadata)
-    violations: list[Any] = answer["violations"]
+def checklist_violations(answer: Any) -> list[Any]:
+    """Flatten the judge's checklist into one raw violation per occurrence.
+
+    The findings are the checklist itself: asking the model to copy flagged checklist lines into
+    a separate list lost some of them, so nothing is copied.
+    """
+    if not isinstance(answer, dict) or not isinstance(answer.get("checklist"), list):
+        raise JudgeError("judge answer has no checklist")
+    violations: list[Any] = []
+    malformed = 0
+    for entry in answer["checklist"]:
+        instruction = entry.get("instruction_quote") if isinstance(entry, dict) else None
+        occurrences = entry.get("occurrences") if isinstance(entry, dict) else None
+        if not isinstance(instruction, str) or not instruction.strip():
+            malformed += 1
+            continue
+        if not isinstance(occurrences, list):
+            malformed += 1
+            continue
+        for occurrence in occurrences:
+            if isinstance(occurrence, dict):
+                violations.append({**occurrence, "instruction_quote": instruction})
+            else:
+                violations.append(occurrence)
+    if malformed:
+        logger.warning("Coding standards judge returned %d malformed checklist entries", malformed)
     return violations
 
 
