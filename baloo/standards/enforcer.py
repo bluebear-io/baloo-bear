@@ -223,6 +223,9 @@ def _load_judge_file(
             f"`{change.filename}` was not judged: it is missing from the checked-out head commit"
         )
         return None
+    if not content:
+        # GitHub returns no patch for an empty file; it has no lines to judge.
+        return None
     if change.patch is None:
         report.errors.append(
             f"`{change.filename}` was not judged: GitHub returned no patch for it, so its "

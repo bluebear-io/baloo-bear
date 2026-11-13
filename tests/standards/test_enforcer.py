@@ -328,3 +328,27 @@ async def test_files_over_the_call_limit_split_into_batches(
 
     assert sorted(files for _, _, files in judge_calls) == [["a.py"], ["b.py"]]
     assert len(report.errors) == 1 and "huge.py" in report.errors[0]
+
+
+async def test_an_empty_file_has_nothing_to_judge_and_is_not_an_error(
+    repos, github_client, judge_calls
+):
+    # GitHub returns no patch for an empty file.
+    _write(repos["target"], {"pkg/__init__.py": "", "a.py": "a\nb\n"})
+    _write(
+        repos["umbrella"],
+        {
+            ".bluebear/skill_enforcement.json": _rules([{"path": "**/*.py", "skill": "python"}]),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+
+    report = await _run(
+        github_client,
+        "acme/svc",
+        [_change("pkg/__init__.py", patch=None), _change("a.py")],
+        str(repos["target"]),
+    )
+
+    assert report.errors == []
+    assert judge_calls == [("python", SKILL_TEXT, ["a.py"])]
