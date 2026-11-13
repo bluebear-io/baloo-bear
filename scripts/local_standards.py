@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -77,7 +78,15 @@ async def async_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repo-full-name", help="Override inferred owner/repo name")
     parser.add_argument("--umbrella", help="Local checkout of the umbrella repository")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Log each judge call's raw and dropped violation counts to stderr",
+    )
     args = parser.parse_args(argv)
+    if args.verbose:
+        logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+        logging.getLogger("baloo.standards").setLevel(logging.INFO)
 
     start = Path(args.git_workdir or ".").expanduser().resolve()
     repo_root = run_git(["rev-parse", "--show-toplevel"], str(start), True)
