@@ -703,6 +703,19 @@ class GitHubAPIClient:
             )
             return False, ""
 
+    async def get_default_branch_head_sha(self, repo_full_name: str) -> str:
+        """Return the commit SHA at the head of the repository's default branch."""
+        repo_url = f"{self.base_url}/repos/{repo_full_name}"
+        repo_response = await self._get(repo_url, headers=self._get_headers())
+        repo_response.raise_for_status()
+        branch = repo_response.json()["default_branch"]
+        commit_response = await self._get(
+            f"{repo_url}/commits/{branch}", headers=self._get_headers()
+        )
+        commit_response.raise_for_status()
+        sha: str = commit_response.json()["sha"]
+        return sha
+
     async def get_file_content(
         self, repo_full_name: str, path: str, ref: str | None = None
     ) -> str | None:

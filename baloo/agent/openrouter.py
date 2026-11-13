@@ -67,6 +67,7 @@ MODEL_SETTING_KEYS: tuple[str, ...] = (
     "fp_verification_model",
     "thread_agent_model",
     "documentation_drift_model",
+    "coding_standards_model",
 )
 
 

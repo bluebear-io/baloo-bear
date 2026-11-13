@@ -78,11 +78,16 @@ def test_configured_model_ids_reads_all_model_settings(monkeypatch):
         "fp_verification_model": "haiku",
         "thread_agent_model": "z-ai/glm-5.2",
         "documentation_drift_model": "sonnet",
+        "coding_standards_model": "qwen/qwen3-coder",
     }
     import baloo.config.runtime_settings as rs
 
     monkeypatch.setattr(rs, "resolve_setting", values.__getitem__)
-    assert openrouter.configured_model_ids() == ["moonshotai/kimi-k2.6", "z-ai/glm-5.2"]
+    assert openrouter.configured_model_ids() == [
+        "moonshotai/kimi-k2.6",
+        "z-ai/glm-5.2",
+        "qwen/qwen3-coder",
+    ]
 
 
 def test_no_order_lets_openrouter_choose():
