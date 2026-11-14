@@ -188,8 +188,8 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 | Group | Keys | Control |
 |---|---|---|
-| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`, `OPENROUTER_PROVIDER_ORDER`, `OPENROUTER_ALLOW_FALLBACKS` | select / text / toggle |
-| Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
+| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`, `CODING_STANDARDS_MODEL`, `OPENROUTER_PROVIDER_ORDER`, `OPENROUTER_ALLOW_FALLBACKS` | select / text / toggle |
+| Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `CODING_STANDARDS_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
 | Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS`, `MAX_CONCURRENT_REVIEWS`, `FEEDBACK_SIGNALS_TTL_DAYS`, `TICKET_ID_PREFIX`, `FIDELITY_PLAN_PATH_PATTERN` | select / number / text |
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
@@ -244,6 +244,16 @@ If the database is disabled, behavior is unchanged: env vars only.
 | `DOCUMENTATION_DRIFT_ENABLED` | `false` | Enable PR-time documentation drift analysis. |
 | `DOCUMENTATION_DRIFT_CATALOG_PATH` | `.baloo/documentation-catalog.json` | Repo-relative path to the docs catalog used to map changed code areas to docs. |
 | `DOCUMENTATION_DRIFT_MODEL` | `sonnet` | Model used for the documentation drift side agent. |
+
+## Coding Standards
+
+| Variable | Default | Description |
+|---|---|---|
+| `CODING_STANDARDS_ENABLED` | `false` | Judge changed lines against the skills mapped to them by `.bluebear/skill_enforcement.json`. See [Coding Standards](features/coding-standards.md). |
+| `CODING_STANDARDS_MODEL` | `sonnet` | Model used for the coding standards judge. |
+| `CODING_STANDARDS_UMBRELLA_REPO` | _(empty)_ | `owner/repo` whose rules and skills also apply to PRs in other repositories. Must be readable by the same GitHub App installation. |
+| `CODING_STANDARDS_MAX_CONCURRENCY` | `2` | Maximum concurrent judge calls per review. |
+| `CODING_STANDARDS_MAX_CHARS_PER_CALL` | `400000` | Maximum characters of numbered file content in one judge call; a skill's files are split across calls above it. |
 
 ## Multi-Broker Deployment
 

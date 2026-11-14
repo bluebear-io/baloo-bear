@@ -1,6 +1,6 @@
 # Model Configuration
 
-Baloo supports multiple LLM providers. **`AGENT_PROVIDER` is global** — every Baloo agent (primary review, FP verification, thread replies, fidelity, documentation drift, sync scope) uses that backend. Short names select a **model tier** on the provider; they are not a way to pick a different provider.
+Baloo supports multiple LLM providers. **`AGENT_PROVIDER` is global** — every Baloo agent (primary review, FP verification, thread replies, fidelity, documentation drift, coding standards, sync scope) uses that backend. Short names select a **model tier** on the provider; they are not a way to pick a different provider.
 
 A `provider/model` string is accepted, but its provider **must match** `AGENT_PROVIDER`; a mismatch is rejected with a configuration error rather than silently overriding the provider for that agent. Bare model IDs (including Bedrock inference-profile IDs and ARNs) always run on the configured provider.
 

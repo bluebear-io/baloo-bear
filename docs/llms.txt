@@ -35,6 +35,7 @@ Canonical website: https://www.bluebear.io
 - [False-Positive Verification](https://oss.bluebear.io/baloo-bear/features/fp-verification/): Second-pass LLM verification of findings (on by default).
 - [Fidelity Analysis](https://oss.bluebear.io/baloo-bear/features/fidelity/): Comparing implementation against plan documents.
 - [Documentation Drift](https://oss.bluebear.io/baloo-bear/features/documentation-drift/): PR-time stale docs detection using a repo-owned catalog.
+- [Coding Standards](https://oss.bluebear.io/baloo-bear/features/coding-standards/): Judge changed lines against the skills `.bluebear/skill_enforcement.json` maps them to.
 - [Dashboard](https://oss.bluebear.io/baloo-bear/features/dashboard/): PostgreSQL-backed review history and cost tracking.
 - [Thread Agent](https://oss.bluebear.io/baloo-bear/features/thread-agent/): Replies when developers answer Baloo's inline comments (off by default).
 

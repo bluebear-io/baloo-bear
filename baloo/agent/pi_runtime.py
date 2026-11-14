@@ -59,6 +59,11 @@ class PIAgentOptions:
     # Useful for single-turn JSON-in/JSON-out tasks where all context
     # is already embedded in the prompt.
     no_tools: bool = False
+    # When True, launch PI with --no-context-files and --no-skills, so it does not load
+    # AGENTS.md/CLAUDE.md from its working directory and every parent, or discover skills.
+    # An agent with no cwd inherits the server's, so without this it would read Baloo's own
+    # AGENTS.md as instructions.
+    no_context_files: bool = False
     # Human-readable label for logs. Distinguishes the several agents that
     # instantiate PIAgentBase directly (scope decider, thread agent, ...) —
     # without it they all log under the generic class name "PIAgentBase".
@@ -536,6 +541,8 @@ class PIAgentBase:
             "--model",
             f"{self.options.provider}/{self.options.model}",
         ]
+        if self.options.no_context_files:
+            cmd.extend(["--no-context-files", "--no-skills"])
         if self.options.no_tools:
             cmd.append("--no-tools")
         else:

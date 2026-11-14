@@ -53,6 +53,7 @@ nav:
       - Guidelines Enforcement: features/guidelines.md
       - Fidelity Analysis: features/fidelity.md
       - Documentation Drift: features/documentation-drift.md
+      - Coding Standards: features/coding-standards.md
       - Model Configuration: features/models.md
       - Amazon Bedrock Setup: features/bedrock.md
       - Databricks Setup: features/databricks.md

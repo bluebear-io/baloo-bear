@@ -63,6 +63,7 @@ Inline comments appear on the exact lines:
 | **Discussion tracking**   | Follows up on existing threads, skips duplicates, detects addressed feedback                                                      |
 | **Fidelity analysis**     | Optionally compares PR against design plan documents                                                                              |
 | **Documentation drift**   | Optionally asks authors to update mapped docs when implementation changes make them stale                                         |
+| **Coding standards**      | Optionally judges changed lines against the skills `.bluebear/skill_enforcement.json` maps them to                                |
 | **FP reduction**          | Second LLM pass (on by default) that verifies findings and drops false positives                                                  |
 | **Dashboard**             | Optional PostgreSQL-backed review history UI with cost tracking                                                                   |
 | **Dependabot-aware**      | Specialized review logic for dependency update PRs                                                                                |
@@ -149,7 +150,8 @@ baloo/
 ├── github/      # Webhooks, API client, auth, Checks API
 ├── outcomes/    # Post-merge labeling of how findings were resolved
 ├── processor/   # Findings filter, severity routing, decisions, FP verification
-└── review/      # Review orchestration: run agents, route findings, post results
+├── review/      # Review orchestration: run agents, route findings, post results
+└── standards/   # Coding standards enforcement (optional)
 ```
 
 ## Configuration
@@ -188,6 +190,7 @@ Feature guides:
 - [Guidelines Enforcement](docs/features/guidelines.md) — Repo convention checking
 - [Fidelity Analysis](docs/features/fidelity.md) — Plan-vs-implementation scoring
 - [Documentation Drift](docs/features/documentation-drift.md) — PR-time stale docs detection
+- [Coding Standards](docs/features/coding-standards.md) — Skill-based standards on changed lines
 - [Models](docs/features/models.md) — Supported providers, models, and tiers
 - [Severity Routing](docs/features/severity-routing.md) — How findings reach developers
 - [Discussion Tracking](docs/features/discussions.md) — Thread follow-ups across iterations

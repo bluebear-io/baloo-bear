@@ -237,6 +237,35 @@ class Settings(BaseSettings):
         description="Model for documentation drift analysis (short name or provider/model)",
     )
 
+    # Coding Standards Configuration
+    coding_standards_enabled: bool = Field(
+        default=False,
+        description=(
+            "Judge changed lines against the skills mapped to them by "
+            ".bluebear/skill_enforcement.json path rules"
+        ),
+    )
+    coding_standards_model: str = Field(
+        default="sonnet",
+        description="Model for the coding standards judge (short name or provider/model)",
+    )
+    coding_standards_umbrella_repo: str = Field(
+        default="",
+        description=(
+            "owner/repo whose .bluebear/skill_enforcement.json rules and .agents/skills also "
+            "apply to PRs in other repositories, treated as checked out at <repo-name>/ in it"
+        ),
+    )
+    coding_standards_max_concurrency: int = Field(
+        default=2,
+        ge=1,
+        description="Maximum concurrent coding standards judge calls per review",
+    )
+    coding_standards_max_chars_per_call: int = Field(
+        default=400_000,
+        description="Maximum characters of numbered file content sent in one judge call",
+    )
+
     # Fidelity Report Configuration
     fidelity_enabled: bool = Field(
         default=True,

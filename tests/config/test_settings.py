@@ -87,3 +87,10 @@ class TestAgentProviderNormalization:
     def test_normalization_applies_to_every_provider(self):
         assert Settings(agent_provider="Amazon-Bedrock").agent_provider == "amazon-bedrock"
         assert Settings(agent_provider="Anthropic").agent_provider == "anthropic"
+
+
+def test_coding_standards_concurrency_below_one_is_rejected(monkeypatch):
+    # A zero-permit semaphore would block every judge call forever.
+    monkeypatch.setenv("CODING_STANDARDS_MAX_CONCURRENCY", "0")
+    with pytest.raises(ValidationError):
+        Settings()

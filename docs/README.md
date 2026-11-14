@@ -14,6 +14,7 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 - **[Guidelines Enforcement](features/guidelines.md)** — How Baloo reads and enforces repo conventions
 - **[Fidelity Analysis](features/fidelity.md)** — Comparing PRs against design plan documents
 - **[Documentation Drift](features/documentation-drift.md)** — PR-time checks for stale mapped docs
+- **[Coding Standards](features/coding-standards.md)** — Judge changed lines against the skills `.bluebear/skill_enforcement.json` maps them to (optional)
 - **[Model Configuration](features/models.md)** — Supported providers, models, tiers, and provider switching
 - **[Amazon Bedrock Setup](features/bedrock.md)** — Step-by-step guide to run Baloo on Bedrock
 - **[Databricks Setup](features/databricks.md)** — Step-by-step guide to run Baloo on a Databricks AI Gateway

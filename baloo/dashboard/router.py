@@ -145,6 +145,13 @@ SETTING_CATEGORIES = {
         "documentation_drift_catalog_path",
         "documentation_drift_model",
     },
+    "Coding Standards": {
+        "coding_standards_enabled",
+        "coding_standards_model",
+        "coding_standards_umbrella_repo",
+        "coding_standards_max_concurrency",
+        "coding_standards_max_chars_per_call",
+    },
 }
 
 AGENT_PROVIDER_CHOICES = (
@@ -253,6 +260,7 @@ COMMON_SETTINGS = frozenset(
         "fp_verification_enabled",
         "thread_agent_enabled",
         "documentation_drift_enabled",
+        "coding_standards_enabled",
         "fidelity_enabled",
         "ast_tools_enabled",
         "feedback_signals_enabled",
@@ -395,6 +403,7 @@ def _models_in_use() -> list[dict[str, str]]:
     fp_configured = str(resolve_setting("fp_verification_model"))
     thread_configured = str(resolve_setting("thread_agent_model"))
     docs_configured = str(resolve_setting("documentation_drift_model"))
+    standards_configured = str(resolve_setting("coding_standards_model"))
 
     return [
         {
@@ -431,6 +440,13 @@ def _models_in_use() -> list[dict[str, str]]:
             "configured": docs_configured,
             "resolved": _resolve_model_ref(docs_configured),
             "source": setting_source("documentation_drift_model"),
+        },
+        {
+            "role": "Coding standards",
+            "setting": "CODING_STANDARDS_MODEL",
+            "configured": standards_configured,
+            "resolved": _resolve_model_ref(standards_configured),
+            "source": setting_source("coding_standards_model"),
         },
         {
             "role": "Sync scope decider",

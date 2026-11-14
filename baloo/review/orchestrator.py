@@ -57,6 +57,7 @@ from baloo.processor.severity_router import (
     count_by_severity,
     route_findings,
 )
+from baloo.standards.enforcer import StandardsReport, run_coding_standards
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ _REVIEW_SIDE_AGENT_METADATA_KEYS = (
     "fp_verification",
     "thread_reverification",
     "sync_scope_decider",
+    "coding_standards",
 )
 
 
@@ -1394,6 +1396,9 @@ async def process_pr_review(
                 async def _skip_documentation() -> tuple[str, DocumentationDriftResult | None]:
                     return "", None
 
+                async def _skip_coding_standards() -> StandardsReport:
+                    return StandardsReport()
+
                 fidelity_task = (
                     _run_fidelity_analysis(
                         github_client,
@@ -1418,20 +1423,44 @@ async def process_pr_review(
                     else _skip_documentation()
                 )
 
+                coding_standards_enabled = bool(resolve_setting("coding_standards_enabled"))
+                coding_standards_task = (
+                    run_coding_standards(
+                        github_client=github_client,
+                        installation_id=installation_id,
+                        pr_context=pr_context,
+                        repo_path=repo_path,
+                        review_id=db_review_id,
+                    )
+                    if coding_standards_enabled
+                    else _skip_coding_standards()
+                )
+
                 (
                     (fidelity_report_text, fidelity_result),
                     (documentation_report_text, documentation_result),
                     agent_result,
+                    standards_report,
                 ) = await asyncio.gather(
                     fidelity_task,
                     documentation_task,
                     agent.review_pr(review_context, review_id=db_review_id),
+                    coding_standards_task,
                 )
+            if coding_standards_enabled:
+                agent_result.metadata["coding_standards"] = {
+                    **standards_report.metadata,
+                    "judge_calls": standards_report.judge_calls,
+                    "violations": len(standards_report.comments),
+                    "errors": len(standards_report.errors),
+                }
             agent_metadata = agent_result.metadata
             review_result = agent_result
 
             findings_filter = FindingsFilter()
-            filtered_comments = findings_filter.filter_findings(review_result.comments)
+            filtered_comments = findings_filter.filter_findings(
+                review_result.comments + standards_report.comments
+            )
             filtered_comments, skipped_similar_repeats = _dedupe_similar_findings(filtered_comments)
 
             # Merge inline review threads with synthetic threads built from
@@ -1607,6 +1636,8 @@ async def process_pr_review(
                 repo_full_name=repo_full_name,
             )
             summary_text = f"{summary_text}\n\n{decision_summary}"
+            if standards_report.summary_section():
+                summary_text += f"\n\n{standards_report.summary_section()}"
 
             if skipped_responded:
                 summary_text += f"\n\n💬 Skipped {skipped_responded} thread(s) with developer responses (not re-reviewed)."
@@ -1784,6 +1815,8 @@ async def process_pr_review(
             if not request_changes and approve:
                 logger.info("No blocking issues found, posting approval review")
                 approval_msg = "✅ No critical or high severity issues found. Safe to merge!"
+                if standards_report.summary_section():
+                    approval_msg += f"\n\n{standards_report.summary_section()}"
                 medium_count = severity_counts.get(ReviewSeverity.MEDIUM.value, 0)
                 if medium_count:
                     location = "Baloo's finding digest"
@@ -1854,6 +1887,9 @@ async def process_pr_review(
                     )
                 else:
                     completion_msg = f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. No new issues found."
+                # Not every outcome posts a review, so the progress comment always carries it.
+                if standards_report.summary_section():
+                    completion_msg += f"\n\n{standards_report.summary_section()}"
                 completion_msg += _RERUN_FOOTER
 
                 if reviewed_commit:

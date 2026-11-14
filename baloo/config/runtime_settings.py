@@ -34,12 +34,14 @@ MUTABLE_KEYS = frozenset(
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
+        "coding_standards_model",
         # Feature toggles
         "review_auto_approve",
         "review_use_checks_api",
         "fp_verification_enabled",
         "thread_agent_enabled",
         "documentation_drift_enabled",
+        "coding_standards_enabled",
         "fidelity_enabled",
         "ast_tools_enabled",
         "feedback_signals_enabled",
@@ -205,6 +207,7 @@ def validate_override(key: str, raw: str) -> str:
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
+        "coding_standards_model",
         "pi_thinking_level",
     }:
         if not isinstance(coerced, str) or not coerced.strip():

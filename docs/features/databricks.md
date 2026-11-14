@@ -20,7 +20,7 @@ Three settings in that file are load-bearing, each confirmed against a live work
 | `compat.supportsEagerToolInputStreaming: false` | The gateway's Anthropic translator rejects per-tool `eager_input_streaming` on the streaming+tools path every review uses. Without this flag requests **hang** instead of failing — surfacing as an `agent_error` with no detail rather than a clean error. |
 | `system.ai.*` model IDs | Models are Unity Catalog model services. The older flat `databricks-claude-*` names now return `501 NOT_IMPLEMENTED: Use Unity Catalog model services (v3)`. |
 
-`AGENT_PROVIDER` is global: selecting `databricks` routes the primary review, FP verification, thread agent, fidelity, documentation drift, and sync-scope agents through Databricks. There is no per-agent provider override.
+`AGENT_PROVIDER` is global: selecting `databricks` routes the primary review, FP verification, thread agent, fidelity, documentation drift, coding standards, and sync-scope agents through Databricks. There is no per-agent provider override.
 
 ## Prerequisites
 
@@ -84,7 +84,7 @@ To target a model service outside the tier table — an operator-owned one with 
 AGENT_MODEL=main.baloo.claude-review          # or databricks/main.baloo.claude-review
 ```
 
-Baloo declares every Unity Catalog name found in `AGENT_MODEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL` and `DOCUMENTATION_DRIFT_MODEL` in the generated `models.json` alongside the tier models, since a custom provider's model list replaces PI's catalog rather than extending it. The name is passed through unvalidated (validation would need the `unity-catalog` token scope); a service that does not exist returns `404 NOT_FOUND` from the gateway.
+Baloo declares every Unity Catalog name found in `AGENT_MODEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL` and `CODING_STANDARDS_MODEL` in the generated `models.json` alongside the tier models, since a custom provider's model list replaces PI's catalog rather than extending it. The name is passed through unvalidated (validation would need the `unity-catalog` token scope); a service that does not exist returns `404 NOT_FOUND` from the gateway.
 
 ## Cost reporting
 
