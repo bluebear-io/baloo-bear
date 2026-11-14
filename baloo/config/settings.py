@@ -258,6 +258,7 @@ class Settings(BaseSettings):
     )
     coding_standards_max_concurrency: int = Field(
         default=2,
+        ge=1,
         description="Maximum concurrent coding standards judge calls per review",
     )
     coding_standards_max_chars_per_call: int = Field(

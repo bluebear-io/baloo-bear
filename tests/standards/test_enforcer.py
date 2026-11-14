@@ -352,3 +352,70 @@ async def test_an_empty_file_has_nothing_to_judge_and_is_not_an_error(
 
     assert report.errors == []
     assert judge_calls == [("python", SKILL_TEXT, ["a.py"])]
+
+
+async def test_a_pure_rename_has_nothing_to_judge_and_is_not_an_error(
+    repos, github_client, judge_calls
+):
+    # GitHub returns no patch for a rename without content changes.
+    _write(repos["target"], {"moved.py": "a\nb\n"})
+    _write(
+        repos["umbrella"],
+        {
+            ".bluebear/skill_enforcement.json": _rules([{"path": "**/*.py", "skill": "python"}]),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+    rename = FileChange(
+        filename="moved.py", status="renamed", additions=0, deletions=0, changes=0, patch=None
+    )
+
+    report = await _run(github_client, "acme/svc", [rename], str(repos["target"]))
+
+    assert judge_calls == []
+    assert report.errors == []
+
+
+async def test_an_unreadable_skill_fails_only_that_skill(repos, github_client, judge_calls):
+    _write(repos["target"], {"a.py": "a\nb\n"})
+    _write(
+        repos["umbrella"],
+        {
+            ".bluebear/skill_enforcement.json": _rules(
+                [{"path": "**/*.py", "skill": "python"}, {"path": "**/*.py", "skill": "binary"}]
+            ),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+    (repos["umbrella"] / ".agents/skills/binary").mkdir(parents=True)
+    (repos["umbrella"] / ".agents/skills/binary/SKILL.md").write_bytes(b"\xff\xfe\x00")
+
+    report = await _run(github_client, "acme/svc", [_change("a.py")], str(repos["target"]))
+
+    assert [skill for skill, _, _ in judge_calls] == ["python"]
+    assert len(report.comments) == 1
+    assert len(report.errors) == 1 and "binary" in report.errors[0]
+
+
+async def test_a_rule_with_unsupported_glob_syntax_fails_only_that_rule(
+    repos, github_client, judge_calls
+):
+    _write(repos["target"], {"a.py": "a\nb\n"})
+    _write(
+        repos["umbrella"],
+        {
+            ".bluebear/skill_enforcement.json": _rules(
+                [
+                    {"path": "**/*.{py,pyi}", "skill": "typing"},
+                    {"path": "**/*.py", "skill": "python"},
+                ]
+            ),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+
+    report = await _run(github_client, "acme/svc", [_change("a.py")], str(repos["target"]))
+
+    assert [skill for skill, _, _ in judge_calls] == ["python"]
+    assert len(report.errors) == 1
+    assert "typing" in report.errors[0] and "**/*.{py,pyi}" in report.errors[0]

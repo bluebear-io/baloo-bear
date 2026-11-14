@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from baloo.standards.glob import match
+from baloo.standards.glob import UnsupportedGlobError, match, validate
 
 RULES_FILE = PurePosixPath(".bluebear/skill_enforcement.json")
 SKILLS_DIR = PurePosixPath(".agents/skills")
@@ -64,12 +64,18 @@ class SkillRef:
     source: RuleSource
 
 
-def load_rules(source: RuleSource) -> list[PathRule]:
+def load_rules(source: RuleSource) -> tuple[list[PathRule], list[str]]:
     """The rules that judge code: path rules for file writes, with no specific agent and
-    without skip_coding_standards. A missing rules file means no rules."""
-    text = source.read(RULES_FILE)
+    without skip_coding_standards. A missing rules file means no rules.
+
+    Also returns why each rule this matcher cannot honor was skipped; the other rules apply.
+    """
+    try:
+        text = source.read(RULES_FILE)
+    except UnicodeDecodeError as error:
+        raise RulesFileError(f"{source.name}/{RULES_FILE} is not valid UTF-8") from error
     if text is None:
-        return []
+        return [], []
     try:
         data = json.loads(text)
     except json.JSONDecodeError as error:
@@ -79,6 +85,7 @@ def load_rules(source: RuleSource) -> list[PathRule]:
         raise RulesFileError(f"{source.name}/{RULES_FILE} has no 'rules' list")
 
     rules: list[PathRule] = []
+    skipped: list[str] = []
     for raw in raw_rules:
         if not isinstance(raw, dict):
             raise RulesFileError(f"{source.name}/{RULES_FILE} has a rule that is not an object")
@@ -99,8 +106,16 @@ def load_rules(source: RuleSource) -> list[PathRule]:
         # it, so it must not escape that directory.
         if "/" in skill or "\\" in skill or ".." in skill:
             raise RulesFileError(f"{source.name}/{RULES_FILE} has an invalid skill name {skill!r}")
-        rules.append(PathRule(path=normalize_pattern(path), skill=skill, source=source))
-    return rules
+        pattern = normalize_pattern(path)
+        try:
+            validate(pattern)
+        except UnsupportedGlobError as error:
+            skipped.append(
+                f"the {source.name}/{RULES_FILE} rule for skill `{skill}` was skipped: {error}"
+            )
+            continue
+        rules.append(PathRule(path=pattern, skill=skill, source=source))
+    return rules, skipped
 
 
 def normalize_pattern(pattern: str) -> str:

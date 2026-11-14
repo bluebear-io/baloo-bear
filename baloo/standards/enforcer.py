@@ -135,19 +135,24 @@ async def enforce_on_checkouts(
     target = RuleSource(name=target_name, root=target_root)
     # Target rules come first: the handler loads the closer directory's rules first.
     sources = [target] if umbrella is None else [target, umbrella]
-    rules = [rule for source in sources for rule in load_rules(source)]
-    if not rules:
-        return StandardsReport()
+    report = StandardsReport()
+    rules = []
+    for source in sources:
+        source_rules, skipped = load_rules(source)
+        rules.extend(source_rules)
+        report.errors.extend(skipped)
     matched = match_files(target_name, [f.filename for f in files], rules)
-    if not matched:
-        return StandardsReport()
-    return await _judge(target, files, matched)
+    if matched:
+        await _judge(target, files, matched, report)
+    return report
 
 
 async def _judge(
-    target: RuleSource, files: list[FileChange], matched: dict[str, list[SkillRef]]
-) -> StandardsReport:
-    report = StandardsReport()
+    target: RuleSource,
+    files: list[FileChange],
+    matched: dict[str, list[SkillRef]],
+    report: StandardsReport,
+) -> None:
     judge_files: dict[str, JudgeFile] = {}
     for change in files:
         if change.filename in matched:
@@ -192,6 +197,12 @@ async def _judge(
         except UnsafePathError as error:
             report.errors.append(f"skill `{ref.skill}` was not used: {error}")
             continue
+        except UnicodeDecodeError:
+            report.errors.append(
+                f"skill `{ref.skill}` was not used: {ref.source.name}/{skill_relpath} is not "
+                "valid UTF-8"
+            )
+            continue
         if skill_content is None:
             report.errors.append(
                 f"skill `{ref.skill}` is mapped by {ref.source.name}/{RULES_FILE} but "
@@ -204,7 +215,6 @@ async def _judge(
     for ref, violations in await asyncio.gather(*tasks):
         location = f"{ref.source.name}/{ref.source.skill_relpath(ref.skill)}"
         report.comments.extend(_to_comment(violation, location) for violation in violations)
-    return report
 
 
 def _load_judge_file(
@@ -223,8 +233,9 @@ def _load_judge_file(
             f"`{change.filename}` was not judged: it is missing from the checked-out head commit"
         )
         return None
-    if not content:
-        # GitHub returns no patch for an empty file; it has no lines to judge.
+    if not content or (change.patch is None and change.additions == 0):
+        # GitHub returns no patch for an empty file or a rename without content changes;
+        # neither has changed lines to judge.
         return None
     if change.patch is None:
         report.errors.append(

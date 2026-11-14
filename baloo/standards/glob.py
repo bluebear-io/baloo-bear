@@ -52,5 +52,10 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(parts) + r"\Z")
 
 
+def validate(pattern: str) -> None:
+    """Raise UnsupportedGlobError when the pattern uses syntax this matcher cannot honor."""
+    _compile(pattern)
+
+
 def match(pattern: str, path: str) -> bool:
     return _compile(pattern).match(path) is not None

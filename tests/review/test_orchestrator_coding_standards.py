@@ -55,7 +55,7 @@ def _judge_answer(**overrides):
     }
 
 
-async def _review(tmp_path, *, enabled, skills, judge, agent_comments=None):
+async def _review(tmp_path, *, enabled, skills, judge, agent_comments=None, notify_progress=False):
     root = _checkout(tmp_path, skills)
     ctx = _make_pr_context()
     ctx.files_changed = [
@@ -82,7 +82,7 @@ async def _review(tmp_path, *, enabled, skills, judge, agent_comments=None):
             pr_number=1,
             installation_id=1,
             trigger_reason="pull_request:opened",
-            notify_progress=False,
+            notify_progress=notify_progress,
             head_sha="abc123",
         )
     return gc
@@ -159,3 +159,12 @@ async def test_enforcement_problems_are_listed_in_the_review_summary(tmp_path):
     assert any(
         "Coding standards enforcement incomplete" in s and "python" in s for s in summaries
     ), summaries
+
+
+async def test_enforcement_problems_reach_the_progress_comment(tmp_path):
+    judge = AsyncMock(return_value=(_judge_answer(), {"cost_usd": 0.0}))
+
+    gc = await _review(tmp_path, enabled=True, skills={}, judge=judge, notify_progress=True)
+
+    completion = gc.edit_comment.call_args_list[-1].args[2]
+    assert "Coding standards enforcement incomplete" in completion and "python" in completion

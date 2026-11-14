@@ -11,7 +11,7 @@ Two consequences follow from the sandbox:
 - Only an allowlist of `AWS_*` environment variables is forwarded into the sandbox; everything else (including Baloo's own GitHub and database secrets) is stripped so a prompt-injected agent cannot read them.
 - The sandbox has its own filesystem view. Credential **files** are only visible if Baloo bind-mounts them, which it does for the paths named in `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, plus the default `~/.aws/credentials` and `~/.aws/config`.
 
-`AGENT_PROVIDER` is global: selecting `amazon-bedrock` routes the primary review, FP verification, thread agent, fidelity, documentation drift, and sync-scope agents through Bedrock. There is no per-agent provider override.
+`AGENT_PROVIDER` is global: selecting `amazon-bedrock` routes the primary review, FP verification, thread agent, fidelity, documentation drift, coding standards, and sync-scope agents through Bedrock. There is no per-agent provider override.
 
 ## Prerequisites
 

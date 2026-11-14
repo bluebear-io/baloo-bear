@@ -1423,6 +1423,7 @@ async def process_pr_review(
                     else _skip_documentation()
                 )
 
+                coding_standards_enabled = bool(resolve_setting("coding_standards_enabled"))
                 coding_standards_task = (
                     run_coding_standards(
                         github_client=github_client,
@@ -1431,7 +1432,7 @@ async def process_pr_review(
                         repo_path=repo_path,
                         review_id=db_review_id,
                     )
-                    if resolve_setting("coding_standards_enabled")
+                    if coding_standards_enabled
                     else _skip_coding_standards()
                 )
 
@@ -1446,7 +1447,7 @@ async def process_pr_review(
                     agent.review_pr(review_context, review_id=db_review_id),
                     coding_standards_task,
                 )
-            if resolve_setting("coding_standards_enabled"):
+            if coding_standards_enabled:
                 agent_result.metadata["coding_standards"] = {
                     **standards_report.metadata,
                     "judge_calls": standards_report.judge_calls,
@@ -1886,6 +1887,9 @@ async def process_pr_review(
                     )
                 else:
                     completion_msg = f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. No new issues found."
+                # Not every outcome posts a review, so the progress comment always carries it.
+                if standards_report.summary_section():
+                    completion_msg += f"\n\n{standards_report.summary_section()}"
                 completion_msg += _RERUN_FOOTER
 
                 if reviewed_commit:

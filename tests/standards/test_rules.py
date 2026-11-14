@@ -21,7 +21,7 @@ def _source(root: Path, name: str, rules: list[dict] | None) -> RuleSource:
 
 
 def _skills(target: str, files: list[str], *sources: RuleSource) -> dict[str, list[str]]:
-    rules = [rule for source in sources for rule in load_rules(source)]
+    rules = [rule for source in sources for rule in load_rules(source)[0]]
     return {
         path: [f"{ref.source.name}:{ref.skill}" for ref in refs]
         for path, refs in match_files(target, files, rules).items()
@@ -29,7 +29,7 @@ def _skills(target: str, files: list[str], *sources: RuleSource) -> dict[str, li
 
 
 def test_missing_rules_file_means_no_rules(tmp_path):
-    assert load_rules(_source(tmp_path / "repo", "repo", None)) == []
+    assert load_rules(_source(tmp_path / "repo", "repo", None)) == ([], [])
 
 
 def test_only_path_rules_that_judge_code_are_loaded(tmp_path):
@@ -51,7 +51,9 @@ def test_only_path_rules_that_judge_code_are_loaded(tmp_path):
             {"tool_category": "write_file", "path": "*", "skill": "everything"},
         ],
     )
-    assert [rule.skill for rule in load_rules(source)] == ["go", "python", "ts"]
+    rules, skipped = load_rules(source)
+    assert [rule.skill for rule in rules] == ["go", "python", "ts"]
+    assert skipped == []
 
 
 @pytest.mark.parametrize("skill", ["../x", "a/b", "a\\b", ".."])
@@ -67,6 +69,25 @@ def test_invalid_rules_file_fails(tmp_path):
     (root / ".bluebear" / "skill_enforcement.json").write_text("{not json")
     with pytest.raises(RulesFileError):
         load_rules(RuleSource(name="repo", root=root))
+
+
+def test_rules_file_that_is_not_utf8_fails(tmp_path):
+    root = tmp_path / "repo"
+    (root / ".bluebear").mkdir(parents=True)
+    (root / ".bluebear" / "skill_enforcement.json").write_bytes(b"\xff\xfe{}")
+    with pytest.raises(RulesFileError):
+        load_rules(RuleSource(name="repo", root=root))
+
+
+def test_a_rule_with_unsupported_glob_syntax_is_skipped_and_reported(tmp_path):
+    source = _source(
+        tmp_path / "repo",
+        "repo",
+        [{"path": "src/*.[jt]s", "skill": "js"}, {"path": "**/*.py", "skill": "python"}],
+    )
+    rules, skipped = load_rules(source)
+    assert [rule.skill for rule in rules] == ["python"]
+    assert len(skipped) == 1 and "src/*.[jt]s" in skipped[0] and "js" in skipped[0]
 
 
 def test_relative_patterns_match_at_any_depth_like_the_handler(tmp_path):

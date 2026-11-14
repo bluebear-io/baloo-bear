@@ -43,7 +43,9 @@ If the repository has no rules file, or no rule matches a changed file, the feat
 ## Rules
 
 - `path` is a glob with `*`, `?` and `**`. A relative path matches at any depth, so
-  `tests/**` also matches `src/tests/test_a.py`.
+  `tests/**` also matches `src/tests/test_a.py`. Character classes (`[...]`), alternation
+  (`{a,b}`) and escapes (`\`) are not supported: a rule that uses them is skipped and listed
+  under "Coding standards enforcement incomplete", and the other rules still apply.
 - Rules with `tool_category` other than `write_file` (or empty), rules with an `agent`, and rules
   with `"skip_coding_standards": true` are ignored.
 - When several rules name the same skill for a file, the first one applies.
@@ -65,5 +67,5 @@ App installation.
 ## When Something Fails
 
 Enforcement problems never block the review. Each one is listed under "Coding standards
-enforcement incomplete" in the review summary, for example a missing skill file, a file GitHub
+enforcement incomplete" in the review summary and in Baloo's progress comment, for example a missing skill file, a file GitHub
 returned no patch for, or a failed model call.
