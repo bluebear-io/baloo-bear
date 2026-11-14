@@ -69,3 +69,6 @@ App installation.
 Enforcement problems never block the review. Each one is listed under "Coding standards
 enforcement incomplete" in the review summary and in Baloo's progress comment, for example a missing skill file, a file GitHub
 returned no patch for, or a failed model call.
+
+A rules file that cannot be read, such as invalid JSON, is also listed. If it is the umbrella's,
+the PR repository's own rules still apply; if it is the PR repository's own, no file is judged.

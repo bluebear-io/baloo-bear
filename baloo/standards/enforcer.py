@@ -19,7 +19,7 @@ from baloo.github.models import (
     ReviewComment,
     ReviewSeverity,
 )
-from baloo.standards.diff import changed_ranges
+from baloo.standards.diff import PatchParseError, changed_ranges
 from baloo.standards.judge import (
     JudgeError,
     JudgeFile,
@@ -30,6 +30,7 @@ from baloo.standards.judge import (
 )
 from baloo.standards.rules import (
     RULES_FILE,
+    RulesFileError,
     RuleSource,
     SkillRef,
     UnsafePathError,
@@ -129,7 +130,7 @@ async def enforce_on_checkouts(
     pr_context: PRContext, target_root: Path, umbrella: RuleSource | None
 ) -> StandardsReport:
     """Judge the PR's changed files given a checkout of its head and, optionally, of the
-    umbrella repository. Raises on invalid rules; run_coding_standards reports it."""
+    umbrella repository."""
     files = [f for f in pr_context.files_changed if f.status in _JUDGED_STATUSES]
     target_name = pr_context.repo_full_name.split("/")[1]
     target = RuleSource(name=target_name, root=target_root)
@@ -138,7 +139,13 @@ async def enforce_on_checkouts(
     report = StandardsReport()
     rules = []
     for source in sources:
-        source_rules, skipped = load_rules(source)
+        try:
+            source_rules, skipped = load_rules(source)
+        except RulesFileError as error:
+            report.errors.append(f"no rule from {source.name}/{RULES_FILE} was applied: {error}")
+            if source is target:
+                return report
+            continue
         rules.extend(source_rules)
         report.errors.extend(skipped)
     matched = match_files(target_name, [f.filename for f in files], rules)
@@ -243,7 +250,11 @@ def _load_judge_file(
             "changed lines are unknown"
         )
         return None
-    ranges = changed_ranges(change.patch)
+    try:
+        ranges = changed_ranges(change.patch)
+    except PatchParseError as error:
+        report.errors.append(f"`{change.filename}` was not judged: its patch is malformed: {error}")
+        return None
     if not ranges:
         return None
     lines = file_lines(content)

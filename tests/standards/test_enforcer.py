@@ -257,11 +257,49 @@ async def test_missing_checkout_and_broken_rules_become_errors(repos, github_cli
     no_checkout = await _run(github_client, "acme/svc", [_change("a.py")], None)
     assert len(no_checkout.errors) == 1 and "no checkout" in no_checkout.errors[0]
 
-    _write(repos["target"], {"a.py": "a\nb\n"})
-    _write(repos["umbrella"], {".bluebear/skill_enforcement.json": "{broken"})
+    _write(repos["target"], {"a.py": "a\nb\n", ".bluebear/skill_enforcement.json": "{broken"})
     broken = await _run(github_client, "acme/svc", [_change("a.py")], str(repos["target"]))
-    assert broken.comments == []
-    assert len(broken.errors) == 1 and "RulesFileError" in broken.errors[0]
+    assert broken.comments == [] and judge_calls == []
+    assert len(broken.errors) == 1 and "svc/.bluebear/skill_enforcement.json" in broken.errors[0]
+
+
+async def test_a_broken_umbrella_rules_file_keeps_the_target_rules(
+    repos, github_client, judge_calls
+):
+    _write(
+        repos["target"],
+        {
+            "a.py": "a\nb\n",
+            ".bluebear/skill_enforcement.json": _rules([{"path": "**/*.py", "skill": "python"}]),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+    _write(repos["umbrella"], {".bluebear/skill_enforcement.json": "{broken"})
+
+    report = await _run(github_client, "acme/svc", [_change("a.py")], str(repos["target"]))
+
+    assert judge_calls == [("python", SKILL_TEXT, ["a.py"])]
+    assert len(report.comments) == 1
+    assert len(report.errors) == 1
+    assert "umbrella/.bluebear/skill_enforcement.json" in report.errors[0]
+
+
+async def test_an_unparseable_patch_skips_only_that_file(repos, github_client, judge_calls):
+    _write(repos["target"], {"a.py": "a\nb\n", "b.py": "a\nb\n"})
+    _write(
+        repos["umbrella"],
+        {
+            ".bluebear/skill_enforcement.json": _rules([{"path": "**/*.py", "skill": "python"}]),
+            ".agents/skills/python/SKILL.md": SKILL_TEXT,
+        },
+    )
+    changes = [_change("a.py", patch="+a\n+b"), _change("b.py")]
+
+    report = await _run(github_client, "acme/svc", changes, str(repos["target"]))
+
+    assert judge_calls == [("python", SKILL_TEXT, ["b.py"])]
+    assert len(report.errors) == 1
+    assert "`a.py` was not judged" in report.errors[0]
 
 
 async def test_unavailable_umbrella_checkout_is_an_error(
