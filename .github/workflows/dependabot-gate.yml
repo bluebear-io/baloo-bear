@@ -7,7 +7,13 @@
 # Runs started by Dependabot only receive Dependabot secrets: DEPENDABOT_APP_ID and
 # DEPENDABOT_APP_PRIVATE_KEY must be Dependabot secrets of a GitHub App with contents
 # and pull requests write access. GITHUB_TOKEN cannot be used to merge, because pushes
-# made with it do not trigger the workflows that run on main.
+# made with it do not trigger the workflows that run on main. The same two secrets
+# must also exist as Actions secrets, because review events started by a human or by
+# the App itself only receive Actions secrets.
+#
+# Auto-merge waits only for required checks, so this is safe only when the main
+# branch requires the "Dependabot gate" check: otherwise a push that lands after the
+# approval could merge before its own gate run withdraws it.
 
 name: Dependabot Gate
 
@@ -60,9 +66,11 @@ jobs:
           python3 .dependabot-gate-source/.github/dependabot-gate/dependabot_gate.py \
             --base "$GATE_BASE" --head "$GATE_HEAD" --pull-request "$GATE_PULL_REQUEST"
 
+      # Also on review events: a re-evaluation can fail after an earlier pass (a registry
+      # outage, a re-pushed Docker tag), and the approval and auto-merge must not outlive it.
       - name: Create app token
         id: token
-        if: github.event_name == 'pull_request'
+        if: (steps.gate.outcome == 'success' && github.event_name == 'pull_request') || steps.gate.outcome == 'failure'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.DEPENDABOT_APP_ID }}
@@ -77,14 +85,25 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          gh pr review "$PR_URL" --approve --body "Dependabot gate passed for $HEAD_SHA: no semver-major update, exact pins with the lockfile updated, every changed version released at least 28 days ago. Approved automatically; no human approval is required."
-          gh pr merge "$PR_URL" --auto --squash
+          # The approval and the auto-merge are bound to the gated commit; a newer push
+          # gets its own gate run.
+          current="$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid)"
+          if [[ "$current" != "$HEAD_SHA" ]]; then
+            echo "::error::The pull request head moved from $HEAD_SHA to $current after the gate ran; the gate run for $current decides."
+            exit 1
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            -f commit_id="$HEAD_SHA" \
+            -f event=APPROVE \
+            -f body="Dependabot gate passed for $HEAD_SHA: no semver-major update, exact pins with the lockfile updated, every changed version released at least 28 days ago. Approved automatically; no human approval is required." > /dev/null
+          gh pr merge "$PR_URL" --auto --squash --match-head-commit "$HEAD_SHA"
 
       - name: Withdraw approval and auto-merge
-        if: steps.gate.outcome == 'failure' && github.event_name == 'pull_request'
+        if: steps.gate.outcome == 'failure'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -108,18 +127,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          declare -A latest_state
-          while IFS=$'\t' read -r login state; do
-            [[ -n "$login" ]] && latest_state["$login"]="$state"
+          # Only an approval of the gated commit counts, so an approval given before a later
+          # push cannot carry a commit that never passed the gate.
+          declare -A latest_state latest_commit
+          while IFS=$'\t' read -r login state commit; do
+            if [[ -n "$login" ]]; then
+              latest_state["$login"]="$state"
+              latest_commit["$login"]="$commit"
+            fi
           done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            --jq '.[] | select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")) | "\(.user.login)\t\(.state)"')
+            --jq '.[] | select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")) | "\(.user.login)\t\(.state)\t\(.commit_id)"')
           for login in "${!latest_state[@]}"; do
-            if [[ "${latest_state[$login]}" == "APPROVED" ]]; then
-              echo "::notice::Dependabot gate failed, but $login approved this pull request; it follows the normal human flow."
+            if [[ "${latest_state[$login]}" == "APPROVED" && "${latest_commit[$login]}" == "$HEAD_SHA" ]]; then
+              echo "::notice::Dependabot gate failed, but $login approved $HEAD_SHA; it follows the normal human flow."
               exit 0
             fi
           done
-          echo "::error::Dependabot gate failed; see the job summary for the violations. This pull request needs a human approval."
+          echo "::error::Dependabot gate failed; see the job summary for the violations. This pull request needs a human approval of $HEAD_SHA."
           exit 1
