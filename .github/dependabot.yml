@@ -1,7 +1,16 @@
+# Dependabot PRs that pass the Dependabot gate (.github/workflows/dependabot-gate.yml)
+# are approved and merged automatically. The 28-day cooldown and the semver-major
+# ignore keep version updates within that gate; security updates bypass both, and
+# the gate then leaves majors and young releases to a human reviewer.
 version: 2
 updates:
   - package-ecosystem: "uv"
     directory: "/"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"
@@ -18,6 +27,11 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"
@@ -27,6 +41,11 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/extensions"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"
@@ -36,6 +55,11 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"
@@ -45,6 +69,11 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"
@@ -54,6 +83,11 @@ updates:
 
   - package-ecosystem: "docker-compose"
     directory: "/"
+    cooldown:
+      default-days: 28
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     schedule:
       interval: "weekly"
       day: "monday"

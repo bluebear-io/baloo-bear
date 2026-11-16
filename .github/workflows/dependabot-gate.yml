@@ -1,0 +1,125 @@
+# A Dependabot pull request that passes the gate (no semver-major update, exact pins
+# with the lockfile updated, every changed version released at least 28 days ago,
+# every commit a verified Dependabot commit) is approved and auto-merged. A failing
+# gate withdraws that approval and auto-merge, leaving the PR to human review, and
+# this check then passes only once a human approves.
+#
+# Runs started by Dependabot only receive Dependabot secrets: DEPENDABOT_APP_ID and
+# DEPENDABOT_APP_PRIVATE_KEY must be Dependabot secrets of a GitHub App with contents
+# and pull requests write access. GITHUB_TOKEN cannot be used to merge, because pushes
+# made with it do not trigger the workflows that run on main.
+
+name: Dependabot Gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependabot-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  dependabot-gate:
+    name: Dependabot gate
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The gate runs from the base branch so the pull request cannot change it.
+      - name: Check out the gate from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .dependabot-gate-source
+          sparse-checkout: .github/dependabot-gate
+          persist-credentials: false
+
+      - name: Evaluate Dependabot guardrails
+        id: gate
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GATE_BASE: ${{ github.event.pull_request.base.sha }}
+          GATE_HEAD: ${{ github.event.pull_request.head.sha }}
+          GATE_PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: |
+          python3 .dependabot-gate-source/.github/dependabot-gate/dependabot_gate.py \
+            --base "$GATE_BASE" --head "$GATE_HEAD" --pull-request "$GATE_PULL_REQUEST"
+
+      - name: Create app token
+        id: token
+        if: github.event_name == 'pull_request'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.DEPENDABOT_APP_ID }}
+          private-key: ${{ secrets.DEPENDABOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Approve and enable auto-merge
+        if: steps.gate.outcome == 'success' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh pr review "$PR_URL" --approve --body "Dependabot gate passed for $HEAD_SHA: no semver-major update, exact pins with the lockfile updated, every changed version released at least 28 days ago. Approved automatically; no human approval is required."
+          gh pr merge "$PR_URL" --auto --squash
+
+      - name: Withdraw approval and auto-merge
+        if: steps.gate.outcome == 'failure' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+          if [[ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
+            gh pr merge "$PR_URL" --disable-auto
+          fi
+          review_ids="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            --jq '.[] | select(.state == "APPROVED" and .user.login == env.APP_LOGIN) | .id')"
+          for review_id in $review_ids; do
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$review_id/dismissals" \
+              -f message="Dependabot gate failed on the latest commit; human review is required." \
+              -f event=DISMISS > /dev/null
+          done
+
+      - name: Require a human approval when the gate fails
+        if: steps.gate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          declare -A latest_state
+          while IFS=$'\t' read -r login state; do
+            [[ -n "$login" ]] && latest_state["$login"]="$state"
+          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            --jq '.[] | select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")) | "\(.user.login)\t\(.state)"')
+          for login in "${!latest_state[@]}"; do
+            if [[ "${latest_state[$login]}" == "APPROVED" ]]; then
+              echo "::notice::Dependabot gate failed, but $login approved this pull request; it follows the normal human flow."
+              exit 0
+            fi
+          done
+          echo "::error::Dependabot gate failed; see the job summary for the violations. This pull request needs a human approval."
+          exit 1
