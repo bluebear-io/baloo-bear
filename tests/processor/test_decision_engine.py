@@ -241,9 +241,11 @@ class TestMakeDecisionWithGeneralFindings:
 
     def test_medium_general_finding_does_not_block(self):
         gf = GeneralFinding(body="Minor observation", severity="MEDIUM", category="Quality")
-        with patch("baloo.processor.decision_engine.get_settings") as mock_settings:
-            mock_settings.return_value.review_auto_approve = False
-            mock_settings.return_value.fidelity_approval_threshold = 80
+        overrides = {"review_auto_approve": False, "fidelity_approval_threshold": 80}
+        with patch(
+            "baloo.processor.decision_engine.resolve_setting",
+            side_effect=lambda key: overrides[key],
+        ):
             approve, request_changes = DecisionEngine.make_decision([], general_findings=[gf])
         assert request_changes is False
 

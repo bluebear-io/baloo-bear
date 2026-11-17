@@ -1,53 +1,72 @@
 """Tests for PI agent configuration helpers."""
 
-from baloo.agent.config import get_agent_options
+import pytest
+
+from baloo.agent.config import get_agent_options, resolve_short_name
+from baloo.agent.tiers import AGENT_MAX_TURNS, TIER_MAX_TURNS
+from baloo.config.settings import reset_settings
 
 
 class TestGetAgentOptions:
     """Tests for get_agent_options function."""
 
-    # --- Anthropic short names ---
+    # --- Anthropic short names (default provider) ---
 
     def test_get_options_with_haiku_short_name(self):
         options = get_agent_options("haiku")
         assert options.model == "claude-haiku-4-5-20251001"
         assert options.provider == "anthropic"
-        assert options.max_turns == 10
+        assert options.max_turns == TIER_MAX_TURNS["economy"]
 
     def test_get_options_with_sonnet_short_name(self):
         options = get_agent_options("sonnet")
-        assert options.model == "claude-sonnet-4-6"
+        assert options.model == "claude-sonnet-5"
         assert options.provider == "anthropic"
-        assert options.max_turns == 20
+        assert options.max_turns == AGENT_MAX_TURNS
 
     def test_get_options_with_opus_short_name(self):
         options = get_agent_options("opus")
-        assert options.model == "claude-opus-4-6"
+        assert options.model == "claude-opus-5-5"
         assert options.provider == "anthropic"
-        assert options.max_turns == 30
+        assert options.max_turns == AGENT_MAX_TURNS
 
-    # --- Google short names ---
+    # --- Google short names resolve on AGENT_PROVIDER ---
 
-    def test_get_options_with_flash_short_name(self):
+    def test_get_options_with_flash_short_name_on_google(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "google")
+        reset_settings()
         options = get_agent_options("flash")
-        assert options.model == "gemini-2.5-flash"
+        assert options.model == "gemini-3.5-flash-lite"
         assert options.provider == "google"
-        assert options.max_turns == 10
+        assert options.max_turns == TIER_MAX_TURNS["economy"]
 
-    def test_get_options_with_gemini_pro_short_name(self):
+    def test_get_options_with_gemini_pro_short_name_on_google(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "google")
+        reset_settings()
         options = get_agent_options("gemini-pro")
-        assert options.model == "gemini-2.5-pro"
+        assert options.model == "gemini-3.8-flash"
         assert options.provider == "google"
-        assert options.max_turns == 20
+        assert options.max_turns == AGENT_MAX_TURNS
 
-    # --- Explicit provider/model ---
+    def test_flash_on_anthropic_maps_to_economy_claude(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+        reset_settings()
+        options = get_agent_options("flash")
+        assert options.provider == "anthropic"
+        assert options.model == "claude-haiku-4-5-20251001"
 
-    def test_get_options_with_provider_slash_model(self):
-        options = get_agent_options("google/gemini-2.5-flash")
-        assert options.model == "gemini-2.5-flash"
+    # --- Explicit provider/model (must match AGENT_PROVIDER) ---
+
+    def test_get_options_with_provider_slash_model(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "google")
+        reset_settings()
+        options = get_agent_options("google/gemini-3.5-flash-lite")
+        assert options.model == "gemini-3.5-flash-lite"
         assert options.provider == "google"
 
-    def test_get_options_with_anthropic_slash_model(self):
+    def test_get_options_with_anthropic_slash_model(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+        reset_settings()
         options = get_agent_options("anthropic/claude-opus-4-6")
         assert options.model == "claude-opus-4-6"
         assert options.provider == "anthropic"
@@ -58,7 +77,14 @@ class TestGetAgentOptions:
         full_model = "claude-opus-4-6"
         options = get_agent_options(full_model)
         assert options.model == full_model
-        assert options.provider == "anthropic"  # default for passthrough
+        assert options.provider == "anthropic"
+
+    def test_full_model_name_uses_effective_provider(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+        reset_settings()
+        options = get_agent_options("us.anthropic.claude-sonnet-4-6")
+        assert options.provider == "amazon-bedrock"
+        assert options.model == "us.anthropic.claude-sonnet-4-6"
 
     # --- Defaults ---
 
@@ -106,23 +132,239 @@ def test_standard_alias_resolves_to_sonnet():
     from baloo.agent.config import get_agent_options
 
     opts = get_agent_options("standard")
-    assert opts.model == "claude-sonnet-4-6"
+    assert opts.model == "claude-sonnet-5"
     assert opts.provider == "anthropic"
-    assert opts.max_turns == 20
+    assert opts.max_turns == AGENT_MAX_TURNS
 
 
-def test_premium_alias_resolves_to_gemini_3_1():
+def test_premium_alias_resolves_on_google(monkeypatch):
     from baloo.agent.config import get_agent_options
 
+    monkeypatch.setenv("AGENT_PROVIDER", "google")
+    reset_settings()
     opts = get_agent_options("premium")
     assert opts.model == "gemini-3.1-pro-preview"
     assert opts.provider == "google"
-    assert opts.max_turns == 30
+    assert opts.max_turns == AGENT_MAX_TURNS
 
 
-def test_gemini_3_1_pro_alias_resolves_same_as_premium():
+def test_gemini_3_1_pro_alias_resolves_same_as_premium(monkeypatch):
     from baloo.agent.config import get_agent_options
 
+    monkeypatch.setenv("AGENT_PROVIDER", "google")
+    reset_settings()
     opts = get_agent_options("gemini-3.1-pro")
     assert opts.model == "gemini-3.1-pro-preview"
     assert opts.provider == "google"
+
+
+def test_openai_tier_short_names(monkeypatch):
+    monkeypatch.setenv("AGENT_PROVIDER", "openai")
+    reset_settings()
+
+    assert get_agent_options("haiku").model == "gpt-6-luna"
+    assert get_agent_options("sonnet").model == "gpt-6-sol"
+    assert get_agent_options("opus").model == "gpt-6-astra"
+    assert get_agent_options("sonnet").provider == "openai"
+
+
+def test_bedrock_provider_model_string(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+    opts = get_agent_options("amazon-bedrock/us.anthropic.claude-sonnet-4-6")
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == "us.anthropic.claude-sonnet-4-6"
+
+
+def test_bedrock_via_settings_provider(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    monkeypatch.setenv("AGENT_MODEL", "us.anthropic.claude-sonnet-4-6")
+    reset_settings()
+
+    opts = get_agent_options()
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == "us.anthropic.claude-sonnet-4-6"
+
+
+def test_bedrock_short_names_use_bedrock_tiers(monkeypatch):
+    """AGENT_PROVIDER applies to every short-name agent role, not only primary."""
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    economy = get_agent_options("haiku")
+    assert economy.provider == "amazon-bedrock"
+    assert economy.model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert economy.max_turns == TIER_MAX_TURNS["economy"]
+
+    standard = get_agent_options("sonnet")
+    assert standard.provider == "amazon-bedrock"
+    assert standard.model == "us.anthropic.claude-sonnet-5"
+    assert standard.max_turns == AGENT_MAX_TURNS
+
+    premium = get_agent_options("opus")
+    assert premium.provider == "amazon-bedrock"
+    assert premium.model == "us.anthropic.claude-opus-5-5"
+    assert premium.max_turns == AGENT_MAX_TURNS
+
+
+def test_bedrock_default_short_name_agent_model(monkeypatch):
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    monkeypatch.setenv("AGENT_MODEL", "sonnet")
+    reset_settings()
+
+    opts = get_agent_options()
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == "us.anthropic.claude-sonnet-5"
+
+
+def test_bedrock_fp_and_thread_short_names_follow_provider(monkeypatch):
+    """FP / thread defaults (haiku) must not stay on Anthropic when Bedrock is selected."""
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    monkeypatch.setenv("FP_VERIFICATION_MODEL", "haiku")
+    monkeypatch.setenv("THREAD_AGENT_MODEL", "haiku")
+    monkeypatch.setenv("DOCUMENTATION_DRIFT_MODEL", "haiku")
+    reset_settings()
+
+    for short in ("haiku", "flash"):
+        opts = get_agent_options(short)
+        assert opts.provider == "amazon-bedrock"
+        assert opts.model.startswith("us.anthropic.claude-haiku")
+
+
+def test_default_agent_model_is_portable_across_providers(monkeypatch):
+    """Switching AGENT_PROVIDER alone must work for a deployment on the defaults.
+
+    A bare provider-specific default (e.g. "claude-sonnet-4-6") would be passed
+    through unchanged and rejected by Bedrock.
+    """
+    from baloo.agent.config import SHORT_NAME_TIERS
+    from baloo.config.settings import Settings
+
+    assert Settings().agent_model in SHORT_NAME_TIERS
+
+    monkeypatch.delenv("AGENT_MODEL", raising=False)
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    opts = get_agent_options()
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model.startswith("us.anthropic.")
+
+
+def test_cross_provider_model_string_is_rejected(monkeypatch):
+    """Provider is all-or-nothing: a mismatched prefix must not silently win."""
+    from baloo.agent.config import ProviderConfigError
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    with pytest.raises(ProviderConfigError, match="AGENT_PROVIDER"):
+        get_agent_options("anthropic/claude-haiku-4-5-20251001")
+
+
+def test_bedrock_inference_profile_arn_is_not_treated_as_provider_prefix(monkeypatch):
+    """ARNs contain '/' but must pass through as a model ID, not a provider."""
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrock")
+    reset_settings()
+
+    arn = "arn:aws:bedrock:eu-central-1:123456789012:application-inference-profile/abc123"
+    opts = get_agent_options(arn)
+    assert opts.provider == "amazon-bedrock"
+    assert opts.model == arn
+
+
+def test_unknown_provider_short_name_raises(monkeypatch):
+    """A typo'd provider must fail loudly, not resolve to Anthropic model IDs."""
+    from baloo.agent.config import ProviderConfigError
+
+    monkeypatch.setenv("AGENT_PROVIDER", "amazon-bedrok")
+    reset_settings()
+
+    with pytest.raises(ProviderConfigError, match="no model tiers"):
+        get_agent_options("sonnet")
+
+
+def test_resolve_short_name_helper():
+    provider, model_id, max_turns = resolve_short_name("sonnet", "amazon-bedrock")
+    assert provider == "amazon-bedrock"
+    assert model_id == "us.anthropic.claude-sonnet-5"
+    assert max_turns == AGENT_MAX_TURNS
+
+
+def test_databricks_tiers_resolve_to_unity_catalog_models(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    monkeypatch.setenv("DATABRICKS_HOST", "https://dbc-test.cloud.databricks.com")
+    reset_settings()
+
+    assert get_agent_options("haiku").model == "system.ai.claude-haiku-4-5"
+    assert get_agent_options("sonnet").model == "system.ai.claude-sonnet-4-6"
+    assert get_agent_options("opus").model == "system.ai.claude-opus-4-6"
+    assert get_agent_options("sonnet").provider == "databricks"
+
+
+def test_databricks_provider_model_string(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "databricks")
+    monkeypatch.setenv("DATABRICKS_HOST", "https://dbc-test.cloud.databricks.com")
+    reset_settings()
+
+    opts = get_agent_options("databricks/system.ai.claude-opus-4-6")
+    assert opts.provider == "databricks"
+    assert opts.model == "system.ai.claude-opus-4-6"
+
+
+def test_openrouter_tiers_resolve_to_zdr_open_models(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    assert get_agent_options("haiku").model == "z-ai/glm-5.3-flash"
+    assert get_agent_options("sonnet").model == "z-ai/glm-5.3"
+    assert get_agent_options("opus").model == "moonshotai/kimi-k2.7-code"
+    assert get_agent_options("sonnet").provider == "openrouter"
+
+
+def test_openrouter_model_ids_keep_their_vendor_slash(monkeypatch):
+    # OpenRouter IDs are vendor/model. Both the prefixed and bare forms must
+    # reach pi intact rather than having the vendor read as a provider.
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    prefixed = get_agent_options("openrouter/moonshotai/kimi-k2.6")
+    assert (prefixed.provider, prefixed.model) == ("openrouter", "moonshotai/kimi-k2.6")
+    bare = get_agent_options("moonshotai/kimi-k2.6")
+    assert (bare.provider, bare.model) == ("openrouter", "moonshotai/kimi-k2.6")
+
+
+def test_openrouter_gets_a_higher_turn_cap_on_review_tiers(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "openrouter")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == 50
+    assert get_agent_options("opus").max_turns == 50
+    # Economy agents finish in one turn; their cap is a loop guard, not a budget.
+    assert get_agent_options("haiku").max_turns == TIER_MAX_TURNS["economy"]
+    # A bare model ID follows the provider's standard tier.
+    assert get_agent_options("moonshotai/kimi-k2.6").max_turns == 50
+
+
+def test_other_providers_keep_the_default_turn_cap(monkeypatch):
+    from baloo.agent.config import get_agent_options
+
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+
+    assert get_agent_options("sonnet").max_turns == AGENT_MAX_TURNS
+    assert get_agent_options("claude-sonnet-5").max_turns == AGENT_MAX_TURNS

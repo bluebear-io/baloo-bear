@@ -126,3 +126,30 @@ def test_work_item_state_fields():
     assert item.has_docs_already_changed is True
     assert item.has_catalog_gaps is True
     assert item.needs_analysis is True
+
+
+def test_not_needed_finding_parses_without_a_rationale():
+    """The model omits `rationale` on `not_needed` entries; that must not fail.
+
+    Regression: 32 production drift runs died with
+    `not_needed.0.rationale Field required`, losing the whole result.
+    """
+    result = DocumentationDriftResult.model_validate(
+        {
+            "required_updates": [],
+            "optional_updates": [],
+            "not_needed": [{"doc_path": "docs/DATA_SOURCES.md", "verdict": "not_needed"}],
+        }
+    )
+
+    assert result.not_needed[0].rationale == ""
+
+
+def test_report_omits_the_rationale_line_when_empty():
+    from baloo.documentation.report import _format_findings
+
+    lines = _format_findings(
+        [DocumentationDriftFinding(doc_path="docs/x.md", verdict="not_needed")]
+    )
+
+    assert not any("Rationale" in line for line in lines)

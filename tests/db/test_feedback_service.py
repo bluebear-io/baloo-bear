@@ -68,9 +68,10 @@ async def test_write_signal_calls_session_add(mock_session, mock_session_factory
 @pytest.mark.asyncio
 async def test_write_signal_skipped_when_disabled(mock_session, mock_session_factory):
     """write_signal is a no-op when feedback signals are disabled."""
-    with patch("baloo.db.feedback_service.get_settings") as mock_settings:
-        mock_settings.return_value.feedback_signals_enabled = False
-
+    with (
+        patch("baloo.db.feedback_service.get_settings"),
+        patch("baloo.db.feedback_service.resolve_setting", return_value=False),
+    ):
         await FeedbackService.write_signal(
             repo="org/repo",
             pattern="test",

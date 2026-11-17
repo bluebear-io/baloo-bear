@@ -1,9 +1,13 @@
 """Route review findings by severity and provide counting utilities."""
 
-from baloo.github.models import ReviewComment, ReviewSeverity
+from collections.abc import Sequence
+
+from baloo.github.models import GeneralFinding, ReviewComment, ReviewSeverity
 
 
-def count_by_severity(findings: list[ReviewComment]) -> dict[str, int]:
+def count_by_severity(
+    findings: Sequence[ReviewComment | GeneralFinding],
+) -> dict[str, int]:
     """
     Count findings by their severity level.
 

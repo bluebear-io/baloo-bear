@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.thread_prompts import THREAD_AGENT_SYSTEM_PROMPT, build_thread_prompt
+from baloo.agent.tiers import RETRY_TURN_BUDGET
 from baloo.github.models import DiscussionComment
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ class ThreadAgent:
         )
         options.system_prompt = THREAD_AGENT_SYSTEM_PROMPT
         options.no_tools = True
-        options.max_turns = 2
+        options.max_turns = RETRY_TURN_BUDGET
         options.name = "ThreadAgent"
 
         agent = PIAgentBase(options)

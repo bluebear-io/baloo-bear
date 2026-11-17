@@ -14,10 +14,15 @@ Baloo is a self-hosted AI code review GitHub App for pull requests. These docs c
 - **[Guidelines Enforcement](features/guidelines.md)** — How Baloo reads and enforces repo conventions
 - **[Fidelity Analysis](features/fidelity.md)** — Comparing PRs against design plan documents
 - **[Documentation Drift](features/documentation-drift.md)** — PR-time checks for stale mapped docs
-- **[Model Configuration](features/models.md)** — Supported models, fallback, and model selection
+- **[Coding Standards](features/coding-standards.md)** — Judge changed lines against the skills `.bluebear/skill_enforcement.json` maps them to (optional)
+- **[Model Configuration](features/models.md)** — Supported providers, models, tiers, and provider switching
+- **[Amazon Bedrock Setup](features/bedrock.md)** — Step-by-step guide to run Baloo on Bedrock
+- **[Databricks Setup](features/databricks.md)** — Step-by-step guide to run Baloo on a Databricks AI Gateway
+- **[OpenRouter Setup](features/openrouter.md)** — Run Baloo on open-weight models (GLM, Kimi) through OpenRouter, ZDR endpoints only
 - **[Severity Routing](features/severity-routing.md)** — How findings are routed to reviews, Checks API, or filtered
 - **[Discussion Tracking](features/discussions.md)** — Thread follow-ups, duplicate detection, and conversation context
-- **[FP Verification](features/fp-verification.md)** — LLM-powered false-positive reduction (optional)
+- **[Thread Agent](features/thread-agent.md)** — Replies when developers answer Baloo's inline comments (optional)
+- **[FP Verification](features/fp-verification.md)** — LLM-powered false-positive reduction (on by default)
 - **[Dashboard](features/dashboard.md)** — Review history UI with cost tracking (optional)
 
 ## Reference

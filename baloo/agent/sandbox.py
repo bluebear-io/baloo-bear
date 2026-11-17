@@ -23,6 +23,7 @@ so a misconfigured container dies immediately instead of at the first review.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -189,6 +190,13 @@ def build_sandbox_prefix(mode: str, worktree: str) -> list[str]:
         "--ro-bind-try",
         "/etc/ca-certificates",
         "/etc/ca-certificates",
+        # AWS credential files (IRSA token, explicit shared credentials/config)
+        # so Bedrock auth still works under the scrubbed sandbox env.
+        *_aws_ro_bind_args(),
+        # Generated models.json files: the Databricks provider registration and
+        # the OpenRouter ZDR routing. Without them PI cannot resolve
+        # `databricks/...` models, and OpenRouter requests lose ZDR.
+        *_generated_agent_dir_ro_bind_args(),
         "--proc",
         "/proc",
         "--dev",
@@ -228,6 +236,37 @@ _ENV_ALLOWLIST = frozenset(
         "ANTHROPIC_API_KEY",
         "GEMINI_API_KEY",
         "OPENAI_API_KEY",
+        # OpenRouter (pi provider token: openrouter). Routing config reaches pi
+        # through PI_CODING_AGENT_DIR, allowlisted below.
+        "OPENROUTER_API_KEY",
+        # Databricks AI Gateway (pi provider token: databricks). The PAT is read
+        # by PI at request time via the apiKey env-var reference in models.json;
+        # PI_CODING_AGENT_DIR points PI at that generated file.
+        "DATABRICKS_TOKEN",
+        "PI_CODING_AGENT_DIR",
+        # AWS / Amazon Bedrock (pi provider token: amazon-bedrock). Static keys,
+        # temporary session tokens, bearer auth, profiles, ECS task roles, and
+        # IRSA are all recognized by the AWS SDK that pi bundles.
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_PROFILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_CONFIG_FILE",
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_BEDROCK_FORCE_CACHE",
+        "AWS_ENDPOINT_URL_BEDROCK_RUNTIME",
+        "AWS_BEDROCK_SKIP_AUTH",
+        "AWS_BEDROCK_FORCE_HTTP1",
+        "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+        "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+        "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+        "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+        "AWS_ROLE_ARN",
+        "AWS_ROLE_SESSION_NAME",
         # Corporate proxy config — REQUIRED in enterprise networks or the agent
         # cannot reach the model API and every review fails. Both cases since some
         # tools read upper- and others lower-case.
@@ -246,6 +285,86 @@ _ENV_ALLOWLIST = frozenset(
         "REQUESTS_CA_BUNDLE",
     }
 )
+
+# Host paths the AWS SDK may need to read inside the sandbox (IRSA token,
+# explicit credentials/config files). Bound read-only when present.
+_AWS_FILE_ENV_VARS = (
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_CONFIG_FILE",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+)
+
+# Default shared-credentials locations the SDK reads when the *_FILE vars are
+# unset. AWS_PROFILE is useless without them: the sandbox does not expose HOME,
+# so ~/.aws would otherwise be invisible to the agent.
+_AWS_DEFAULT_FILES = ("credentials", "config")
+
+
+def _aws_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
+    """Return ``--ro-bind-try`` pairs for AWS credential files referenced in env.
+
+    Covers both explicit paths (IRSA token, ``AWS_SHARED_CREDENTIALS_FILE``,
+    ``AWS_CONFIG_FILE``) and the default ``~/.aws`` files. Without these, the
+    corresponding env vars survive the scrub but the files they point at do
+    not exist inside bwrap, so Bedrock auth fails while Anthropic/Gemini keys
+    still work. Paths are bound at their host location because HOME is passed
+    through unchanged.
+    """
+    source = env if env is not None else os.environ
+    args: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: str | None) -> None:
+        if not raw:
+            return
+        path = str(Path(raw).expanduser().resolve())
+        if path in seen:
+            return
+        seen.add(path)
+        args.extend(["--ro-bind-try", path, path])
+
+    for var in _AWS_FILE_ENV_VARS:
+        _add(source.get(var))
+
+    home = source.get("HOME")
+    if home:
+        for name in _AWS_DEFAULT_FILES:
+            _add(str(Path(home) / ".aws" / name))
+
+    return args
+
+
+def _generated_agent_dir_ro_bind_args(env: dict[str, str] | None = None) -> list[str]:
+    """Return ``--ro-bind-try`` pairs for the generated PI agent dirs.
+
+    ``PI_CODING_AGENT_DIR`` survives the env scrub, but the directory it names
+    lives on the host and would otherwise be invisible inside bwrap. Bound
+    read-only: PI only reads models.json there, and ``--no-session`` plus
+    ``HOME=/tmp`` cover anything it wants to write.
+
+    ``--ro-bind-try`` makes each a no-op for providers that don't generate one,
+    so every path is bound unconditionally rather than threading the provider
+    down here.
+
+    The fallback must match ``pi_agent_dir.agent_dir_path``, which uses
+    ``Path.home()``. That falls back to the passwd entry when HOME is unset, so
+    bailing out here would silently drop the bind in a container that strips
+    HOME. The file would be written but invisible inside bwrap: Databricks then
+    fails with ``Unknown provider "databricks"``, and OpenRouter — worse — runs
+    on pi's built-in provider *without* the ZDR routing constraint.
+    """
+    from baloo.agent.databricks import AGENT_DIR_NAME as DATABRICKS_DIR
+    from baloo.agent.openrouter import AGENT_DIR_NAME as OPENROUTER_DIR
+    from baloo.agent.pi_agent_dir import agent_dir_path
+
+    source = env if env is not None else os.environ
+    home = source.get("HOME") or str(Path.home())
+    args: list[str] = []
+    for name in (DATABRICKS_DIR, OPENROUTER_DIR):
+        path = str(agent_dir_path(name, home))
+        args.extend(["--ro-bind-try", path, path])
+    return args
 
 
 def build_subprocess_env(base_env: dict[str, str]) -> dict[str, str]:

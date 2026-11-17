@@ -57,6 +57,7 @@ async def test_create_review(async_session: AsyncSession):
     assert saved.tokens_input == 1000
     assert saved.auto_approved is True
     assert saved.fidelity_score == 95.0
+    assert saved.awaiting_thread_count == 0
 
 
 async def test_create_finding(async_session: AsyncSession):
@@ -88,7 +89,37 @@ async def test_create_finding(async_session: AsyncSession):
     assert saved.line_number == 42
     assert saved.severity == "HIGH"
     assert saved.category == "Security"
+    assert saved.finding_type == "inline"
     assert saved.review_id == review.id
+
+
+async def test_create_general_finding_without_file_location(async_session: AsyncSession):
+    review = Review(
+        repo_full_name="owner/repo",
+        pr_number=11,
+        review_status="changes_requested",
+        trigger_reason="pull_request:opened",
+        started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    review.findings = [
+        Finding(
+            finding_type="general",
+            file_path=None,
+            line_number=None,
+            severity="HIGH",
+            category="Guidelines",
+            body="The required review guidance is missing.",
+        )
+    ]
+
+    async with async_session.begin():
+        async_session.add(review)
+
+    result = await async_session.execute(select(Finding))
+    saved = result.scalar_one()
+    assert saved.finding_type == "general"
+    assert saved.file_path is None
+    assert saved.line_number is None
 
 
 async def test_review_findings_relationship(async_session: AsyncSession):

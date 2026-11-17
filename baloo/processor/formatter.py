@@ -1,8 +1,15 @@
 """Format review comments and summaries as Markdown."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from baloo.github.models import GeneralFinding, ReviewComment
+
+# Tracked at assets/baloo-icon.png. Served from the public repo rather than the
+# Baloo server, since self-hosted servers may not be reachable by GitHub.
+BALOO_ICON_URL = (
+    "https://raw.githubusercontent.com/bluebear-io/baloo-bear/main/assets/baloo-icon.png"
+)
 
 
 class CommentFormatter:
@@ -16,10 +23,72 @@ class CommentFormatter:
     }
 
     @staticmethod
+    def baloo_icon() -> str:
+        """Baloo's icon as inline HTML, served from the public repo so self-hosted installs share it."""
+        return f'<img src="{BALOO_ICON_URL}" width="20" height="20" alt="Baloo">'
+
+    @staticmethod
+    def format_reviewed_commit(
+        commit_sha: str | None,
+        repo_full_name: str | None = None,
+    ) -> str:
+        """Render the head commit a review ran against so readers can validate it."""
+        if not commit_sha:
+            return ""
+        short_sha = commit_sha[:7]
+        if repo_full_name:
+            url = f"https://github.com/{repo_full_name}/commit/{commit_sha}"
+            return f"🔍 Reviewed commit [`{short_sha}`]({url})"
+        return f"🔍 Reviewed commit `{short_sha}`"
+
+    @staticmethod
+    def format_findings_digest(
+        findings: Sequence[ReviewComment | GeneralFinding],
+    ) -> str:
+        """Format complete finding bodies for a GitHub Markdown surface."""
+        sections: list[str] = []
+        for index, finding in enumerate(findings, start=1):
+            category = (
+                finding.category.value if hasattr(finding.category, "value") else finding.category
+            )
+            if isinstance(finding, ReviewComment):
+                location = f"`{finding.path}:{finding.line}`"
+            else:
+                location = "_General observation_"
+            sections.append(f"### {index}. {category} — {location}\n\n{finding.body}")
+        return "\n\n---\n\n".join(sections)
+
+    @staticmethod
+    def format_collapsible_medium_findings(
+        findings: Sequence[ReviewComment | GeneralFinding],
+    ) -> str:
+        """Render MEDIUM findings in a compact section without hiding their content."""
+        medium_findings = [
+            finding
+            for finding in findings
+            if (finding.severity.value if hasattr(finding.severity, "value") else finding.severity)
+            == "MEDIUM"
+        ]
+        if not medium_findings:
+            return ""
+
+        count = len(medium_findings)
+        noun = "suggestion" if count == 1 else "suggestions"
+        digest = CommentFormatter.format_findings_digest(medium_findings)
+        return (
+            "<details>\n"
+            f"<summary>🟡 {count} medium {noun} — expand to read</summary>\n\n"
+            f"{digest}\n\n"
+            "</details>"
+        )
+
+    @staticmethod
     def format_summary(
         comments: list[ReviewComment],
         metadata: dict[str, Any] | None = None,
         general_findings: list[GeneralFinding] | None = None,
+        commit_sha: str | None = None,
+        repo_full_name: str | None = None,
     ) -> str:
         """
         Format a review summary markdown.
@@ -27,6 +96,9 @@ class CommentFormatter:
         Args:
             comments: List of review comments
             metadata: Optional agent metadata (costs, tokens)
+            general_findings: Findings not anchored to a specific line
+            commit_sha: Head commit the review ran against, shown for validation
+            repo_full_name: Repo used to link the commit SHA
 
         Returns:
             Formatted Markdown summary
@@ -44,7 +116,11 @@ class CommentFormatter:
         total = len(comments) + len(general_findings)
 
         summary_parts = []
-        summary_parts.append("## 🐻 Baloo Review Summary\n")
+        summary_parts.append(f"## {CommentFormatter.baloo_icon()} Baloo Review Summary\n")
+
+        reviewed_commit = CommentFormatter.format_reviewed_commit(commit_sha, repo_full_name)
+        if reviewed_commit:
+            summary_parts.append(f"{reviewed_commit}\n")
 
         if not comments and not general_findings:
             summary_parts.append("✅ **No issues found!** Code looks good.")

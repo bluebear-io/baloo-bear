@@ -22,9 +22,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from baloo.agent import sandbox
+from baloo.agent import openrouter, sandbox
 from baloo.agent.costs import normalize_usage
-from baloo.config.settings import get_settings
+from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
+from baloo.agent.tiers import (
+    AGENT_MAX_TURNS,
+    PROVIDER_TIER_MODELS,
+    RETRY_TURN_BUDGET,
+)
+from baloo.config.runtime_settings import resolve_setting
+from baloo.config.settings import Settings, get_settings
+
+
+def _settings_default(name: str) -> Any:
+    """Field default from Settings, so this module doesn't restate config."""
+    return Settings.model_fields[name].default
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +52,26 @@ def _remove_dir(path: str | None) -> None:
 class PIAgentOptions:
     """Configuration for a PI agent session."""
 
-    model: str = "claude-sonnet-4-6"
-    provider: str = "anthropic"
+    # Defaults mirror the config layer rather than restating it: the provider
+    # and thinking level come from the Settings fields, the model from that
+    # provider's standard tier. get_agent_options() sets all of these
+    # explicitly, so these only apply to bare construction.
+    model: str = PROVIDER_TIER_MODELS[_settings_default("agent_provider")]["standard"]
+    provider: str = _settings_default("agent_provider")
     system_prompt: str = ""
-    thinking_level: str = "medium"
-    max_turns: int = 20
+    thinking_level: str = _settings_default("pi_thinking_level")
+    max_turns: int = AGENT_MAX_TURNS
     # Working directory for the agent (where it can read files)
     cwd: str | None = None
     # When True, launch PI with --no-tools (no file read/grep/etc).
     # Useful for single-turn JSON-in/JSON-out tasks where all context
     # is already embedded in the prompt.
     no_tools: bool = False
+    # When True, launch PI with --no-context-files and --no-skills, so it does not load
+    # AGENTS.md/CLAUDE.md from its working directory and every parent, or discover skills.
+    # An agent with no cwd inherits the server's, so without this it would read Baloo's own
+    # AGENTS.md as instructions.
+    no_context_files: bool = False
     # Human-readable label for logs. Distinguishes the several agents that
     # instantiate PIAgentBase directly (scope decider, thread agent, ...) —
     # without it they all log under the generic class name "PIAgentBase".
@@ -378,6 +400,32 @@ def _reverse_scan_json(text: str) -> dict | None:
     return None
 
 
+def _provider_error_detail(msg: dict[str, Any]) -> str:
+    """Pull the provider's error text out of a PI error message, if present.
+
+    PI has used a few shapes for this across versions, so check the known keys
+    rather than assuming one.
+    """
+    for key in ("errorMessage", "error", "errorDetail"):
+        value = msg.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for nested_key in ("message", "error", "detail"):
+                nested = value.get(nested_key)
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+    return ""
+
+
+#: Read-only built-in pi tools every review agent gets.
+BUILTIN_TOOLS: tuple[str, ...] = ("read", "grep", "find", "ls")
+
+#: Tools registered by extensions/baloo-ast-tools.ts. Must match the ``name``
+#: fields in that file and the tool list in ``AST_TOOLS_PROMPT_SECTION``.
+AST_TOOLS: tuple[str, ...] = ("ast_outline", "ast_grep", "ast_symbols")
+
+
 class PIAgentBase:
     """Base class for agents using PI's RPC subprocess protocol.
 
@@ -435,8 +483,41 @@ class PIAgentBase:
             "num_turns": result.num_turns,
             "duration_seconds": result.duration_seconds,
             "is_error": result.is_error,
+            "error_message": result.error_message,
             "max_turns_reached": result.max_turns_reached,
         }
+
+    def _subprocess_env(self) -> dict[str, str]:
+        """Build the environment for a PI subprocess.
+
+        Every PI spawn must go through here. The env is always scrubbed to an
+        allowlist so a prompt-injected agent (which keeps network access for the
+        model API) cannot read baloo's secrets from /proc/self/environ and
+        exfiltrate them. This must not be conditional on the sandbox: the
+        unsandboxed path is exactly where a leak is least contained.
+        """
+        return self._with_provider_env(sandbox.build_subprocess_env(dict(os.environ)))
+
+    def _with_provider_env(self, base: dict[str, str]) -> dict[str, str]:
+        """Add any provider-specific env the PI subprocess needs.
+
+        Databricks is not a native PI provider: it is registered through a
+        generated models.json that PI only finds via ``PI_CODING_AGENT_DIR``.
+        OpenRouter is native, but its ZDR routing lives in the same kind of
+        file. Every spawn site must go through here — a subprocess started
+        without it fails with ``Unknown provider "databricks"``, or for
+        OpenRouter silently sends requests without the ZDR constraint.
+        """
+        if self.options.provider == DATABRICKS_PROVIDER:
+            # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
+            agent_dir = ensure_agent_dir(get_settings().databricks_host)
+        elif self.options.provider == openrouter.OPENROUTER_PROVIDER:
+            agent_dir = openrouter.ensure_agent_dir()
+        else:
+            return base
+        env = dict(base)
+        env["PI_CODING_AGENT_DIR"] = str(agent_dir)
+        return env
 
     def _build_pi_command(
         self,
@@ -463,24 +544,34 @@ class PIAgentBase:
             "--mode",
             "rpc",
             "--no-session",
+            "--no-extensions",
+            "--no-approve",
             "--provider",
             self.options.provider,
             "--model",
             f"{self.options.provider}/{self.options.model}",
         ]
+        if self.options.no_context_files:
+            cmd.extend(["--no-context-files", "--no-skills"])
         if self.options.no_tools:
             cmd.append("--no-tools")
         else:
-            cmd.extend(["--tools", "read,grep,find,ls"])
+            tools = list(BUILTIN_TOOLS)
 
-            # Load AST tools extension when enabled
-            if s.ast_tools_enabled:
+            # Load AST tools extension when enabled. The extension's tools must
+            # also be named in --tools: the flag is an allowlist over built-in
+            # *and* extension tools, so without them the extension loads but
+            # registers nothing the model can call.
+            if resolve_setting("ast_tools_enabled"):
                 ext_path = (
                     Path(__file__).resolve().parent.parent.parent
                     / "extensions"
                     / "baloo-ast-tools.ts"
                 )
                 cmd.extend(["--extension", str(ext_path)])
+                tools.extend(AST_TOOLS)
+
+            cmd.extend(["--tools", ",".join(tools)])
 
         cmd.extend(["--system-prompt", self.options.system_prompt])
 
@@ -547,6 +638,7 @@ class PIAgentBase:
         # degrading to an unisolated agent when a sandbox is configured but broken.
         sandbox_decision = self._sandbox_decision()
         _, sandbox_active = sandbox_decision
+        proc_env = self._subprocess_env()
 
         # A tool-using agent with no worktree (repo provisioning off or failed)
         # would otherwise run in baloo's own cwd, where `read .env` is a complete
@@ -568,13 +660,6 @@ class PIAgentBase:
             raise
 
         cwd = self.options.cwd or ephemeral_root
-
-        # Always scrub the subprocess environment to an allowlist so a
-        # prompt-injected agent (which keeps network access for the model API)
-        # cannot read baloo's secrets from /proc/self/environ and exfiltrate them.
-        # This must not be conditional on the sandbox: the unsandboxed path is
-        # exactly where a leak is least contained.
-        proc_env = sandbox.build_subprocess_env(dict(os.environ))
 
         logger.info(
             "%s: spawning PI process (model=%s, thinking=%s, sandbox=%s)",
@@ -604,7 +689,7 @@ class PIAgentBase:
             logger.error("%s: PI session error: %s", self.agent_name, exc)
             result.is_error = True
             result.error_message = str(exc)
-            # Re-raise so callers (e.g. fallback logic) can catch and retry
+            # Attach usage metadata before surfacing the provider failure.
             elapsed = time.time() - start_time
             result.duration_seconds = elapsed
             metadata = self._build_metadata(result)
@@ -723,11 +808,36 @@ class PIAgentBase:
                 error_category="agent_error",
             )
         else:
+            if structured_output is None:
+                # A run that yields nothing is a real loss for every agent, but
+                # only BalooAgent's failure reaches reviews.review_status — the
+                # fidelity and documentation agents just log to stderr and
+                # return None. Record it here so aborts are countable per agent.
+                #
+                # Text present means the agent did answer and the answer was
+                # malformed — a JSON-quality problem, not the turn cap silencing
+                # it mid-exploration. Keep the two apart so a count of
+                # max_turns_reached means only "cut off with nothing".
+                if result.assistant_text:
+                    category = "json_parse_failed"
+                    detail = f"{len(result.assistant_text)} chars of unparseable text"
+                else:
+                    category = "max_turns_reached" if result.max_turns_reached else "no_output"
+                    detail = "no assistant text"
+                await review_logger.agent_error(
+                    error_message=(
+                        f"No structured output after {result.num_turns} turn(s) "
+                        f"({detail}), ${result.cost_usd:.4f} spent"
+                    ),
+                    error_category=category,
+                )
             await review_logger.agent_completed(
                 tokens_in=metadata.get("input_tokens", 0),
                 tokens_out=metadata.get("output_tokens", 0),
                 cost=metadata.get("cost_usd", 0),
                 duration=metadata.get("duration_seconds", 0),
+                cache_read=metadata.get("cache_read_tokens", 0),
+                cache_write=metadata.get("cache_write_tokens", 0),
             )
 
         return structured_output, metadata
@@ -739,6 +849,18 @@ class PIAgentBase:
     _JSON_RETRY_SYSTEM_PROMPT = (
         "You repair malformed JSON. "
         "Return only valid JSON with the same meaning and fields as the input."
+    )
+
+    # Turns held back so the agent can be told to wrap up and still have room to
+    # answer. Without it the cap arrives unannounced mid-exploration, PI is sent
+    # abort, and the entire run is discarded with zero findings — the turn-30
+    # wall seen in production. Raising max_turns only moves that wall.
+    _WRAPUP_RESERVE = 3
+
+    _WRAPUP_STEER = (
+        "You have {remaining} turn(s) left before this session is cut off. "
+        "Stop investigating now and return your final JSON response using only what "
+        "you have already found. A partial review is useful; no review is not."
     )
 
     _JSON_RETRY_PROMPT_TEMPLATE = """The malformed response is serialized below as a JSON object
@@ -783,7 +905,7 @@ Serialized payload:
             provider=self.options.provider,
             system_prompt=self._JSON_RETRY_SYSTEM_PROMPT,
             thinking_level="off",
-            max_turns=2,
+            max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
         )
 
@@ -792,6 +914,8 @@ Serialized payload:
             "--mode",
             "rpc",
             "--no-session",
+            "--no-extensions",
+            "--no-approve",
             "--provider",
             retry_opts.provider,
             "--model",
@@ -809,7 +933,7 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
-                env=sandbox.build_subprocess_env(dict(os.environ)),
+                env=self._subprocess_env(),
             )
 
             # Temporarily swap options for the retry
@@ -878,6 +1002,10 @@ Serialized payload:
         all_assistant_texts: list[str] = []
         turn_count = 0
         turn_tools: list[str] = []
+        # Steer the agent to finalize before the cap. A 1- or 2-turn decider has
+        # no room for the nudge, so it is pre-marked as sent and never fires.
+        wrapup_at = self.options.max_turns - self._WRAPUP_RESERVE
+        wrapup_sent = wrapup_at < 1
         # toolCallId -> (tool_name, target) captured at tool_execution_start so we
         # can attribute the outcome reported at tool_execution_end.
         pending_tools: dict[str, tuple[str, str | None]] = {}
@@ -907,6 +1035,23 @@ Serialized payload:
                         tokens_out=result.output_tokens,
                     )
                 turn_tools = []
+                if not wrapup_sent and turn_count >= wrapup_at:
+                    wrapup_sent = True
+                    remaining = self.options.max_turns - turn_count
+                    logger.info(
+                        "%s: turn %d of %d — steering agent to wrap up",
+                        self.agent_name,
+                        turn_count,
+                        self.options.max_turns,
+                    )
+                    assert proc.stdin is not None
+                    proc.stdin.write(
+                        self._make_command(
+                            "steer",
+                            message=self._WRAPUP_STEER.format(remaining=remaining),
+                        ).encode("utf-8")
+                    )
+                    await proc.stdin.drain()
                 if turn_count >= self.options.max_turns:
                     result.max_turns_reached = True
                     if last_assistant_text:
@@ -961,7 +1106,25 @@ Serialized payload:
                     stop_reason = msg.get("stopReason", "")
                     if stop_reason == "error":
                         result.is_error = True
-                        result.error_message = "Agent returned error stop reason"
+                        # PI carries the provider's error (auth, access, throttling)
+                        # here. Without it the operator only sees "error stop
+                        # reason" and has no way to tell an expired key from a
+                        # model they lack access to.
+                        detail = _provider_error_detail(msg) or "\n".join(text_parts).strip()
+                        if not detail:
+                            # ponytail: dump the raw message so an unknown PI error
+                            # shape is still diagnosable; narrow it in
+                            # _provider_error_detail once we've seen the payload.
+                            logger.error(
+                                "%s: error stop reason with no extractable detail; raw message: %s",
+                                self.agent_name,
+                                json.dumps(msg, default=str)[:2000],
+                            )
+                        result.error_message = (
+                            f"Agent returned error stop reason: {detail}"
+                            if detail
+                            else "Agent returned error stop reason"
+                        )
 
             elif etype == "tool_execution_start":
                 tool = event.get("toolName", "?")

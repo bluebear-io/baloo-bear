@@ -1,8 +1,8 @@
 # Multi-stage build for Baloo Code Review Agent
 # Pin to specific version for security patching - update periodically
-FROM node:26-bookworm-slim@sha256:e999d087492c7227c85adc70574cf9d3cce774c3e6d7b8dfe473ee6b142c8f2c as node-runtime
+FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 as node-runtime
 
-FROM python:3.14.6-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 as base
+FROM python:3.14.7-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56 as base
 
 # Build arguments for version tracking
 ARG BALOO_VERSION=dev
@@ -15,7 +15,7 @@ ENV BALOO_COMMIT_SHA=${BALOO_COMMIT_SHA}
 ENV BALOO_BUILD_DATE=${BALOO_BUILD_DATE}
 ENV PATH="/app/node_modules/.bin:${PATH}"
 
-# Copy Node.js from the pinned official Node image. PI requires Node >=20.6.
+# Copy Node.js from the pinned official Node image. PI requires Node >=22.19.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
@@ -58,9 +58,10 @@ USER baloo
 # Expose port
 EXPOSE 8000
 
-# Health check
+# Health check. Reads APP_PORT so a changed port doesn't leave the container
+# permanently unhealthy while the app is serving fine.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f "http://localhost:${APP_PORT:-8000}/health" || exit 1
 
 # Run the application
 CMD ["python", "main.py"]

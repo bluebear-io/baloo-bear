@@ -3,7 +3,7 @@
 import logging
 import os
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     max_concurrent_reviews: int = Field(
         default=3,
+        ge=1,
+        le=100,
         description="Maximum number of PR reviews to process concurrently",
     )
     review_stale_timeout_minutes: int = Field(
@@ -56,22 +58,44 @@ class Settings(BaseSettings):
 
     # Agent Configuration
     agent_provider: str = Field(
-        default="anthropic", description="LLM provider (anthropic, google, openai)"
+        default="anthropic",
+        description=(
+            "LLM provider for all agents "
+            "(anthropic, google, openai, amazon-bedrock, databricks, openrouter)"
+        ),
     )
-    agent_model: str = Field(default="claude-sonnet-4-6", description="Model to use for reviews")
-    agent_fallback_model: str = Field(
-        default="google/gemini-2.5-flash",
-        description="Fallback model (provider/model) if the primary fails. Empty to disable.",
+    databricks_host: str = Field(
+        default="",
+        description=(
+            "Databricks workspace URL, e.g. https://dbc-xxxxxxxx-xxxx.cloud.databricks.com. "
+            "Required when AGENT_PROVIDER=databricks; pair with a DATABRICKS_TOKEN PAT."
+        ),
     )
-    agent_max_tokens: int = Field(default=4096, description="Max tokens for agent responses")
-    agent_temperature: float = Field(default=0.2, description="Temperature for agent responses")
+    openrouter_provider_order: str = Field(
+        default="",
+        description=(
+            "Comma-separated OpenRouter provider slugs to try in order, e.g. novita,deepinfra. "
+            "Empty lets OpenRouter choose. Routing is always restricted to ZDR endpoints."
+        ),
+    )
+    openrouter_allow_fallbacks: bool = Field(
+        default=True,
+        description=(
+            "Let OpenRouter fall back to other ZDR providers when the ordered ones are "
+            "unavailable. Disable to keep each review on one provider and its prompt cache."
+        ),
+    )
+    agent_model: str = Field(
+        default="sonnet",
+        description="Model for reviews: tier short name or provider/model / bare model ID",
+    )
     pi_binary_path: str = Field(
         default="pi",
         description="Path to the pi binary (or just 'pi' if on PATH)",
     )
     pi_thinking_level: str = Field(
         default="medium",
-        description="PI thinking level: off, minimal, low, medium, high",
+        description="PI thinking level: off, minimal, low, medium, high, xhigh, max",
     )
 
     # Review Configuration
@@ -80,8 +104,9 @@ class Settings(BaseSettings):
         description="Prefix for ticket IDs (e.g., 'PROJ' for PROJ-123)",
     )
     review_auto_approve: bool = Field(
-        default=True,
-        description="Auto-approve PRs with no critical/high issues",
+        default=False,
+        description="Auto-approve PRs with no critical/high issues (opt-in: Baloo "
+        "comments without approving unless this is enabled)",
     )
     review_min_severity: str = Field(
         default="MEDIUM",
@@ -116,7 +141,10 @@ class Settings(BaseSettings):
     dashboard_username: str = Field(default="", description="Dashboard basic auth username")
     dashboard_password: str = Field(default="", description="Dashboard basic auth password")
     log_retention_days: int = Field(
-        default=30, description="Days to retain execution logs (0 to disable cleanup)"
+        default=30,
+        ge=0,
+        le=3650,
+        description="Days to retain execution logs (0 to disable cleanup)",
     )
 
     # FP Verification Configuration
@@ -148,6 +176,8 @@ class Settings(BaseSettings):
     )
     thread_agent_max_replies: int = Field(
         default=3,
+        ge=0,
+        le=50,
         description="Max total Baloo messages per thread (original + replies) before escalation",
     )
     thread_agent_max_concurrent: int = Field(
@@ -162,6 +192,8 @@ class Settings(BaseSettings):
     )
     feedback_signals_ttl_days: int = Field(
         default=180,
+        ge=1,
+        le=3650,
         description="Days before unmatched feedback signals expire",
     )
 
@@ -205,6 +237,35 @@ class Settings(BaseSettings):
         description="Model for documentation drift analysis (short name or provider/model)",
     )
 
+    # Coding Standards Configuration
+    coding_standards_enabled: bool = Field(
+        default=False,
+        description=(
+            "Judge changed lines against the skills mapped to them by "
+            ".bluebear/skill_enforcement.json path rules"
+        ),
+    )
+    coding_standards_model: str = Field(
+        default="sonnet",
+        description="Model for the coding standards judge (short name or provider/model)",
+    )
+    coding_standards_umbrella_repo: str = Field(
+        default="",
+        description=(
+            "owner/repo whose .bluebear/skill_enforcement.json rules and .agents/skills also "
+            "apply to PRs in other repositories, treated as checked out at <repo-name>/ in it"
+        ),
+    )
+    coding_standards_max_concurrency: int = Field(
+        default=2,
+        ge=1,
+        description="Maximum concurrent coding standards judge calls per review",
+    )
+    coding_standards_max_chars_per_call: int = Field(
+        default=400_000,
+        description="Maximum characters of numbered file content sent in one judge call",
+    )
+
     # Fidelity Report Configuration
     fidelity_enabled: bool = Field(
         default=True,
@@ -216,6 +277,8 @@ class Settings(BaseSettings):
     )
     fidelity_approval_threshold: int = Field(
         default=90,
+        ge=0,
+        le=100,
         description="Minimum fidelity score (0-100) required for auto-approval with clean review",
     )
 
@@ -225,6 +288,44 @@ class Settings(BaseSettings):
         default="https://api.linear.app/graphql",
         description="Linear GraphQL API endpoint",
     )
+
+    @field_validator("agent_provider", mode="before")
+    @classmethod
+    def normalize_agent_provider(cls, v: object) -> object:
+        """Canonicalize the provider token to lowercase.
+
+        Provider tokens are lowercase everywhere they are consumed — the
+        ``PROVIDER_TIER_MODELS`` catalog, the ``databricks`` comparison in
+        ``pi_runtime``, and pi's own ``--provider`` argument. Without this,
+        ``AGENT_PROVIDER=Databricks`` passes every check by not matching any of
+        them and reaches pi verbatim, which fails per review with
+        ``Unknown provider "Databricks"``. Normalizing once here keeps the rest
+        of the system free of case-insensitive comparisons.
+        """
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @model_validator(mode="after")
+    def check_provider_credentials(self) -> "Settings":
+        """Reject a provider selection whose required settings are missing.
+
+        Without this, ``AGENT_PROVIDER=databricks`` with no ``DATABRICKS_HOST``
+        starts cleanly and then fails *every* review with an ``agent_error``,
+        one PR at a time. Failing at settings load surfaces it once, at deploy.
+
+        Only the environment-configured provider is checked. A provider chosen
+        at runtime from the dashboard never reaches here; that path is covered
+        by the smoke test the dashboard runs after the override is saved.
+        """
+        if self.agent_provider == "databricks" and not self.databricks_host.strip():
+            raise ValueError(
+                "AGENT_PROVIDER=databricks requires DATABRICKS_HOST. Set it to your "
+                "workspace URL, e.g. https://dbc-xxxxxxxx-xxxx.cloud.databricks.com "
+                "(DATABRICKS_HOST is environment-only and cannot be set from the "
+                "dashboard). See docs/features/databricks.md."
+            )
+        return self
 
     @property
     def github_private_key_bytes(self) -> bytes:

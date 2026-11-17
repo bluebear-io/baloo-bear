@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,11 +71,16 @@ class TestPIAgentOptions:
     """Tests for PIAgentOptions defaults."""
 
     def test_defaults(self):
+        """Defaults mirror the config layer rather than restating it."""
+        from baloo.agent.tiers import AGENT_MAX_TURNS, PROVIDER_TIER_MODELS
+        from baloo.config.settings import Settings
+
         opts = PIAgentOptions()
-        assert opts.model == "claude-sonnet-4-6"
-        assert opts.provider == "anthropic"
-        assert opts.thinking_level == "medium"
-        assert opts.max_turns == 20
+        provider = Settings.model_fields["agent_provider"].default
+        assert opts.provider == provider
+        assert opts.model == PROVIDER_TIER_MODELS[provider]["standard"]
+        assert opts.thinking_level == Settings.model_fields["pi_thinking_level"].default
+        assert opts.max_turns == AGENT_MAX_TURNS
         assert opts.cwd is None
         assert opts.name is None
 
@@ -181,6 +187,64 @@ class TestPIAgentBaseRunQuery:
             {"type": "agent_end"},
         ]
         return [json.dumps(e).encode("utf-8") + b"\n" for e in events]
+
+    @pytest.mark.asyncio
+    async def test_error_stop_reason_surfaces_provider_detail(self):
+        """A provider error (auth/access/throttle) must reach metadata, not be dropped."""
+        events = [
+            json.dumps({"type": "response", "command": "set_thinking_level", "success": True}),
+            json.dumps({"type": "response", "command": "prompt", "success": True}),
+            json.dumps({"type": "agent_start"}),
+            json.dumps({"type": "turn_start"}),
+            json.dumps(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "model": "us.anthropic.claude-sonnet-4-6",
+                        "usage": {},
+                        "stopReason": "error",
+                        "errorMessage": (
+                            "AccessDeniedException: You don't have access to the model "
+                            "with the specified model ID."
+                        ),
+                    },
+                }
+            ),
+            json.dumps({"type": "turn_end"}),
+            json.dumps({"type": "agent_end"}),
+        ]
+        events = [e.encode("utf-8") + b"\n" for e in events]
+
+        agent = PIAgentBase(PIAgentOptions(model="us.anthropic.claude-sonnet-4-6"))
+
+        with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            _, metadata = await agent.run_query("Review")
+
+        assert metadata["is_error"] is True
+        assert "AccessDeniedException" in metadata["error_message"]
 
     @pytest.mark.asyncio
     async def test_successful_review(self):
@@ -883,6 +947,17 @@ class TestSandboxWiring:
         base.update(overrides)
         return SimpleNamespace(**base)
 
+    def test_context_files_and_skills_load_only_when_not_isolated(self):
+        default = PIAgentBase(PIAgentOptions())
+        isolated = PIAgentBase(PIAgentOptions(no_context_files=True))
+        with patch("baloo.agent.pi_runtime.get_settings", return_value=self._settings()):
+            default_cmd = default._build_pi_command()
+            isolated_cmd = isolated._build_pi_command()
+        assert "--no-context-files" not in default_cmd
+        assert "--no-skills" not in default_cmd
+        assert "--no-context-files" in isolated_cmd
+        assert "--no-skills" in isolated_cmd
+
     def test_no_sandbox_when_mode_off(self):
         agent = PIAgentBase(PIAgentOptions(cwd="/work/tree"))
         with patch("baloo.agent.pi_runtime.get_settings", return_value=self._settings()):
@@ -940,7 +1015,7 @@ class TestSandboxWiring:
         ):
             cmd = agent._build_pi_command(sandbox_root="/tmp/empty-root")
         assert cmd[0] == "bwrap"
-        assert "/tmp/empty-root" in cmd
+        assert str(Path("/tmp/empty-root").resolve()) in cmd
 
     @staticmethod
     def _mock_proc():
@@ -1065,3 +1140,306 @@ class TestSandboxWiring:
         assert scratch is not None and "baloo-sandbox-" in scratch
         # The scratch dir exists only for the run.
         assert not os.path.exists(scratch)
+
+
+class TestDatabricksWiring:
+    """run_query points PI at the generated models.json for the databricks provider."""
+
+    def _events(self) -> list[bytes]:
+        """Mirror the handshake TestPIAgentBaseRunQuery._make_events produces."""
+        events = [
+            {"type": "response", "command": "set_thinking_level", "success": True},
+            {"type": "response", "command": "prompt", "success": True},
+            {"type": "agent_start"},
+            {"type": "turn_start"},
+            {"type": "message_start", "message": {"role": "assistant"}},
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": '{"findings": [], "summary": {}}'}],
+                    "usage": {"input": 1, "output": 1},
+                    "stopReason": "stop",
+                },
+            },
+            {"type": "turn_end"},
+            {"type": "agent_end"},
+        ]
+        return [json.dumps(e).encode("utf-8") + b"\n" for e in events]
+
+    async def _env_for(self, provider: str, tmp_path):
+        agent = PIAgentBase(PIAgentOptions(provider=provider, model="m"))
+        events = self._events()
+
+        with (
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+            patch(
+                "baloo.agent.pi_runtime.ensure_agent_dir",
+                return_value=tmp_path / "pi-databricks",
+            ),
+        ):
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            await agent.run_query("Review")
+
+        return mock_exec.call_args.kwargs["env"]
+
+    @pytest.mark.asyncio
+    async def test_databricks_sets_agent_dir(self, tmp_path):
+        env = await self._env_for("databricks", tmp_path)
+        assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
+
+    @pytest.mark.asyncio
+    async def test_other_providers_get_no_agent_dir(self, tmp_path):
+        env = await self._env_for("anthropic", tmp_path)
+        assert "PI_CODING_AGENT_DIR" not in env
+
+    @pytest.mark.asyncio
+    async def test_json_retry_spawn_also_gets_agent_dir(self, tmp_path):
+        # The JSON-retry path spawns its own subprocess. Without the provider
+        # env it dies with `Unknown provider "databricks"` while the main
+        # review succeeds, so the failure is easy to miss.
+        agent = PIAgentBase(PIAgentOptions(provider="databricks", model="m"))
+        with patch(
+            "baloo.agent.pi_runtime.ensure_agent_dir",
+            return_value=tmp_path / "pi-databricks",
+        ):
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
+        assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
+
+    def test_openrouter_sets_agent_dir(self, tmp_path):
+        # Without PI_CODING_AGENT_DIR pi still runs OpenRouter (it is built in),
+        # just without the ZDR routing — so this must never be skipped.
+        agent = PIAgentBase(PIAgentOptions(provider="openrouter", model="z-ai/glm-5.3"))
+        with patch(
+            "baloo.agent.pi_runtime.openrouter.ensure_agent_dir",
+            return_value=tmp_path / "pi-openrouter",
+        ):
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
+        assert env == {
+            "PATH": "/usr/bin",
+            "PI_CODING_AGENT_DIR": str(tmp_path / "pi-openrouter"),
+        }
+
+    def test_with_provider_env_leaves_other_providers_untouched(self):
+        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
+        assert agent._with_provider_env({"PATH": "/usr/bin"}) == {"PATH": "/usr/bin"}
+
+    def test_with_provider_env_preserves_scrubbed_sandbox_env(self, tmp_path):
+        agent = PIAgentBase(PIAgentOptions(provider="databricks", model="m"))
+        with patch(
+            "baloo.agent.pi_runtime.ensure_agent_dir",
+            return_value=tmp_path / "pi-databricks",
+        ):
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
+        # Must extend the allowlisted env, not replace it with os.environ.
+        assert env == {
+            "PATH": "/usr/bin",
+            "PI_CODING_AGENT_DIR": str(tmp_path / "pi-databricks"),
+        }
+
+    def test_subprocess_env_is_scrubbed(self, monkeypatch):
+        # The retry subprocess runs --no-tools but keeps network access. If it
+        # inherited the full env it would hold baloo's secrets in
+        # /proc/self/environ, which the sandbox scrub exists to prevent.
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
+        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
+
+        env = agent._subprocess_env()
+
+        assert "GITHUB_PRIVATE_KEY" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+
+class TestWrapUpSteer:
+    """The agent must be told to finalize before the turn cap cuts it off.
+
+    Production hit a wall at exactly max_turns: the run was aborted mid-
+    exploration with no assistant text, so nothing could be parsed and the
+    whole review was discarded with zero findings.
+    """
+
+    async def _drive(
+        self,
+        *,
+        max_turns: int,
+        turns: int,
+        with_text: bool = False,
+        parseable: bool = True,
+        logger=None,
+    ):
+        """Run an agent that emits `turns` tool-only turns. Returns stdin writes."""
+        agent = PIAgentBase(PIAgentOptions(max_turns=max_turns, name="BalooAgent"))
+
+        text = '{"findings": []}' if parseable else "Let me check the parser next."
+        content = [{"type": "text", "text": text}] if with_text else []
+        events = [
+            json.dumps(
+                {"type": "response", "command": "set_thinking_level", "success": True}
+            ).encode()
+            + b"\n",
+            json.dumps({"type": "response", "command": "prompt", "success": True}).encode() + b"\n",
+        ]
+        for _ in range(turns):
+            events += [
+                json.dumps({"type": "turn_start"}).encode() + b"\n",
+                json.dumps(
+                    {
+                        "type": "message_end",
+                        "message": {
+                            "role": "assistant",
+                            "content": content,
+                            "model": "test",
+                            "usage": {"input": 1, "output": 5, "cost": {"total": 0.001}},
+                        },
+                    }
+                ).encode()
+                + b"\n",
+                json.dumps({"type": "turn_end"}).encode() + b"\n",
+            ]
+        events.append(json.dumps({"type": "agent_end"}).encode() + b"\n")
+
+        with patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec:
+            proc = AsyncMock()
+            proc.returncode = None
+            proc.stdin = AsyncMock()
+            proc.stdin.write = MagicMock()
+            proc.stdin.drain = AsyncMock()
+            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+            event_iter = iter(events)
+
+            async def fake_readline():
+                try:
+                    return next(event_iter)
+                except StopIteration:
+                    return b""
+
+            proc.stdout.readline = fake_readline
+            proc.stderr = AsyncMock()
+            proc.kill = MagicMock()
+            proc.wait = AsyncMock()
+            mock_exec.return_value = proc
+
+            with patch.object(
+                PIAgentBase, "_retry_json", AsyncMock(return_value=(None, None, None))
+            ):
+                await agent.run_query("Review", review_logger=logger)
+
+            return [json.loads(c[0][0].decode()) for c in proc.stdin.write.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_steer_sent_before_cap_and_before_abort(self):
+        """A 30-turn agent is steered to wrap up at turn 27, then aborted at 30."""
+        cmds = await self._drive(max_turns=30, turns=30)
+        types = [c["type"] for c in cmds]
+
+        assert "steer" in types, "no wrap-up steer was sent before the cap"
+        assert types.index("steer") < types.index("abort")
+
+        steer = cmds[types.index("steer")]
+        assert "3 turn(s) left" in steer["message"]
+        assert "final JSON" in steer["message"]
+
+    @pytest.mark.asyncio
+    async def test_steer_not_repeated(self):
+        cmds = await self._drive(max_turns=30, turns=30)
+        assert [c["type"] for c in cmds].count("steer") == 1
+
+    @pytest.mark.asyncio
+    async def test_no_steer_when_agent_finishes_early(self):
+        """The common case costs nothing: a run that ends well short of the cap
+        is never nudged."""
+        cmds = await self._drive(max_turns=30, turns=12, with_text=True)
+        assert "steer" not in [c["type"] for c in cmds]
+
+    @pytest.mark.asyncio
+    async def test_no_steer_for_short_deciders(self):
+        """A 1- or 2-turn decider has no room for a nudge — reaching its cap is
+        its normal, successful exit."""
+        for cap in (1, 2, 3):
+            cmds = await self._drive(max_turns=cap, turns=cap, with_text=True)
+            assert "steer" not in [c["type"] for c in cmds], f"steered a {cap}-turn agent"
+
+
+class TestEmptyRunIsLogged:
+    """Only BalooAgent's failure reaches reviews.review_status. The fidelity and
+    documentation agents return None and log to stderr, so their aborts were
+    invisible in the database — they must land in review_logs.
+    """
+
+    def _logger(self):
+        log = AsyncMock()
+        log.agent_error = AsyncMock()
+        log.agent_completed = AsyncMock()
+        return log
+
+    @pytest.mark.asyncio
+    async def test_capped_run_with_no_output_logs_agent_error(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=30, logger=log)
+
+        log.agent_error.assert_awaited_once()
+        assert log.agent_error.await_args.kwargs["error_category"] == "max_turns_reached"
+        assert "30 turn(s)" in log.agent_error.await_args.kwargs["error_message"]
+        # Cost accounting must still be recorded for a run that produced nothing.
+        log.agent_completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_short_run_with_no_output_logs_no_output(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, logger=log)
+
+        log.agent_error.assert_awaited_once()
+        assert log.agent_error.await_args.kwargs["error_category"] == "no_output"
+
+    @pytest.mark.asyncio
+    async def test_successful_run_logs_no_error(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, with_text=True, logger=log)
+
+        log.agent_error.assert_not_awaited()
+        log.agent_completed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_text_is_not_counted_as_an_abort(self):
+        """Text present means the agent answered and the answer was malformed —
+        a JSON-quality problem, not the cap silencing it. A count of
+        max_turns_reached must mean only "cut off with nothing"."""
+        log = self._logger()
+        await TestWrapUpSteer()._drive(
+            max_turns=30, turns=30, with_text=True, parseable=False, logger=log
+        )
+
+        log.agent_error.assert_awaited_once()
+        kwargs = log.agent_error.await_args.kwargs
+        assert kwargs["error_category"] == "json_parse_failed"
+        assert "unparseable text" in kwargs["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_agent_completed_receives_cache_tokens(self):
+        log = self._logger()
+        await TestWrapUpSteer()._drive(max_turns=30, turns=4, with_text=True, logger=log)
+
+        kwargs = log.agent_completed.await_args.kwargs
+        assert "cache_read" in kwargs and "cache_write" in kwargs

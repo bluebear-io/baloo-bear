@@ -9,6 +9,7 @@ settings are never overridable.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, get_args, get_origin
 
@@ -18,15 +19,48 @@ logger = logging.getLogger(__name__)
 
 MUTABLE_KEYS = frozenset(
     {
+        # Agent selection
         "agent_provider",
         "agent_model",
-        "agent_fallback_model",
+        # DATABRICKS_HOST is deliberately absent and must stay absent: it is the
+        # URL the gateway bearer token is sent to. If it were settable from a web
+        # form, dashboard access alone would be enough to repoint the gateway at
+        # an attacker-controlled host and have Baloo ship DATABRICKS_TOKEN there.
+        # Set it in the environment and restart.
         "pi_thinking_level",
+        # Routing only; ZDR itself is hardcoded and cannot be turned off here.
+        "openrouter_provider_order",
+        "openrouter_allow_fallbacks",
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
+        "coding_standards_model",
+        # Feature toggles
+        "review_auto_approve",
+        "review_use_checks_api",
+        "fp_verification_enabled",
+        "thread_agent_enabled",
+        "documentation_drift_enabled",
+        "coding_standards_enabled",
+        "fidelity_enabled",
+        "ast_tools_enabled",
+        "feedback_signals_enabled",
+        # Tuning
+        "review_min_severity",
+        "thread_agent_max_replies",
+        "fidelity_approval_threshold",
+        "log_retention_days",
+        "ticket_id_prefix",
+        "fidelity_plan_path_pattern",
+        "feedback_signals_ttl_days",
+        "max_concurrent_reviews",
     }
 )
+
+# Mutable keys that are read once during startup. The override is stored and
+# shown immediately, but only takes effect on the next restart — the settings
+# page says so rather than implying the change is live.
+RESTART_REQUIRED_KEYS = frozenset({"log_retention_days", "max_concurrent_reviews"})
 
 CACHE_TTL_SECONDS = 30
 
@@ -98,7 +132,38 @@ def coerce_setting_value(key: str, raw: str) -> Any:
             raise RuntimeSettingsError(f"Invalid float for {key}: {raw!r}") from exc
 
     # Default: string
+    if key == "agent_provider":
+        # Both the write path (validate_override) and the read path
+        # (resolve_setting, off the cached DB value) funnel through here, so
+        # normalizing once keeps them symmetric — a row stored mixed-case before
+        # this existed is still read back canonical, with no migration needed.
+        # Mirrors Settings.normalize_agent_provider for the env-configured value.
+        return text.strip().lower()
     return text
+
+
+#: Values a setting is allowed to take, where the field type alone is not
+#: enough. Enforced server-side: the HTML ``min``/``max``/``<select>`` are a
+#: convenience, and anything that only lives in the browser is not validation.
+ALLOWED_VALUES: dict[str, frozenset[str]] = {
+    "review_min_severity": frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"}),
+    "pi_thinking_level": frozenset({"off", "minimal", "low", "medium", "high", "xhigh", "max"}),
+}
+
+#: Prefix is interpolated into a regex in fidelity/ticket_extractor.py, so it is
+#: restricted rather than escaped alone: a pattern like ``(a+)+`` would otherwise
+#: be a catastrophic-backtracking stall on the event loop.
+_TICKET_PREFIX_RE = re.compile(r"^[A-Za-z0-9_]{1,32}$")
+
+
+def _numeric_bounds(key: str) -> tuple[Any, Any]:
+    """ge/le declared on the Settings field, if any."""
+    field = Settings.model_fields.get(key)
+    minimum = maximum = None
+    for item in getattr(field, "metadata", ()) or ():
+        minimum = getattr(item, "ge", minimum)
+        maximum = getattr(item, "le", maximum)
+    return minimum, maximum
 
 
 def validate_override(key: str, raw: str) -> str:
@@ -108,22 +173,48 @@ def validate_override(key: str, raw: str) -> str:
 
     coerced = coerce_setting_value(key, raw)
 
+    if isinstance(coerced, (int, float)) and not isinstance(coerced, bool):
+        minimum, maximum = _numeric_bounds(key)
+        if minimum is not None and coerced < minimum:
+            raise RuntimeSettingsError(f"{key} must be >= {minimum} (got {coerced})")
+        if maximum is not None and coerced > maximum:
+            raise RuntimeSettingsError(f"{key} must be <= {maximum} (got {coerced})")
+
+    allowed = ALLOWED_VALUES.get(key)
+    if allowed is not None and str(coerced) not in allowed:
+        raise RuntimeSettingsError(
+            f"{key} must be one of: {', '.join(sorted(allowed))} (got {coerced!r})"
+        )
+
+    # Empty is reported by the non-empty check below, which gives a better message.
+    if key == "agent_provider" and str(coerced).strip():
+        from baloo.agent.tiers import PROVIDER_TIER_MODELS
+
+        if str(coerced) not in PROVIDER_TIER_MODELS:
+            raise RuntimeSettingsError(
+                f"Unknown provider {coerced!r}. Valid: "
+                f"{', '.join(sorted(PROVIDER_TIER_MODELS))}"
+            )
+
+    if key == "ticket_id_prefix" and not _TICKET_PREFIX_RE.match(str(coerced)):
+        raise RuntimeSettingsError(
+            f"{key} must be 1-32 letters, digits, or underscores (got {coerced!r})"
+        )
+
     if key in {
         "agent_provider",
         "agent_model",
         "fp_verification_model",
         "thread_agent_model",
         "documentation_drift_model",
+        "coding_standards_model",
         "pi_thinking_level",
     }:
         if not isinstance(coerced, str) or not coerced.strip():
             raise RuntimeSettingsError(f"{key} must be a non-empty string")
-        return coerced.strip()
-
-    if key == "agent_fallback_model":
-        # Empty string disables fallback (matches Settings semantics).
-        if not isinstance(coerced, str):
-            raise RuntimeSettingsError(f"{key} must be a string")
+        # agent_provider is already canonicalized by coerce_setting_value above.
+        # Model IDs are deliberately left as typed: those are provider-defined
+        # and may be case-sensitive (Bedrock inference-profile ARNs, for one).
         return coerced.strip()
 
     return str(coerced)

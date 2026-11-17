@@ -1,15 +1,15 @@
 # Review Agent
 
-Baloo uses [PI](https://github.com/mariozechner/pi-coding-agent) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
+Baloo uses [PI](https://github.com/earendil-works/pi) as its agentic runtime. When a PR is opened or updated, Baloo spawns a PI agent process that actively explores the repository to produce a thorough review.
 
 ## How It Works
 
-1. **Webhook arrives** — GitHub sends a `pull_request` event
+1. **Webhook arrives** — GitHub sends a `pull_request` event (or a `check_run` / `check_suite` `rerequested` event from the Checks tab's Re-run button, or an `issue_comment` carrying the `@baloo review` command)
 2. **Context assembly** — Baloo fetches the PR diff, file list, metadata, and any prior discussion threads
-3. **Agent spawns** — A PI process starts in RPC mode with **read-only tools**: `read`, `grep`, `find`, `ls`
+3. **Agent spawns** — A PI process starts in RPC mode with **read-only tools**: `read`, `grep`, `find`, `ls`, plus the AST tools `ast_outline`, `ast_grep`, `ast_symbols` (on by default)
 4. **Agentic review** — The agent reads changed files in full, greps for security patterns, explores project structure, checks for tests and configs
-5. **Structured output** — The agent returns a JSON object with findings (file, line, severity, category, description, recommendation), plus a `general_findings` list for observations with no file/line anchor (e.g. missing tests, architectural gaps). General findings appear as a "General Observations" section in the PR summary rather than as inline comments
-6. **Post-processing** — Findings go through FP verification (optional), severity filtering, duplicate detection, and severity routing before being posted
+5. **Structured output** — The agent returns a JSON object with findings (file, line, severity, category, description, recommendation), plus a `general_findings` list for observations with no file/line anchor (e.g. missing tests, architectural gaps). General findings appear as a "General Observations" section in the PR summary rather than as inline comments; they are also persisted and shown in the dashboard findings table
+6. **Post-processing** — Findings go through FP verification (on by default), severity filtering, duplicate detection, and severity routing before being posted
 
 ## Why Agentic?
 
@@ -32,6 +32,11 @@ The agent has **no write access**. It cannot execute commands, modify files, or 
 | `grep` | Search for patterns across files |
 | `find` | Locate files by name or pattern |
 | `ls` | List directory contents |
+| `ast_outline` | Symbol structure of a file (functions, classes, methods with line ranges) |
+| `ast_grep` | Structural code search with metavariables, e.g. `except $ERR: pass` |
+| `ast_symbols` | Find where a symbol is defined and referenced |
+
+The three AST tools are on by default; set `AST_TOOLS_ENABLED=false` to turn them off.
 
 ## What the Agent Reviews
 
@@ -40,9 +45,10 @@ The system prompt instructs the agent to check, in priority order:
 1. **Security** — SQL injection, XSS, secrets exposure, command injection, auth/authz issues
 2. **Bugs** — Logic errors, null refs, race conditions, error handling gaps
 3. **Silent failures** — Swallowed exceptions, missing error logging, silent default substitution
-4. **Guidelines** — Violations of conventions in `AGENTS.md` / `CONTRIBUTING.md`
-5. **Performance** — N+1 queries, blocking operations, algorithm efficiency
-6. **Quality** — DRY, complexity, naming, test coverage
+4. **Performance** — N+1 queries, blocking operations, algorithm efficiency
+5. **Quality** — DRY, complexity, naming, test coverage
+
+Separately, the agent must read `AGENTS.md` and `CONTRIBUTING.md` and report violations of them as HIGH (see [Guidelines Enforcement](guidelines.md)).
 
 ### Per-PR review guidance (when present)
 
@@ -50,12 +56,19 @@ When the PR description contains a `## Review guidance for Baloo` section, Baloo
 
 Authors: see [How to Get the Most Out of Baloo](../how-to-get-the-most.md) for how to write falsifiable, diff-anchored checks.
 
+## Failure Handling
+
+When the agent terminates with an error stop reason or returns no structured
+output, Baloo sets `agent_error` in the review metadata, logs the raw PI message
+(so unknown error shapes stay diagnosable), records the review as `agent_error`
+in the database, and suppresses the approval decision — the PR gets a ⚠️ comment
+saying it was not reviewed, never an approval. See
+[severity-routing](severity-routing.md#approval-decision-logic).
+
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for all agents (see [Models](models.md)) |
 | `AGENT_MODEL` | `sonnet` | Model to use (see [Models](models.md)) |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback if primary fails |
-| `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
-| `AGENT_TEMPERATURE` | `0.2` | Temperature for generation |
-| `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high |
+| `PI_THINKING_LEVEL` | `medium` | Thinking depth: off, minimal, low, medium, high, xhigh, max |

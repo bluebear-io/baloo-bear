@@ -2,7 +2,7 @@
 
 import re
 
-from baloo.config.settings import settings
+from baloo.config.runtime_settings import resolve_setting
 from baloo.github.models import ReviewComment
 
 
@@ -18,7 +18,7 @@ class FindingsFilter:
 
     def __init__(self):
         """Initialize the findings filter."""
-        self.min_severity = settings.review_min_severity
+        self.min_severity = resolve_setting("review_min_severity")
 
     def filter_findings(self, comments: list[ReviewComment]) -> list[ReviewComment]:
         """

@@ -219,3 +219,83 @@ async def test_process_thread_reply_escalation_cap():
 
     # No reply should be posted — escalation cap hit
     mock_client.reply_to_review_comment.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_thread_reply_skips_thread_where_other_bot_mentions_baloo():
+    """Another bot naming Baloo does not make the thread Baloo's (bear-metal#204).
+
+    The thread agent used to treat any bot comment containing "baloo" as its own,
+    so it replied to a human addressing the PR's coding agent and took on that
+    agent's promise to change the code.
+    """
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client.fetch_review_comments.return_value = [
+        {
+            "id": 100,
+            "body": "why does this specific handling is needed?",
+            "user": {"login": "reviewer"},
+            "path": "src/worker/workspace-guard.ts",
+            "line": 1,
+            "created_at": "2026-11-12T15:47:33Z",
+        },
+        {
+            "id": 101,
+            "body": (
+                "After Baloo's review rounds, the exemption only applies to `aws logs`. "
+                "If you both prefer that, I'll remove the guard change."
+            ),
+            "user": {"login": "bear-metal-app[bot]"},
+            "in_reply_to_id": 100,
+            "path": "src/worker/workspace-guard.ts",
+            "line": 1,
+            "created_at": "2026-11-12T15:49:56Z",
+        },
+        {
+            "id": 102,
+            "body": "do as @reviewer says",
+            "user": {"login": "owner"},
+            "in_reply_to_id": 100,
+            "path": "src/worker/workspace-guard.ts",
+            "line": 1,
+            "created_at": "2026-11-12T17:10:52Z",
+        },
+    ]
+    mock_client.get_file_content.return_value = "export function guard() {}\n"
+    mock_client.reply_to_review_comment.return_value = True
+
+    agent_result = MagicMock(classification="acknowledged", reply="Got it — I'll drop it.")
+    agent_result.feedback_signal = None
+
+    with (
+        patch("baloo.review.orchestrator.GitHubAPIClient", return_value=mock_client),
+        patch(
+            "baloo.review.orchestrator.get_thread_agent_semaphore",
+            return_value=asyncio.Semaphore(3),
+        ),
+        patch(
+            "baloo.agent.thread_agent.ThreadAgent.classify",
+            new_callable=AsyncMock,
+            return_value=agent_result,
+        ) as mock_classify,
+    ):
+        await _process_thread_reply(
+            repo_full_name="org/repo",
+            pr_number=204,
+            installation_id=1,
+            comment_data={
+                "id": 102,
+                "body": "do as @reviewer says",
+                "user": {"login": "owner"},
+                "path": "src/worker/workspace-guard.ts",
+                "line": 1,
+            },
+            in_reply_to_id=100,
+            head_sha="abc123",
+        )
+
+    mock_classify.assert_not_called()
+    mock_client.reply_to_review_comment.assert_not_called()

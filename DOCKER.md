@@ -55,7 +55,7 @@ docker run -d \
 
 ## Image Details
 
-- Base images: pinned `python:3.14.5-slim-bookworm` for the app runtime, plus pinned `node:20-bookworm-slim` copied in via multi-stage build for PI.
+- Base images: digest-pinned `python:3.14-slim-bookworm` for the app runtime, plus digest-pinned `node:26-bookworm-slim` copied in via multi-stage build for PI (exact versions in the `Dockerfile`).
 - Installs production Python dependencies from `requirements-prod.txt` with `pip --require-hashes`.
 - Installs the PI CLI and Node dependencies with `npm ci` from `package-lock.json`.
 - Exposes port `8000`
@@ -68,16 +68,16 @@ Required:
 - `GITHUB_APP_ID`
 - `GITHUB_PRIVATE_KEY`
 - `GITHUB_WEBHOOK_SECRET`
-- `ANTHROPIC_API_KEY`
+- Credentials for your model provider, e.g. `ANTHROPIC_API_KEY` for the default `anthropic` provider (see [Model Configuration](docs/features/models.md) for the others)
 
 Common optional settings:
 
 - `APP_PORT=8000`
 - `LOG_LEVEL=INFO`
 - `MAX_CONCURRENT_REVIEWS=3`
-- `AGENT_MODEL=claude-sonnet-4-6`
+- `AGENT_MODEL=sonnet`
 - `DATABASE_ENABLED=false`
-- `DASHBOARD_ENABLED=false`
+- `DASHBOARD_ENABLED=true` (the default; needs `DATABASE_ENABLED=true`)
 
 See `.env.docker` for an example.
 
@@ -97,8 +97,8 @@ To publish to a registry manually:
 
 ```bash
 docker build -t baloo:latest .
-docker tag baloo:latest ghcr.io/blue-bear-security/baloo-bear:latest
-docker push ghcr.io/blue-bear-security/baloo-bear:latest
+docker tag baloo:latest ghcr.io/bluebear-io/baloo-bear:latest
+docker push ghcr.io/bluebear-io/baloo-bear:latest
 ```
 
 The repository workflow in `.github/workflows/deploy.yml` uses GHCR as the default publishing target.

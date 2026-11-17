@@ -1,0 +1,111 @@
+"""Model tier constants shared by the PI runtime and agent config.
+
+These live here rather than in ``agent.config`` because ``agent.config`` imports
+``PIAgentOptions`` from ``agent.pi_runtime``; putting them in either module would
+make the other import it back. One definition, both sides read it.
+"""
+
+from __future__ import annotations
+
+from baloo.agent.databricks import DATABRICKS_PROVIDER, DATABRICKS_TIER_MODELS
+from baloo.agent.openrouter import OPENROUTER_PROVIDER, OPENROUTER_TIER_MODELS
+
+# Turn ceiling for every agent role that runs a full review. It is a ceiling,
+# not a target: a review that finishes in three turns costs three turns.
+# Single-purpose agents (smoke test, scope decider, thread reply, FP verify)
+# override this with their own small limits.
+TIER_MAX_TURNS: dict[str, int] = {
+    # Economy — FP verification, thread replies. These finish in one turn, so
+    # the low cap is a guard against a pathological loop, not a constraint.
+    "economy": 10,
+    # Standard — 30, not 20: at 20 the finished-run histogram decayed smoothly
+    # to ~11 runs at turn 19 and then spiked to 86 at exactly 20, with a further
+    # 66 aborting there having produced no output — a wall, not a distribution.
+    "standard": 30,
+    # Premium — complex / security-sensitive reviews.
+    "premium": 30,
+}
+
+#: Ceiling for anything not resolved through a tier (a bare model ID, a
+#: provider/model string). Follows the standard tier.
+AGENT_MAX_TURNS = TIER_MAX_TURNS["standard"]
+
+#: Per-provider ceilings that replace ``TIER_MAX_TURNS``. The cap trades
+#: findings for spend, so it is set by what a turn costs: on OpenRouter's open
+#: models a turn is ~1.5 cents against ~6 for Sonnet 5, and GLM-5.3 needed 29 of
+#: 30 turns on a large PR in the 2026-10-12 trial. Raising it for Anthropic too
+#: would only move the wall at four times the price (see the standard tier).
+PROVIDER_MAX_TURNS: dict[str, dict[str, int]] = {
+    "openrouter": {"standard": 50, "premium": 50},
+}
+
+
+def tier_max_turns(provider: str, tier: str) -> int:
+    """Return the turn ceiling for ``tier`` on ``provider``."""
+    return PROVIDER_MAX_TURNS.get(provider, {}).get(tier, TIER_MAX_TURNS[tier])
+
+
+def provider_max_turns(provider: str) -> int:
+    """Ceiling for a model not resolved through a tier; follows the standard tier."""
+    return tier_max_turns(provider, "standard")
+
+
+#: One prompt, one answer. Used by agents with no tool loop to run — the
+#: provider smoke probe and the sync scope decider.
+SINGLE_TURN = 1
+
+#: One answer plus one retry. Used where a malformed reply is recoverable by
+#: asking again: FP verification, thread replies, and the JSON retry spawn.
+RETRY_TURN_BUDGET = 2
+
+# Short names are tier aliases. Which backend they hit is controlled by
+# AGENT_PROVIDER — the model split (economy / standard / premium) is an
+# implementation detail of each Baloo agent role, not a separate provider.
+TIER_ALIASES: dict[str, str] = {
+    # Economy — FP verification, thread replies, simple reviews
+    "flash": "economy",
+    "haiku": "economy",
+    # Standard — default code reviews
+    "standard": "standard",
+    "gemini-pro": "standard",
+    "sonnet": "standard",
+    # Premium — complex / security-sensitive reviews
+    "premium": "premium",
+    "gemini-3.1-pro": "premium",
+    "opus": "premium",
+}
+
+# Per-provider model IDs for each tier. Bedrock uses US inference-profile IDs;
+# override with a bare Bedrock model ID or provider/model string when needed.
+# Every ID here must exist in the pinned pi's catalog (`pi --list-models`):
+# pi rejects a model it does not know before making any request. Last checked
+# against pi 0.87.1.
+PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
+    "anthropic": {
+        # Haiku 4.5 is still the current Haiku; there is no Claude 5 Haiku.
+        "economy": "claude-haiku-4-5-20251001",
+        "standard": "claude-sonnet-5",
+        "premium": "claude-opus-5-5",
+    },
+    "google": {
+        "economy": "gemini-3.5-flash-lite",
+        "standard": "gemini-3.8-flash",
+        # Still the only Gemini 3.x Pro in pi's catalog.
+        "premium": "gemini-3.1-pro-preview",
+    },
+    "amazon-bedrock": {
+        "economy": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "standard": "us.anthropic.claude-sonnet-5",
+        "premium": "us.anthropic.claude-opus-5-5",
+    },
+    "openai": {
+        # GPT-6 has no Terra: Sol took over that price point and Astra sits above it.
+        "economy": "gpt-6-luna",
+        "standard": "gpt-6-sol",
+        "premium": "gpt-6-astra",
+    },
+    # Registered with PI via a generated models.json — see baloo/agent/databricks.py.
+    DATABRICKS_PROVIDER: dict(DATABRICKS_TIER_MODELS),
+    # Built into pi; Baloo only adds ZDR routing — see baloo/agent/openrouter.py.
+    OPENROUTER_PROVIDER: dict(OPENROUTER_TIER_MODELS),
+}

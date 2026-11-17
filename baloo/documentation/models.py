@@ -42,7 +42,9 @@ class DocumentationWorkItem(BaseModel):
 class DocumentationDriftFinding(BaseModel):
     doc_path: str
     verdict: Literal["required", "optional", "not_needed"]
-    rationale: str
+    # The prompt only asks for a rationale on stale docs, so the model routinely
+    # omits it on `not_needed` entries. Requiring it failed the whole result.
+    rationale: str = ""
     evidence: list[str] = Field(default_factory=list)
     suggested_update: str | None = None
 

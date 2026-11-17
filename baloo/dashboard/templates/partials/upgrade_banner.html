@@ -1,0 +1,6 @@
+{% if upgrade %}
+<div class="alert alert--warn" style="margin-bottom: var(--space-5)">
+  Baloo-Bear <strong>{{ upgrade.version }}</strong> is available &mdash; you are on {{ current_version }}.
+  <a href="{{ upgrade.url }}" target="_blank" rel="noopener">Release notes</a>
+</div>
+{% endif %}

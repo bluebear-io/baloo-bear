@@ -5,10 +5,26 @@ Baloo includes an optional review history dashboard backed by PostgreSQL. It pro
 ## What It Shows
 
 - **Review history** — Every review with status, duration, model used, and cost
-- **Findings** — Individual findings per review with severity, category, file, and line
+- **Findings** — Expandable full finding text with severity, category, and location; general findings are identified even when they have no file anchor
 - **Cost tracking** — Token usage and dollar cost per review and in aggregate
 - **Fidelity scores** — When fidelity analysis is enabled
+- **Review logs** — Per-review agent log for debugging a run
+- **Analytics** — Daily review volume, status and severity distributions, top repositories, and failures by error category
+- **Outcomes** — After a PR merges, Baloo labels what happened to each finding (actioned, acknowledged, disputed, or ignored) and charts hit rate by severity and category, and accuracy over time
 - **Settings** — Effective runtime configuration; allowlisted agent knobs can be edited when the database is enabled
+- **Upgrade notice** — A banner when a newer Baloo-Bear release is available
+
+The dashboard follows the viewer's light/dark preference and has a theme toggle in the header. All CSS and JavaScript are served from the application itself — no CDN — so it renders correctly offline and behind a firewall.
+
+When an otherwise clean review is still held back from approval by unresolved Baloo threads from an earlier commit, the review page shows the number of outstanding threads instead of presenting the run as an unexplained zero-finding rejection. Historical reviews created before this information was stored are labeled accordingly.
+
+## Upgrade Notifications
+
+Every page checks the [GitHub releases API](https://github.com/bluebear-io/baloo-bear/releases) and shows a banner when a newer version is available, linking to its release notes. The footer shows the version you are running.
+
+Only published, non-prerelease releases count, so builds tracking `main` never raise the banner — nor does a build running ahead of the latest release. The check is loaded after the page renders, cached for an hour, and requires no token; if GitHub is unreachable the banner is simply omitted and the failure is logged as a warning.
+
+The running version comes from `BALOO_VERSION`, set at image build time from the release tag. Deployments that build from a source checkout fall back to the version in `pyproject.toml`.
 
 ## Requirements
 
@@ -31,11 +47,15 @@ http://localhost:8000/dashboard/
 
 ## Settings Page
 
-The dashboard includes a **Settings** page at `/dashboard/settings` showing the effective runtime configuration for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). Each row lists the environment variable, its current value, its default, and a description.
+The dashboard includes a **Settings** page at `/dashboard/settings` showing the effective runtime configuration for this Baloo instance, grouped by category (GitHub App, Agent, Review Behavior, Repo Provisioning, etc.). A category rail jumps between groups, and the filter box narrows rows by variable name or description. Each row lists the environment variable, its current value, its default, and a description.
 
-Allowlisted agent settings (`AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, and secondary model knobs) can be overridden at runtime when `DATABASE_ENABLED=true`. Overridden rows show a `db` source badge and a **Revert to env** control. All other settings remain read-only and always come from environment variables.
+Allowlisted settings can be overridden at runtime when `DATABASE_ENABLED=true` — model selection, the agent feature toggles, and the tuning knobs (see [Runtime Overrides](../configuration.md#runtime-overrides-db) for the full list). Each renders the control its type calls for: a toggle for booleans, a bounded number input for integers, a select for enumerated values. Overridden rows show a `db` source badge. All other settings remain read-only and always come from environment variables.
 
-The page opens with a **Models in use** summary: each agent role (primary review, fallback, FP verification, thread agent, fidelity, documentation drift, sync scope) with its configured value and resolved `provider/model` (so defaults like `haiku` for FP/thread are visible without scrolling).
+Edits are batched: change several settings, and a save bar reports how many changed, with **Save** and **Discard**. Only changed fields are submitted, every field is validated against its type and bounds first, and a batch is all-or-nothing — if one field is invalid, nothing is written and the page reports which field failed.
+
+`AGENT_PROVIDER` is a selector with labeled choices, including **Anthropic (direct API)**, **Amazon Bedrock**, and **Databricks AI Gateway**. It applies to **all** Baloo agents (primary, FP verification, thread, fidelity, docs, coding standards, sync). Short names like `haiku` / `sonnet` / `opus` are model tiers on that provider, not separate backends — with Bedrock selected they resolve to Bedrock inference-profile IDs.
+
+The page opens with a **Models in use** summary: each agent role (primary review, FP verification, thread agent, fidelity, documentation drift, coding standards, sync scope) with its configured value and resolved `provider/model` (so defaults like `haiku` for FP/thread are visible without scrolling).
 
 Use **Test connection** to run a one-shot PI smoke call against the effective provider/model (no tools, ~30s timeout). Saving or clearing `AGENT_PROVIDER` / `AGENT_MODEL` also auto-runs that smoke check and shows pass/fail on the page. Overrides are kept even if the smoke fails so you can inspect credentials and retry.
 

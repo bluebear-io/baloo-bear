@@ -21,7 +21,7 @@ from baloo.config.runtime_settings import (
     setting_source,
     validate_override,
 )
-from baloo.config.settings import reset_settings
+from baloo.config.settings import Settings, reset_settings
 from baloo.db.engine import reset_engine
 from baloo.db.models import Base, RuntimeSetting
 
@@ -53,7 +53,8 @@ async def runtime_db(monkeypatch):
 def test_mutable_keys_cover_agent_knobs():
     assert "agent_provider" in MUTABLE_KEYS
     assert "agent_model" in MUTABLE_KEYS
-    assert "agent_fallback_model" in MUTABLE_KEYS
+    assert "agent_fallback_model" not in MUTABLE_KEYS
+    assert "agent_fallback_model" not in Settings.model_fields
     assert "anthropic_api_key" not in MUTABLE_KEYS
     assert "database_url" not in MUTABLE_KEYS
 
@@ -236,7 +237,7 @@ def test_get_agent_options_picks_up_overlay(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     options = get_agent_options()
-    assert options.model == "claude-opus-4-6"
+    assert options.model == "claude-opus-5-5"
     assert options.provider == "anthropic"
 
 
@@ -253,7 +254,7 @@ def test_fidelity_agent_uses_get_agent_options(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     agent = FidelityAgent()
-    assert agent.options.model == "claude-sonnet-4-6"
+    assert agent.options.model == "claude-sonnet-5"
     assert "fidelity" in agent.options.system_prompt.lower() or agent.options.system_prompt
 
 
@@ -271,3 +272,53 @@ def test_fidelity_agent_keeps_medium_thinking_level(monkeypatch):
     rs._cache_loaded_at = 10**12
 
     assert FidelityAgent().options.thinking_level == "medium"
+
+
+def test_validate_override_canonicalizes_agent_provider() -> None:
+    # A dashboard override must land in the same lowercase form as the env
+    # value, or it reaches pi verbatim and fails with Unknown provider.
+    assert validate_override("agent_provider", "  Databricks ") == "databricks"
+
+
+def test_resolve_setting_canonicalizes_a_legacy_mixed_case_row(monkeypatch) -> None:
+    # A row stored before agent_provider was normalized on write must still read
+    # back canonical, or it reaches pi verbatim and every review fails with
+    # Unknown provider. Normalizing on read means no data migration is needed.
+    import baloo.config.runtime_settings as rs
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    monkeypatch.setattr(rs, "_cache", {"agent_provider": "Databricks"})
+
+    assert resolve_setting("agent_provider") == "databricks"
+
+
+def test_coerce_setting_value_canonicalizes_agent_provider() -> None:
+    assert coerce_setting_value("agent_provider", "  DATABRICKS ") == "databricks"
+
+
+def test_validate_override_leaves_model_ids_untouched() -> None:
+    # Model IDs are provider-defined and may be case-sensitive; only the
+    # provider token is canonicalized.
+    arn = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/AbC123"
+    assert validate_override("agent_model", f"  {arn} ") == arn
+
+
+@pytest.mark.parametrize("level", ["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+def test_thinking_level_accepts_every_pi_level(level):
+    # pi >= 0.80 adds xhigh and max; pi clamps them to what the model supports,
+    # so accepting them here can never produce a rejected RPC command.
+    assert validate_override("pi_thinking_level", level) == level
+
+
+def test_thinking_level_rejects_unknown_value():
+    with pytest.raises(RuntimeSettingsError):
+        validate_override("pi_thinking_level", "ultra")
+
+
+def test_dashboard_thinking_choices_match_allowed_values():
+    from baloo.config.runtime_settings import ALLOWED_VALUES
+    from baloo.dashboard.router import THINKING_LEVEL_CHOICES
+
+    assert {value for value, _ in THINKING_LEVEL_CHOICES} == ALLOWED_VALUES["pi_thinking_level"]

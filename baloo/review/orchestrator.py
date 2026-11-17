@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
 from baloo.agent.repo_provision import provision_repo
+from baloo.agent.tiers import SINGLE_TURN
 from baloo.config.runtime_settings import ensure_fresh_cache, resolve_setting
 from baloo.config.settings import settings
 from baloo.db.service import DuplicateReviewError, ReviewCompleteDTO, ReviewService
@@ -42,6 +43,7 @@ from baloo.github.models import (
     DiscussionComment,
     DiscussionThread,
     FindingCategory,
+    GeneralFinding,
     PRContext,
     ReviewComment,
     ReviewResult,
@@ -55,6 +57,7 @@ from baloo.processor.severity_router import (
     count_by_severity,
     route_findings,
 )
+from baloo.standards.enforcer import StandardsReport, run_coding_standards
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,7 @@ _REVIEW_SIDE_AGENT_METADATA_KEYS = (
     "fp_verification",
     "thread_reverification",
     "sync_scope_decider",
+    "coding_standards",
 )
 
 
@@ -92,9 +96,10 @@ def get_review_semaphore() -> asyncio.Semaphore:
     """Get or create the review semaphore with the configured limit."""
     global review_semaphore
     if review_semaphore is None:
-        review_semaphore = asyncio.Semaphore(settings.max_concurrent_reviews)
+        review_semaphore = asyncio.Semaphore(resolve_setting("max_concurrent_reviews"))
         logger.info(
-            f"Initialized review queue with max {settings.max_concurrent_reviews} concurrent reviews"
+            f"Initialized review queue with max "
+            f"{resolve_setting('max_concurrent_reviews')} concurrent reviews"
         )
     return review_semaphore
 
@@ -222,6 +227,19 @@ def _has_existing_static_fidelity_report(
         comment.is_baloo and _static_fidelity_sentinel_for_body(comment.body) == report_sentinel
         for comment in issue_comments
     )
+
+
+def _fidelity_body_with_commit(report_body: str, reviewed_commit: str) -> str:
+    """Stamp the reviewed commit on a fidelity report that describes one.
+
+    Static reports ("no ticket in PR", "no plan file") are posted once and then
+    deduped for the life of the PR, so a commit stamped on one would freeze at
+    whichever commit happened to come first and read as stale forever. They make
+    no claim about a commit anyway, so they are left alone.
+    """
+    if not reviewed_commit or _static_fidelity_sentinel_for_body(report_body) is not None:
+        return report_body
+    return f"{report_body.rstrip()}\n\n{reviewed_commit}"
 
 
 def _total_review_cost_usd(
@@ -362,7 +380,7 @@ async def _decide_synchronize_review_mode(
     """Ask PI whether synchronize should use scoped or full PR context."""
     options = get_agent_options()
     options.system_prompt = _SYNC_SCOPE_DECIDER_SYSTEM_PROMPT
-    options.max_turns = 1
+    options.max_turns = SINGLE_TURN
     options.no_tools = True
     options.thinking_level = "minimal"
     options.name = "SyncScopeDecider"
@@ -495,7 +513,7 @@ async def _reverify_awaiting_threads(
     if not awaiting_threads:
         return 0
 
-    if not settings.fp_verification_enabled:
+    if not resolve_setting("fp_verification_enabled"):
         logger.debug("FP verification disabled — skipping awaiting thread re-verification")
         return 0
 
@@ -682,17 +700,17 @@ def _calculate_similarity(s1: str, s2: str) -> float:
 
 
 def _build_db_findings(
-    comments: list[ReviewComment],
-    posted_review_result: PostedReviewResult | None,
+    comments: list[ReviewComment], general_findings: list[GeneralFinding] | None = None
 ) -> list[dict]:
-    """Build the findings list for DB storage, excluding dropped comments."""
-    dropped_ids: set[int] = (
-        {id(d.comment) for d in posted_review_result.dropped}
-        if posted_review_result and posted_review_result.dropped
-        else set()
-    )
-    return [
+    """Build the findings list for DB storage.
+
+    Findings GitHub refused to place inline (line not in the diff) are kept:
+    the review still blocked on them, so dropping them left the dashboard
+    showing a `changes_requested` review with zero findings and no reason.
+    """
+    inline_rows = [
         {
+            "finding_type": "inline",
             "file_path": c.path,
             "line_number": c.line,
             "severity": c.severity,
@@ -700,8 +718,19 @@ def _build_db_findings(
             "body": c.body,
         }
         for c in comments
-        if id(c) not in dropped_ids
     ]
+    general_rows = [
+        {
+            "finding_type": "general",
+            "file_path": None,
+            "line_number": None,
+            "severity": finding.severity,
+            "category": finding.category,
+            "body": finding.body,
+        }
+        for finding in general_findings or []
+    ]
+    return inline_rows + general_rows
 
 
 def _match_thread(
@@ -793,7 +822,7 @@ async def _run_fidelity_analysis(
             logger.info("Fidelity: No ticket ID found in PR metadata")
             return format_fidelity_report(no_ticket=True), None
 
-        plan_path = settings.fidelity_plan_path_pattern.format(ticket_id=ticket_id)
+        plan_path = resolve_setting("fidelity_plan_path_pattern").format(ticket_id=ticket_id)
         # Read the plan from the base branch: the PR is scored against it, so a
         # plan fetched at head would let the PR author restate the spec to match
         # whatever they wrote.
@@ -901,7 +930,7 @@ async def _run_documentation_drift_analysis(
 ) -> tuple[str, DocumentationDriftResult | None]:
     """Run PR-time documentation drift analysis as an isolated side report."""
     try:
-        if not settings.documentation_drift_enabled:
+        if not resolve_setting("documentation_drift_enabled"):
             return "", None
 
         catalog = await fetch_documentation_catalog(
@@ -986,10 +1015,13 @@ async def _post_or_update_documentation_drift_report(
     pr_number: int,
     issue_comments: list[DiscussionComment],
     result: DocumentationDriftResult,
+    reviewed_commit: str = "",
 ) -> str:
     """Upsert the single PR-level documentation drift report comment."""
     existing = _existing_documentation_drift_comment(issue_comments)
     report_body = format_documentation_drift_report(result)
+    if reviewed_commit:
+        report_body = f"{report_body.rstrip()}\n\n{reviewed_commit}"
 
     if existing is not None:
         await github_client.edit_comment(repo_full_name, existing.id, report_body)
@@ -1056,7 +1088,7 @@ async def _process_thread_reply(
 
                 # Check escalation cap
                 baloo_message_count = sum(1 for c in thread_comments if c.is_baloo)
-                if baloo_message_count >= settings.thread_agent_max_replies:
+                if baloo_message_count >= resolve_setting("thread_agent_max_replies"):
                     logger.info(
                         "Thread %s hit escalation cap (%d Baloo messages), skipping",
                         in_reply_to_id,
@@ -1130,6 +1162,14 @@ async def _process_thread_reply(
                 exc_info=True,
                 extra={"metric": "thread_agent_failure", "repo": repo_full_name},
             )
+
+
+# GitHub cannot show the re-request arrow for an app in the Reviewers box, so the
+# completion comment is where developers learn how to ask for another pass.
+_RERUN_FOOTER = (
+    "\n\n🔄 Want another pass? Comment `@baloo review`, "
+    'or re-run the "Baloo Code Quality" check.'
+)
 
 
 async def process_pr_review(
@@ -1219,7 +1259,7 @@ async def process_pr_review(
                 progress_comment_id = await github_client.post_comment(
                     repo_full_name,
                     pr_number,
-                    "🐻 Baloo is reviewing your code... This may take a moment.",
+                    f"{CommentFormatter.baloo_icon()} Baloo is reviewing your code... This may take a moment.",
                 )
 
             # Fetch PR context
@@ -1227,7 +1267,7 @@ async def process_pr_review(
 
             # Fetch feedback signals for this repo
             feedback_signals = []
-            if settings.feedback_signals_enabled and settings.database_enabled:
+            if resolve_setting("feedback_signals_enabled") and settings.database_enabled:
                 try:
                     from baloo.db.feedback_service import FeedbackService
 
@@ -1361,6 +1401,9 @@ async def process_pr_review(
                 async def _skip_documentation() -> tuple[str, DocumentationDriftResult | None]:
                     return "", None
 
+                async def _skip_coding_standards() -> StandardsReport:
+                    return StandardsReport()
+
                 fidelity_task = (
                     _run_fidelity_analysis(
                         github_client,
@@ -1370,7 +1413,7 @@ async def process_pr_review(
                         repo_path=repo_path,
                         db_review_id=db_review_id,
                     )
-                    if settings.fidelity_enabled
+                    if resolve_setting("fidelity_enabled")
                     else _skip_fidelity()
                 )
                 documentation_task = (
@@ -1381,24 +1424,48 @@ async def process_pr_review(
                         repo_path=repo_path,
                         db_review_id=db_review_id,
                     )
-                    if settings.documentation_drift_enabled
+                    if resolve_setting("documentation_drift_enabled")
                     else _skip_documentation()
+                )
+
+                coding_standards_enabled = bool(resolve_setting("coding_standards_enabled"))
+                coding_standards_task = (
+                    run_coding_standards(
+                        github_client=github_client,
+                        installation_id=installation_id,
+                        pr_context=pr_context,
+                        repo_path=repo_path,
+                        review_id=db_review_id,
+                    )
+                    if coding_standards_enabled
+                    else _skip_coding_standards()
                 )
 
                 (
                     (fidelity_report_text, fidelity_result),
                     (documentation_report_text, documentation_result),
                     agent_result,
+                    standards_report,
                 ) = await asyncio.gather(
                     fidelity_task,
                     documentation_task,
                     agent.review_pr(review_context, review_id=db_review_id),
+                    coding_standards_task,
                 )
+            if coding_standards_enabled:
+                agent_result.metadata["coding_standards"] = {
+                    **standards_report.metadata,
+                    "judge_calls": standards_report.judge_calls,
+                    "violations": len(standards_report.comments),
+                    "errors": len(standards_report.errors),
+                }
             agent_metadata = agent_result.metadata
             review_result = agent_result
 
             findings_filter = FindingsFilter()
-            filtered_comments = findings_filter.filter_findings(review_result.comments)
+            filtered_comments = findings_filter.filter_findings(
+                review_result.comments + standards_report.comments
+            )
             filtered_comments, skipped_similar_repeats = _dedupe_similar_findings(filtered_comments)
 
             # Merge inline review threads with synthetic threads built from
@@ -1495,7 +1562,7 @@ async def process_pr_review(
                 comments: list[ReviewComment],
             ) -> list[ReviewComment]:
                 """Run FP verifier on new findings; returns verified list."""
-                if not (settings.fp_verification_enabled and comments):
+                if not (resolve_setting("fp_verification_enabled") and comments):
                     return comments
                 verifier = FPVerifier()
                 fp_result = await verifier.verify(comments, pr_context)
@@ -1535,6 +1602,8 @@ async def process_pr_review(
             fresh_comments = verified_new_findings
             decision_comments = fresh_comments + [comment for _, comment in follow_up_comments]
             general_findings = review_result.general_findings
+            all_findings = [*decision_comments, *general_findings]
+            medium_details = CommentFormatter.format_collapsible_medium_findings(all_findings)
 
             approve, request_changes = DecisionEngine.make_decision(
                 decision_comments,
@@ -1544,14 +1613,36 @@ async def process_pr_review(
             awaiting_threads = pr_context.awaiting_response_threads - auto_resolved_count
 
             if awaiting_threads and not request_changes and not decision_comments:
+                approve = False
                 request_changes = True
+
+            # A failed agent returns zero findings, which is indistinguishable
+            # from a clean PR here — that is how Baloo kept approving PRs while
+            # it was actually down. Never green-light a review that did not run.
+            agent_had_error = bool(agent_metadata.get("agent_error"))
+            if agent_had_error:
+                logger.error(
+                    "Agent failed for %s#%s (category=%s, detail=%s) - suppressing approval",
+                    repo_full_name,
+                    pr_number,
+                    agent_metadata.get("error_category"),
+                    agent_metadata.get("error_detail"),
+                )
+                approve = False
+                request_changes = False
 
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
             summary_text = CommentFormatter.format_summary(
-                decision_comments, agent_metadata, general_findings=general_findings
+                decision_comments,
+                agent_metadata,
+                general_findings=general_findings,
+                commit_sha=pr_context.head_sha,
+                repo_full_name=repo_full_name,
             )
             summary_text = f"{summary_text}\n\n{decision_summary}"
+            if standards_report.summary_section():
+                summary_text += f"\n\n{standards_report.summary_section()}"
 
             if skipped_responded:
                 summary_text += f"\n\n💬 Skipped {skipped_responded} thread(s) with developer responses (not re-reviewed)."
@@ -1595,10 +1686,10 @@ async def process_pr_review(
                 metadata=agent_metadata,
             )
 
-            severity_counts = count_by_severity(decision_comments)
+            severity_counts = count_by_severity(all_findings)
 
             logger.info(
-                f"Actionable findings: {len(decision_comments)} total "
+                f"Actionable findings: {len(all_findings)} total "
                 f"(Critical: {severity_counts.get(ReviewSeverity.CRITICAL.value, 0)}, "
                 f"High: {severity_counts.get(ReviewSeverity.HIGH.value, 0)}, "
                 f"Medium: {severity_counts.get(ReviewSeverity.MEDIUM.value, 0)}, "
@@ -1644,19 +1735,31 @@ async def process_pr_review(
                 f"{len(routed['checks'])} non-blocking (MEDIUM)"
             )
 
-            # Post MEDIUM as GitHub Check (non-blocking) if feature enabled
-            if routed["checks"] and settings.review_use_checks_api:
+            # Post a GitHub Check (non-blocking) on every review if feature enabled. MEDIUM
+            # findings go there as annotations; the check exists even without them so the
+            # Checks tab always offers GitHub's "Re-run" button as a re-review trigger.
+            checks_posted = False
+            if resolve_setting("review_use_checks_api"):
                 logger.info(f"Posting {len(routed['checks'])} MEDIUM issues as GitHub Check")
                 try:
                     from baloo.github.checks_api import GitHubChecksClient
 
+                    if routed["checks"]:
+                        summary = (
+                            f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)"
+                        )
+                        text = CommentFormatter.format_findings_digest(routed["checks"])
+                    else:
+                        summary = "No MEDIUM severity findings"
+                        text = None
                     async with GitHubChecksClient(installation_id) as checks_client:
                         check_run_id = await checks_client.create_check_run(
                             repo_full_name=repo_full_name,
                             commit_sha=pr_context.head_sha,
                             name="Baloo Code Quality",
                             conclusion="neutral",
-                            summary=f"Found {len(routed['checks'])} code quality issue(s) (MEDIUM severity)",
+                            summary=summary + " — re-run this check to request a fresh review.",
+                            text=text,
                         )
 
                         await checks_client.add_annotations(
@@ -1668,17 +1771,18 @@ async def process_pr_review(
                     logger.info(
                         f"Successfully posted GitHub Check with {len(routed['checks'])} annotations"
                     )
+                    checks_posted = True
 
                 except Exception as check_error:
                     logger.error(f"Failed to post GitHub Check: {check_error}", exc_info=True)
-                    # Fallback: Post MEDIUM findings as regular comments
-                    logger.warning("Falling back to posting MEDIUM findings as issue comments")
-                    for finding in routed["checks"]:
-                        comment_body = (
-                            f"**[{finding.severity.value}] {finding.category.value}** - {finding.path}:{finding.line}\n\n"
-                            f"{finding.body}"
-                        )
-                        await github_client.post_comment(repo_full_name, pr_number, comment_body)
+                    logger.warning(
+                        "MEDIUM findings remain available in the pull request finding digest"
+                    )
+
+            # Webhook entry points create a progress comment that becomes the
+            # completion digest. Keep direct/internal callers equally lossless.
+            if medium_details and not progress_comment_id:
+                await github_client.post_comment(repo_full_name, pr_number, medium_details)
 
             has_new_feedback = bool(
                 routed["review"] or follow_up_comments or routed["checks"] or general_findings
@@ -1716,8 +1820,17 @@ async def process_pr_review(
             if not request_changes and approve:
                 logger.info("No blocking issues found, posting approval review")
                 approval_msg = "✅ No critical or high severity issues found. Safe to merge!"
-                if routed["checks"]:
-                    approval_msg += f"\n\n💡 {len(routed['checks'])} medium severity suggestion(s) available in the Checks tab."
+                if standards_report.summary_section():
+                    approval_msg += f"\n\n{standards_report.summary_section()}"
+                medium_count = severity_counts.get(ReviewSeverity.MEDIUM.value, 0)
+                if medium_count:
+                    location = "Baloo's finding digest"
+                    if checks_posted:
+                        location += " and the Checks tab"
+                    approval_msg += (
+                        f"\n\n💡 {medium_count} medium severity suggestion(s) available in "
+                        f"{location}."
+                    )
 
                 await github_client.post_review(
                     repo_full_name,
@@ -1732,13 +1845,23 @@ async def process_pr_review(
                 )
             # Update progress comment with completion status
             review_duration = int(time.time() - review_start_time)
+            reviewed_commit = CommentFormatter.format_reviewed_commit(
+                pr_context.head_sha, repo_full_name
+            )
             if progress_comment_id:
-                if has_new_feedback or (routed["review"] or follow_up_comments):
-                    # Review posted findings - update with summary
-                    counts = count_by_severity(decision_comments)
+                if agent_had_error:
                     completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s.\n\n"
-                        f"Found {len(decision_comments)} issue(s): "
+                        f"⚠️ Baloo review failed after {review_duration}s "
+                        f"({agent_metadata.get('error_category') or 'agent_error'}). "
+                        "**This PR was not reviewed** - do not read the absence of "
+                        "findings as an approval."
+                    )
+                elif has_new_feedback or (routed["review"] or follow_up_comments):
+                    # Review posted findings - update with summary
+                    counts = count_by_severity(all_findings)
+                    completion_msg = (
+                        f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s.\n\n"
+                        f"Found {len(all_findings)} issue(s): "
                         f"{counts.get(ReviewSeverity.CRITICAL.value, 0)} critical, "
                         f"{counts.get(ReviewSeverity.HIGH.value, 0)} high, "
                         f"{counts.get(ReviewSeverity.MEDIUM.value, 0)} medium, "
@@ -1756,19 +1879,26 @@ async def process_pr_review(
                                     f"\n**[{c.severity.value}] {c.category.value}** "
                                     f"`{c.path}:{c.line}`\n\n{c.body}\n"
                                 )
+                    if medium_details:
+                        completion_msg += f"\n\n{medium_details}"
                 elif not request_changes and approve:
                     completion_msg = (
                         f"✅ Baloo review completed in {review_duration}s. No issues found!"
                     )
                 elif awaiting_threads:
                     completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s. "
+                        f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. "
                         f"Still waiting on {awaiting_threads} existing thread(s)."
                     )
                 else:
-                    completion_msg = (
-                        f"🐻 Baloo review completed in {review_duration}s. No new issues found."
-                    )
+                    completion_msg = f"{CommentFormatter.baloo_icon()} Baloo review completed in {review_duration}s. No new issues found."
+                # Not every outcome posts a review, so the progress comment always carries it.
+                if standards_report.summary_section():
+                    completion_msg += f"\n\n{standards_report.summary_section()}"
+                completion_msg += _RERUN_FOOTER
+
+                if reviewed_commit:
+                    completion_msg += f"\n\n{reviewed_commit}"
 
                 try:
                     await github_client.edit_comment(
@@ -1790,7 +1920,9 @@ async def process_pr_review(
                         )
                     else:
                         await github_client.post_comment(
-                            repo_full_name, pr_number, fidelity_report_text
+                            repo_full_name,
+                            pr_number,
+                            _fidelity_body_with_commit(fidelity_report_text, reviewed_commit),
                         )
                         logger.info(f"Posted fidelity report for {repo_full_name}#{pr_number}")
                 except Exception as fidelity_err:
@@ -1804,6 +1936,7 @@ async def process_pr_review(
                         pr_number,
                         pr_context.issue_comments,
                         documentation_result,
+                        reviewed_commit=reviewed_commit,
                     )
                     if documentation_report_text:
                         logger.info(
@@ -1832,11 +1965,17 @@ async def process_pr_review(
                 )
 
                 # Aggregate costs and tokens
-                total_input_tokens = _total_review_tokens(
-                    "input_tokens",
-                    review_metadata,
-                    fidelity_metadata,
-                    documentation_metadata,
+                # Cache reads/writes ARE input tokens — providers just bill them
+                # separately and report `input` as the uncached delta only. Summing
+                # only "input_tokens" made reviews.tokens_input read ~1 per message.
+                total_input_tokens = sum(
+                    _total_review_tokens(
+                        key,
+                        review_metadata,
+                        fidelity_metadata,
+                        documentation_metadata,
+                    )
+                    for key in ("input_tokens", "cache_read_tokens", "cache_write_tokens")
                 )
                 total_output_tokens = _total_review_tokens(
                     "output_tokens",
@@ -1850,16 +1989,8 @@ async def process_pr_review(
                     documentation_metadata,
                 )
 
-                # Detect agent soft-failures: agent caught an error
-                # internally and returned 0 findings
-                agent_had_error = review_metadata.get("agent_error", False)
                 error_category = review_metadata.get("error_category")
                 error_detail = review_metadata.get("error_detail")
-                fallback_model = (
-                    review_metadata.get("primary_model")
-                    if review_metadata.get("fallback_used")
-                    else None
-                )
 
                 if agent_had_error:
                     review_status = "agent_error"
@@ -1887,8 +2018,8 @@ async def process_pr_review(
                     fidelity_score=(fidelity_result.fidelity_score if fidelity_result else None),
                     error_message=error_detail,
                     error_category=error_category,
-                    fallback_model=fallback_model,
-                    findings=_build_db_findings(decision_comments, posted_review_result),
+                    awaiting_thread_count=awaiting_threads,
+                    findings=_build_db_findings(decision_comments, general_findings),
                 )
 
                 await ReviewService.complete_review(
@@ -1945,7 +2076,7 @@ async def process_pr_review(
         # Try to update progress comment with error
         if progress_comment_id:
             try:
-                user_msg = f"🐻 Baloo encountered an error during review: {str(e)}"
+                user_msg = f"{CommentFormatter.baloo_icon()} Baloo encountered an error during review: {str(e)}"
                 async with GitHubAPIClient(installation_id) as _gc:
                     await _gc.edit_comment(repo_full_name, progress_comment_id, user_msg)
             except Exception:

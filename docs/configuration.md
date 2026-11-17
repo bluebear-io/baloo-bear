@@ -15,8 +15,99 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | ✅ | — | Anthropic API key (for Claude models) |
-| `GEMINI_API_KEY` | — | — | Google Gemini API key (for fallback / Gemini models) |
+| `ANTHROPIC_API_KEY` | ✅* | — | Anthropic API key (for Claude models) |
+| `GEMINI_API_KEY` | — | — | Google Gemini API key (when using the Google provider) |
+| `OPENAI_API_KEY` | — | — | OpenAI API key (when using pi's `openai` provider) |
+| `OPENROUTER_API_KEY` | — | — | OpenRouter API key (when `AGENT_PROVIDER=openrouter`) |
+
+\* Required for the default Anthropic provider. Not required when `AGENT_PROVIDER=amazon-bedrock` (use AWS credentials instead) `AGENT_PROVIDER=databricks` (use `DATABRICKS_TOKEN`), or `AGENT_PROVIDER=openrouter` (use `OPENROUTER_API_KEY`).
+
+## Amazon Bedrock
+
+For a step-by-step setup guide (auth methods, sandbox caveats, verification, troubleshooting) see [Amazon Bedrock Setup](features/bedrock.md).
+
+pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars through to the sandboxed pi subprocess.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AWS_ACCESS_KEY_ID` | —* | — | IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | —* | — | IAM secret key |
+| `AWS_SESSION_TOKEN` | — | — | Session token for temporary credentials |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | — | SDK default (`us-east-1`) | Bedrock region |
+| `AWS_BEARER_TOKEN_BEDROCK` | —* | — | Bearer-token auth alternative to IAM keys |
+| `AWS_PROFILE` | —* | — | Named profile (`~/.aws` files are mounted into the sandbox automatically) |
+| `AWS_WEB_IDENTITY_TOKEN_FILE` | —* | — | IRSA / web-identity token path (bound into the sandbox when set) |
+| `AWS_ROLE_ARN` | — | — | Role ARN for IRSA / assume-role |
+| `AWS_ENDPOINT_URL_BEDROCK_RUNTIME` | — | — | Bedrock proxy endpoint |
+| `AWS_BEDROCK_FORCE_CACHE` | — | — | Force prompt caching for application inference profile ARNs |
+| `AWS_BEDROCK_SKIP_AUTH` | — | — | Skip auth for unauthenticated Bedrock proxies |
+| `AWS_BEDROCK_FORCE_HTTP1` | — | — | Force HTTP/1.1 for Bedrock proxies |
+
+\* Pick one auth path: static keys, bearer token, profile, IRSA, ECS task role, or EC2 instance role. ECS/EC2 instance metadata works over the shared network without extra env vars beyond what the AWS SDK already sets.
+
+Example:
+
+```bash
+AGENT_PROVIDER=amazon-bedrock
+AGENT_MODEL=sonnet
+# or a specific Bedrock ID / ARN:
+# AGENT_MODEL=us.anthropic.claude-sonnet-5
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+`AGENT_PROVIDER` applies to all agents. Short names (`haiku` / `sonnet` / `opus`) resolve to Bedrock tier IDs automatically. Use **Test connection** on the dashboard Settings page after switching to confirm credentials and model ID.
+
+## Databricks
+
+For a step-by-step setup guide (token scopes, model availability, sandbox caveats, troubleshooting) see [Databricks Setup](features/databricks.md).
+
+pi has no native Databricks provider, so Baloo generates a `models.json` registering one against the workspace's AI Gateway and points the pi subprocess at it.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABRICKS_HOST` | Yes | — | Workspace URL, e.g. `https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`. A trailing `/ai-gateway/anthropic` is accepted and stripped. Environment-only (shown as `env only` on the dashboard); missing it with `AGENT_PROVIDER=databricks` fails at startup |
+| `DATABRICKS_TOKEN` | Yes | — | Workspace PAT (`dapi...`). Read by pi at request time; never written to the generated config |
+
+Example:
+
+```bash
+AGENT_PROVIDER=databricks
+AGENT_MODEL=sonnet
+# or a specific Unity Catalog model service:
+# AGENT_MODEL=system.ai.claude-sonnet-4-6
+DATABRICKS_HOST=https://dbc-xxxxxxxx-xxxx.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+```
+
+Short names resolve to Unity Catalog model services (`system.ai.claude-*`). **Cost reporting is `$0` for this provider** — see [Databricks Setup](features/databricks.md#cost-reporting).
+
+## OpenRouter
+
+For a step-by-step setup guide (ZDR enforcement, provider pinning, cost reporting) see [OpenRouter Setup](features/openrouter.md).
+
+pi has a built-in OpenRouter provider. Baloo adds a generated `models.json` that restricts every request to Zero Data Retention endpoints (`zdr: true`, `data_collection: deny`). That restriction is not configurable.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENROUTER_API_KEY` | — | OpenRouter API key. Passed through to the agent sandbox; never written to the generated config |
+| `OPENROUTER_PROVIDER_ORDER` | — | Comma-separated OpenRouter provider slugs to try in order, e.g. `novita,deepinfra`. Empty lets OpenRouter choose among ZDR endpoints |
+| `OPENROUTER_ALLOW_FALLBACKS` | `true` | Let OpenRouter fall back to other ZDR providers when the ordered ones are unavailable. Set `false` to keep each review on one provider and its prompt cache |
+
+Example:
+
+```bash
+AGENT_PROVIDER=openrouter
+AGENT_MODEL=sonnet
+# or any OpenRouter model ID:
+# AGENT_MODEL=moonshotai/kimi-k2.6
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_PROVIDER_ORDER=novita,deepinfra
+OPENROUTER_ALLOW_FALLBACKS=false
+```
+
+Short names resolve to `z-ai/glm-5.3-flash` / `z-ai/glm-5.3` / `moonshotai/kimi-k2.7-code`. Dashboard cost figures are estimates at pi's catalog prices; see [Cost reporting](features/openrouter.md#cost-reporting).
 
 ## Application
 
@@ -34,21 +125,18 @@ All Baloo settings are environment variables by default. Set them in `.env`, pas
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_PROVIDER` | `anthropic` | LLM provider: `anthropic`, `google` |
-| `AGENT_MODEL` | `sonnet` | Model short name or `provider/model` string. See [Models](features/models.md) |
-| `AGENT_FALLBACK_MODEL` | `google/gemini-2.5-flash` | Fallback model (`provider/model`). Empty to disable |
-| `AGENT_MAX_TOKENS` | `4096` | Max output tokens |
-| `AGENT_TEMPERATURE` | `0.2` | Generation temperature |
+| `AGENT_PROVIDER` | `anthropic` | LLM provider for **all** agents: `anthropic`, `google`, `openai`, `amazon-bedrock`, `databricks`, `openrouter` |
+| `AGENT_MODEL` | `sonnet` | Primary model: tier short name (`sonnet`, `haiku`, …) or `provider/model` / bare model ID. See [Models](features/models.md) |
 | `PI_BINARY_PATH` | `pi` | Path to PI binary |
-| `PI_THINKING_LEVEL` | `medium` | PI thinking level: `off`, `minimal`, `low`, `medium`, `high` |
+| `PI_THINKING_LEVEL` | `medium` | PI thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. The top two are clamped to what the selected model supports |
 
 ## Review Behavior
 
 | Variable | Default | Description |
 |---|---|---|
-| `REVIEW_AUTO_APPROVE` | `true` | Auto-approve PRs with no CRITICAL/HIGH findings |
+| `REVIEW_AUTO_APPROVE` | `false` | Auto-approve PRs with no CRITICAL/HIGH findings (opt-in) |
 | `REVIEW_MIN_SEVERITY` | `MEDIUM` | Minimum severity to post: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
-| `REVIEW_USE_CHECKS_API` | `true` | Post MEDIUM findings to Checks API instead of review comments |
+| `REVIEW_USE_CHECKS_API` | `true` | Post a `Baloo Code Quality` check run on every review (MEDIUM findings become its annotations; the completion comment contains their full text either way). The check's **Re-run** button triggers a fresh review |
 
 ## FP Verification
 
@@ -96,9 +184,23 @@ When `DATABASE_ENABLED=true`, Baloo can override a small allowlist of settings a
 
 **Precedence:** DB overlay → environment variable → field default
 
-**Mutable keys:** `AGENT_PROVIDER`, `AGENT_MODEL`, `AGENT_FALLBACK_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`
+**Mutable keys**
+
+| Group | Keys | Control |
+|---|---|---|
+| Model selection | `AGENT_PROVIDER`, `AGENT_MODEL`, `PI_THINKING_LEVEL`, `FP_VERIFICATION_MODEL`, `THREAD_AGENT_MODEL`, `DOCUMENTATION_DRIFT_MODEL`, `CODING_STANDARDS_MODEL`, `OPENROUTER_PROVIDER_ORDER`, `OPENROUTER_ALLOW_FALLBACKS` | select / text / toggle |
+| Feature toggles | `REVIEW_AUTO_APPROVE`, `REVIEW_USE_CHECKS_API`, `FP_VERIFICATION_ENABLED`, `THREAD_AGENT_ENABLED`, `DOCUMENTATION_DRIFT_ENABLED`, `CODING_STANDARDS_ENABLED`, `FIDELITY_ENABLED`, `AST_TOOLS_ENABLED`, `FEEDBACK_SIGNALS_ENABLED` | toggle |
+| Tuning | `REVIEW_MIN_SEVERITY`, `THREAD_AGENT_MAX_REPLIES`, `FIDELITY_APPROVAL_THRESHOLD`, `LOG_RETENTION_DAYS`, `MAX_CONCURRENT_REVIEWS`, `FEEDBACK_SIGNALS_TTL_DAYS`, `TICKET_ID_PREFIX`, `FIDELITY_PLAN_PATH_PATTERN` | select / number / text |
 
 Secrets, database connection settings, GitHub credentials, and host/port are never overridable via the DB. Edit overrides on the dashboard Settings page (`/dashboard/settings`), or they converge across replicas within ~30 seconds via cache TTL refresh.
+
+`DATABRICKS_HOST` is deliberately **not** overridable. It is the URL the gateway bearer token is sent to, so if it were settable from a web form, dashboard access alone would be enough to repoint the gateway at an attacker-controlled host and have Baloo ship `DATABRICKS_TOKEN` there. Set it in the environment and restart. The token itself is not a setting at all — it stays an environment variable passed through to the agent sandbox.
+
+`LOG_RETENTION_DAYS` and `MAX_CONCURRENT_REVIEWS` are read once at startup, so a change to either takes effect on the next restart rather than within the cache TTL. The Settings page marks them **restart required** so a saved value is not mistaken for a live one. Every other mutable key takes effect on the next review.
+
+Settings are grouped into three tiers on the dashboard: **required** (Baloo will not run without them), **common** (what operators actually tune), and **advanced** (everything else, hidden behind a *Show advanced* toggle). Searching always looks through all three.
+
+The Settings page validates each field against its type and bounds before writing, and a batch save is all-or-nothing: if any field in the batch is invalid, nothing is written.
 
 After changing `AGENT_PROVIDER` or `AGENT_MODEL` (or clicking **Test connection**), Baloo runs a short PI smoke call with the effective provider/model to confirm credentials and endpoint wiring. A failure is shown on the Settings page; the override is still saved so you can fix auth and retry.
 
@@ -118,7 +220,7 @@ If the database is disabled, behavior is unchanged: env vars only.
 | Variable | Default | Description |
 |---|---|---|
 | `FEEDBACK_SIGNALS_ENABLED` | `true` | Write and read feedback signals (requires `DATABASE_ENABLED`) |
-| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days before unmatched feedback signals expire |
+| `FEEDBACK_SIGNALS_TTL_DAYS` | `180` | Days after creation before a feedback signal expires |
 
 ## AST Tools
 
@@ -149,6 +251,16 @@ Two related guarantees hold regardless of the sandbox mode:
 | `DOCUMENTATION_DRIFT_ENABLED` | `false` | Enable PR-time documentation drift analysis. |
 | `DOCUMENTATION_DRIFT_CATALOG_PATH` | `.baloo/documentation-catalog.json` | Repo-relative path to the docs catalog used to map changed code areas to docs. |
 | `DOCUMENTATION_DRIFT_MODEL` | `sonnet` | Model used for the documentation drift side agent. |
+
+## Coding Standards
+
+| Variable | Default | Description |
+|---|---|---|
+| `CODING_STANDARDS_ENABLED` | `false` | Judge changed lines against the skills mapped to them by `.bluebear/skill_enforcement.json`. See [Coding Standards](features/coding-standards.md). |
+| `CODING_STANDARDS_MODEL` | `sonnet` | Model used for the coding standards judge. |
+| `CODING_STANDARDS_UMBRELLA_REPO` | _(empty)_ | `owner/repo` whose rules and skills also apply to PRs in other repositories. Must be readable by the same GitHub App installation. |
+| `CODING_STANDARDS_MAX_CONCURRENCY` | `2` | Maximum concurrent judge calls per review. |
+| `CODING_STANDARDS_MAX_CHARS_PER_CALL` | `400000` | Maximum characters of numbered file content in one judge call; a skill's files are split across calls above it. |
 
 ## Multi-Broker Deployment
 
@@ -197,7 +309,7 @@ Use this endpoint for load balancer health probes.
 
 ### Webhook Security
 
-Every webhook is validated before processing:
+Every webhook passes the signature check. Duplicate deliveries, app lifecycle events (`ping`, `installation`, …), and events or actions Baloo never acts on are then acknowledged and dropped without further checks, since nothing is read or acted on. Every webhook Baloo does act on is validated before processing:
 1. HMAC-SHA256 signature verification (confirms payload is from GitHub)
 2. `installation_id` present in payload
 3. Installation filter — if `INSTALLATION_ID` is set, drop webhooks for other installations

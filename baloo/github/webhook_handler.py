@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
+from baloo.config.runtime_settings import resolve_setting
 from baloo.config.settings import settings
 from baloo.db.engine import close_db, init_db
 from baloo.github.api_client import GitHubAPIClient
@@ -121,6 +122,9 @@ async def lifespan(app: FastAPI):
             "Set DATABASE_URL to a valid PostgreSQL connection string."
         )
     yield
+    from baloo.github.auth import close_verify_client
+
+    await close_verify_client()
     if settings.database_enabled:
         await close_db()
 
@@ -200,9 +204,23 @@ async def _validate_webhook_security(
         raise HTTPException(status_code=403, detail="Invalid installation")
 
     # Confirm the repository belongs to this installation
-    if repo_full_name and not await verify_repo_belongs_to_installation(
-        installation_id, repo_full_name
-    ):
+    try:
+        repo_verified = not repo_full_name or await verify_repo_belongs_to_installation(
+            installation_id, repo_full_name
+        )
+    except httpx.RequestError as exc:
+        # Reaching GitHub failed, which is not a security verdict. Answer 503 so the
+        # delivery is retried, rather than letting the transport error escape as an
+        # unhandled 500 with a full traceback per event.
+        logger.warning(
+            "Repo verification unreachable for %s (installation %s): %s",
+            repo_full_name,
+            installation_id,
+            exc,
+        )
+        raise HTTPException(status_code=503, detail="Upstream verification unavailable") from exc
+
+    if not repo_verified:
         logger.warning(
             "Repo %s not accessible for installation %s — possible cross-tenant payload",
             repo_full_name,
@@ -214,6 +232,62 @@ async def _validate_webhook_security(
         )
 
     return None
+
+
+#: Events Baloo acts on, and the actions it acts on for each. Used to discard a
+#: delivery before ``_validate_webhook_security``, which costs a GitHub API round
+#: trip every time it runs. Subscribing to check_run/check_suite put every CI job
+#: in every repo on this endpoint, so paying that round trip only to ignore the
+#: event burned the installation's rate limit and began timing out under load.
+#: The per-event branches below keep their own action checks as the authoritative
+#: dispatch; this table only decides what is not worth verifying.
+_ACTIONABLE_EVENT_ACTIONS: dict[str, frozenset[str]] = {
+    "pull_request": frozenset({"opened", "synchronize", "reopened", "ready_for_review", "closed"}),
+    "check_run": frozenset({"rerequested"}),
+    "check_suite": frozenset({"rerequested"}),
+    "pull_request_review_comment": frozenset({"created"}),
+    "issue_comment": frozenset({"created"}),
+}
+
+
+#: Events GitHub delivers that Baloo deliberately never acts on. Kept separate from
+#: an unrecognised event type so webhook delivery logs still tell the two apart.
+_DECLINED_EVENT_REASONS: dict[str, str] = {
+    "pull_request_review": "comment events disabled",
+}
+
+
+def _early_ignore_response(event: str | None, payload: dict) -> dict[str, str | int] | None:
+    """Return the ignore response for a delivery Baloo will not act on, else None.
+
+    Runs before the security check on purpose. Throwing an event away needs no
+    tenant verification — the signature check above already proved the payload
+    came from GitHub, and nothing here reads repository content or acts on it.
+    """
+    declined = _DECLINED_EVENT_REASONS.get(event or "")
+    if declined is not None:
+        logger.debug("Ignoring %s event — reviews trigger only on new code", event)
+        return {"status": "ignored", "event": event or "", "reason": declined}
+
+    actionable = _ACTIONABLE_EVENT_ACTIONS.get(event or "")
+    if actionable is None:
+        logger.info("Ignoring event type: %s - unsupported event", event)
+        return {"status": "ignored", "event": event or "", "reason": "event type not processed"}
+
+    action = payload.get("action")
+    if action in actionable:
+        return None
+
+    if event == "pull_request":
+        logger.info(
+            "Ignoring PR action: %s (action: %s) - only process: "
+            "opened, synchronize, reopened, ready_for_review",
+            payload.get("repository", {}).get("full_name", ""),
+            action,
+        )
+        return {"status": "ignored", "action": action or "", "reason": "action not processed"}
+
+    return {"status": "ignored", "event": event or "", "reason": f"action={action}"}
 
 
 @app.post("/webhook")
@@ -244,6 +318,11 @@ async def handle_webhook(
 
     payload = await request.json()
 
+    # Discard what Baloo never acts on before paying for security validation
+    _ignored = _early_ignore_response(event, payload)
+    if _ignored is not None:
+        return _ignored
+
     # Security validation: confirm installation identity and repo ownership
     _installation_id = payload.get("installation", {}).get("id")
     _repo_full_name = payload.get("repository", {}).get("full_name")
@@ -267,7 +346,7 @@ async def handle_webhook(
             pr_number = webhook_payload.number
             repo_name = webhook_payload.repository.full_name
 
-            # Only process opened, synchronize (new commits), reopened, and ready_for_review actions
+            # Only process opened, synchronize (new commits), reopened, and ready_for_review
             if action in ["opened", "synchronize", "reopened", "ready_for_review"]:
                 # Skip draft PRs
                 if webhook_payload.pull_request.draft:
@@ -346,6 +425,51 @@ async def handle_webhook(
             logger.error(f"Error processing webhook: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
 
+    elif event in ("check_run", "check_suite"):
+        # GitHub's native "Re-run" button on Baloo's check run (or "Re-run all checks")
+        # delivers `rerequested` to the app that owns the check. Treat it as a request
+        # for a fresh review of the current head.
+        try:
+            action = payload.get("action")
+            if action != "rerequested":
+                return {"status": "ignored", "event": event, "reason": f"action={action}"}
+
+            check = payload.get(event) or {}
+            pulls = check.get("pull_requests") or []
+            repo_name = payload["repository"]["full_name"]
+            if not pulls:
+                logger.info(
+                    "Ignoring %s rerequest on %s: no associated pull request", event, repo_name
+                )
+                return {"status": "ignored", "event": event, "reason": "no pull request"}
+            pr_number = pulls[0]["number"]
+            head_sha = check.get("head_sha") or ""
+
+            cancel_existing_review(repo_name, pr_number)
+            active_count = sum(1 for t in active_reviews.values() if not t.done())
+            logger.info(
+                f"Queuing review: {repo_name}#{pr_number} ({event} rerequested by "
+                f"{payload.get('sender', {}).get('login', '?')}) - {active_count} review(s) active"
+            )
+            task = asyncio.create_task(
+                process_pr_review(
+                    repo_name,
+                    pr_number,
+                    payload["installation"]["id"],
+                    f"{event}:rerequested",
+                    True,
+                    None,
+                    head_sha,
+                    delivery_id,
+                )
+            )
+            active_reviews[(repo_name, pr_number)] = task
+            background_tasks.add_task(lambda: None)
+            return {"status": "queued", "active_count": active_count}
+        except Exception as e:
+            logger.error(f"Error processing {event} webhook: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
     elif event == "pull_request_review_comment":
         action = payload.get("action")
 
@@ -353,7 +477,15 @@ async def handle_webhook(
         if action != "created":
             return {"status": "ignored", "event": event, "reason": f"action={action}"}
 
-        if not settings.thread_agent_enabled:
+        # This path is dispatched straight from the webhook, not through
+        # process_pr_review, so nothing else refreshes the override cache here.
+        # Without this, disabling the thread agent from the dashboard never
+        # takes effect on a replica that has not run a review.
+        from baloo.config.runtime_settings import ensure_fresh_cache
+
+        await ensure_fresh_cache()
+
+        if not resolve_setting("thread_agent_enabled"):
             return {"status": "ignored", "event": event, "reason": "thread agent disabled"}
 
         comment_data = payload.get("comment", {})
@@ -453,10 +585,8 @@ async def handle_webhook(
         )
         return {"status": "queued", "event": event, "action": "review_command"}
 
-    elif event == "pull_request_review":
-        logger.debug("Ignoring %s event — reviews trigger only on new code", event)
-        return {"status": "ignored", "event": event, "reason": "comment events disabled"}
-
-    # Log ignored event types
-    logger.info(f"Ignoring event type: {event} - unsupported event")
-    return {"status": "ignored", "event": event, "reason": "event type not processed"}
+    # Not reachable: _early_ignore_response drops every event the branches above do
+    # not dispatch. Kept so a new key in _ACTIONABLE_EVENT_ACTIONS without a matching
+    # branch is logged loudly instead of falling off the end and returning null.
+    logger.warning("Event %s passed the filter with no dispatch branch", event)
+    return {"status": "ignored", "event": event or "", "reason": "event type not processed"}

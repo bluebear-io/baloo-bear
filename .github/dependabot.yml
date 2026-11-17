@@ -8,6 +8,13 @@ updates:
       time: "08:00"
     open-pull-requests-limit: 5
     labels: ["dependencies", "python"]
+    # Only manage direct dependencies declared in pyproject.toml. The uv updater
+    # otherwise bumps transitive deps inside the generated, hash-pinned
+    # requirements-prod.txt export without touching uv.lock, which always fails
+    # the CI "Check production requirements export" step (dependabot-core#13912).
+    # Transitive pins still move whenever a direct dependency is re-resolved.
+    allow:
+      - dependency-type: "direct"
 
   - package-ecosystem: "npm"
     directory: "/"

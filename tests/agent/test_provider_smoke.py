@@ -90,6 +90,28 @@ async def test_smoke_test_provider_agent_error():
 
 
 @pytest.mark.asyncio
+async def test_smoke_test_provider_surfaces_provider_error_detail():
+    """The operator must see the AWS/provider error, not just 'reported an error'."""
+    detail = (
+        "Agent returned error stop reason: AccessDeniedException: "
+        "You don't have access to the model with the specified model ID."
+    )
+    with patch(
+        "baloo.agent.provider_smoke.get_agent_options",
+        return_value=_options(provider="amazon-bedrock", model="us.anthropic.x"),
+    ):
+        with patch(
+            "baloo.agent.provider_smoke.PIAgentBase.run_query",
+            new=AsyncMock(return_value=(None, {"is_error": True, "error_message": detail})),
+        ):
+            result = await smoke_test_provider()
+
+    assert result.ok is False
+    assert "AccessDeniedException" in result.message
+    assert "AccessDeniedException" in (result.error or "")
+
+
+@pytest.mark.asyncio
 async def test_smoke_test_provider_timeout():
     with patch(
         "baloo.agent.provider_smoke.get_agent_options",

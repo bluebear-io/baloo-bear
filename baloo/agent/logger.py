@@ -111,26 +111,27 @@ class ReviewLogger:
             raw_text=raw_text,
         )
 
-    async def fallback_triggered(self, primary_model: str, fallback_model: str, error: str) -> None:
-        await self._log(
-            "fallback_triggered",
-            f"Falling back from {primary_model} to {fallback_model}: {error[:200]}",
-            metadata={
-                "primary_model": primary_model,
-                "fallback_model": fallback_model,
-                "error": error[:500],
-            },
-        )
-
     async def agent_completed(
-        self, tokens_in: int, tokens_out: int, cost: float, duration: float
+        self,
+        tokens_in: int,
+        tokens_out: int,
+        cost: float,
+        duration: float,
+        cache_read: int = 0,
+        cache_write: int = 0,
     ) -> None:
+        # Providers report almost all prompt volume as cache read/write and only
+        # the uncached delta as `input`, so tokens_in alone reads as ~1 per
+        # message. Record the split; the message shows the true input total.
+        total_in = tokens_in + cache_read + cache_write
         await self._log(
             "agent_completed",
-            f"Agent completed ({tokens_in} in / {tokens_out} out, ${cost:.4f}, {duration:.1f}s)",
+            f"Agent completed ({total_in} in / {tokens_out} out, ${cost:.4f}, {duration:.1f}s)",
             metadata={
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
+                "cache_read_tokens": cache_read,
+                "cache_write_tokens": cache_write,
                 "cost": cost,
                 "duration": duration,
             },

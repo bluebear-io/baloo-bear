@@ -30,6 +30,21 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _resolve_patch(**overrides):
+    """Patch the orchestrator's ``resolve_setting``, falling through for other keys.
+
+    These settings are DB-overridable, so the code reads them through
+    ``resolve_setting`` rather than off the ``settings`` object. Patching the
+    attribute on ``settings`` would be a silent no-op.
+    """
+    from baloo.config.runtime_settings import resolve_setting as real_resolve
+
+    return patch(
+        "baloo.review.orchestrator.resolve_setting",
+        side_effect=lambda key: overrides[key] if key in overrides else real_resolve(key),
+    )
+
+
 def _make_pr_context(
     *,
     repo: str = "org/repo",
@@ -76,12 +91,19 @@ def _make_github_client(pr_context=None):
     return gc
 
 
-def _make_agent(comments=None, approve=True, request_changes=False, metadata=None):
+def _make_agent(
+    comments=None,
+    approve=True,
+    request_changes=False,
+    metadata=None,
+    general_findings=None,
+):
     agent = MagicMock()
     agent.review_pr = AsyncMock(
         return_value=ReviewResult(
             summary="## Summary",
             comments=comments or [],
+            general_findings=general_findings or [],
             approve=approve,
             request_changes=request_changes,
             metadata=metadata or {},
@@ -90,18 +112,24 @@ def _make_agent(comments=None, approve=True, request_changes=False, metadata=Non
     return agent
 
 
-def _base_patches(gc, agent):
+def _base_patches(gc, agent, **overrides):
+    """Standard patch set. Extra ``resolve_setting`` overrides merge into the
+    single patch — stacking a second ``_resolve_patch`` would replace this one
+    rather than add to it."""
+    resolved = {
+        "fidelity_enabled": False,
+        "fp_verification_enabled": False,
+        "feedback_signals_enabled": False,
+        "review_use_checks_api": False,
+    }
+    resolved.update(overrides)
     return [
         patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc),
         patch("baloo.agent.client.BalooAgent", return_value=agent),
-        patch("baloo.review.orchestrator.settings.fidelity_enabled", False),
-        patch("baloo.review.orchestrator.settings.fp_verification_enabled", False),
-        patch("baloo.config.settings.settings.fp_verification_enabled", False),
-        patch("baloo.config.settings.settings.review_min_severity", "MEDIUM"),
+        _resolve_patch(**resolved),
+        patch("baloo.processor.findings_filter.resolve_setting", return_value="MEDIUM"),
         patch("baloo.review.orchestrator.settings.database_enabled", False),
         patch("baloo.config.settings.settings.database_enabled", False),
-        patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False),
-        patch("baloo.review.orchestrator.settings.review_use_checks_api", False),
     ]
 
 
@@ -556,18 +584,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
-            stack.enter_context(patch("baloo.review.orchestrator.settings.fidelity_enabled", False))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
-                patch("baloo.review.orchestrator.settings.fp_verification_enabled", False)
+                _resolve_patch(
+                    fidelity_enabled=False,
+                    fp_verification_enabled=False,
+                    feedback_signals_enabled=False,
+                    review_use_checks_api=False,
+                )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False)
-            )
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", False)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",
@@ -608,18 +636,18 @@ class TestProcessPrReviewExceptionHandling:
 
         with ExitStack() as stack:
             stack.enter_context(patch("baloo.review.orchestrator.GitHubAPIClient", return_value=gc))
-            stack.enter_context(patch("baloo.review.orchestrator.settings.fidelity_enabled", False))
+            # One patch: a second _resolve_patch on the same target replaces
+            # this one rather than adding to it.
             stack.enter_context(
-                patch("baloo.review.orchestrator.settings.fp_verification_enabled", False)
+                _resolve_patch(
+                    fidelity_enabled=False,
+                    fp_verification_enabled=False,
+                    feedback_signals_enabled=False,
+                    review_use_checks_api=False,
+                )
             )
             stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
             stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.feedback_signals_enabled", False)
-            )
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", False)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator.ReviewService.start_review",
@@ -680,9 +708,7 @@ class TestGitHubChecksApiPath:
             for p in _base_patches(gc, agent):
                 stack.enter_context(p)
             # Override the review_use_checks_api patch to True
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", True)
-            )
+            stack.enter_context(_resolve_patch(review_use_checks_api=True))
             # Local import in orchestrator — patch the source module, not orchestrator namespace
             stack.enter_context(
                 patch("baloo.github.checks_api.GitHubChecksClient", return_value=mock_checks_client)
@@ -697,9 +723,12 @@ class TestGitHubChecksApiPath:
 
         mock_checks_client.create_check_run.assert_called_once()
         mock_checks_client.add_annotations.assert_called_once()
+        check_text = mock_checks_client.create_check_run.call_args.kwargs["text"]
+        assert "`app.py:5`" in check_text
+        assert medium_comment.body in check_text
 
     @pytest.mark.asyncio
-    async def test_checks_api_failure_falls_back_to_issue_comments(self):
+    async def test_checks_api_failure_without_progress_posts_medium_digest(self):
         from baloo.review.orchestrator import process_pr_review
 
         gc = _make_github_client()
@@ -720,11 +749,8 @@ class TestGitHubChecksApiPath:
         )
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, review_use_checks_api=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.review_use_checks_api", True)
-            )
             # Local import in orchestrator — patch the source module, not orchestrator namespace
             stack.enter_context(
                 patch("baloo.github.checks_api.GitHubChecksClient", return_value=mock_checks_client)
@@ -737,8 +763,17 @@ class TestGitHubChecksApiPath:
                 head_sha="abc123",
             )
 
-        # Fallback: posted as issue comment
-        gc.post_comment.assert_called()
+        # With no progress comment to edit, post one canonical digest rather
+        # than silently dropping the finding or duplicating it per finding.
+        assert gc.post_comment.call_count == 1
+        digest = gc.post_comment.call_args.args[2]
+        assert "<details>" in digest
+        assert medium_comment.body in digest
+        gc.edit_comment.assert_not_called()
+
+        approval = gc.post_review.call_args.args[2]
+        assert "Baloo's finding digest" in approval.summary
+        assert "Checks tab" not in approval.summary
 
 
 # ---------------------------------------------------------------------------
@@ -798,7 +833,7 @@ class TestDocumentationDriftOrchestration:
         from baloo.review.orchestrator import _run_documentation_drift_analysis
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", False),
+            _resolve_patch(documentation_drift_enabled=False),
             patch(
                 "baloo.review.orchestrator.fetch_documentation_catalog", new=AsyncMock()
             ) as load_catalog,
@@ -823,7 +858,7 @@ class TestDocumentationDriftOrchestration:
         from baloo.review.orchestrator import _run_documentation_drift_analysis
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch(
                 "baloo.review.orchestrator.fetch_documentation_catalog",
                 new=AsyncMock(return_value=None),
@@ -849,7 +884,7 @@ class TestDocumentationDriftOrchestration:
 
         fetch = AsyncMock(return_value=None)
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch("baloo.review.orchestrator.fetch_documentation_catalog", new=fetch),
         ):
             await _run_documentation_drift_analysis(
@@ -984,7 +1019,7 @@ class TestDocumentationDriftOrchestration:
         ]
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch(
                 "baloo.review.orchestrator.fetch_documentation_catalog",
                 new=AsyncMock(return_value=catalog),
@@ -1030,7 +1065,7 @@ class TestDocumentationDriftOrchestration:
         session.close = AsyncMock()
 
         with (
-            patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True),
+            _resolve_patch(documentation_drift_enabled=True),
             patch("baloo.review.orchestrator.settings.database_enabled", True),
             patch("baloo.review.orchestrator.settings.database_url", "db"),
             patch(
@@ -1074,11 +1109,8 @@ class TestDocumentationDriftOrchestration:
         agent = _make_agent()
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, documentation_drift_enabled=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator._run_documentation_drift_analysis",
@@ -1118,11 +1150,8 @@ class TestDocumentationDriftOrchestration:
         agent = _make_agent()
 
         with ExitStack() as stack:
-            for p in _base_patches(gc, agent):
+            for p in _base_patches(gc, agent, documentation_drift_enabled=True):
                 stack.enter_context(p)
-            stack.enter_context(
-                patch("baloo.review.orchestrator.settings.documentation_drift_enabled", True)
-            )
             stack.enter_context(
                 patch(
                     "baloo.review.orchestrator._decide_synchronize_review_mode",
@@ -1212,3 +1241,303 @@ class TestGeneralFindingsPosting:
             else posted_blocking[0].kwargs.get("review_result")
         )
         assert result_arg.comments == []
+
+    @pytest.mark.asyncio
+    async def test_general_findings_are_counted_and_persisted(self):
+        from baloo.github.models import GeneralFinding
+        from baloo.review.orchestrator import process_pr_review
+
+        gf = GeneralFinding(
+            body="The required review guidance is missing.",
+            severity=ReviewSeverity.HIGH,
+            category=FindingCategory.GUIDELINES,
+        )
+        agent = _make_agent(
+            approve=False,
+            request_changes=True,
+            general_findings=[gf],
+        )
+        gc = _make_github_client()
+        mock_complete = AsyncMock()
+
+        with ExitStack() as stack:
+            for p in _base_patches(gc, agent):
+                stack.enter_context(p)
+            stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
+            stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
+            stack.enter_context(
+                patch(
+                    "baloo.review.orchestrator.ReviewService.start_review",
+                    new=AsyncMock(return_value=77),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "baloo.review.orchestrator.ReviewService.is_review_cancelled",
+                    new=AsyncMock(return_value=False),
+                )
+            )
+            stack.enter_context(
+                patch("baloo.review.orchestrator.ReviewService.complete_review", new=mock_complete)
+            )
+            await process_pr_review(
+                repo_full_name="org/repo",
+                pr_number=1,
+                installation_id=1,
+                trigger_reason="pull_request:opened",
+                notify_progress=True,
+                head_sha="abc123",
+            )
+
+        completion = gc.edit_comment.call_args.args[2]
+        assert "Found 1 issue(s)" in completion
+        assert "1 high" in completion
+        data = mock_complete.call_args.kwargs["data"]
+        assert data.findings == [
+            {
+                "finding_type": "general",
+                "file_path": None,
+                "line_number": None,
+                "severity": ReviewSeverity.HIGH,
+                "category": FindingCategory.GUIDELINES,
+                "body": gf.body,
+            }
+        ]
+
+
+@pytest.mark.asyncio
+async def test_completion_comment_contains_full_collapsible_medium_finding():
+    full_body = "This allocation repeats for every record and increases processing time. " * 20
+    medium = ReviewComment(
+        path="baloo/processor.py",
+        line=31,
+        body=full_body,
+        severity=ReviewSeverity.MEDIUM,
+        category=FindingCategory.PERFORMANCE,
+    )
+    gc = _make_github_client()
+    agent = _make_agent(comments=[medium], approve=True)
+
+    await _run_review(gc, agent, notify_progress=True)
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "Found 1 issue(s)" in completion
+    assert "<details>" in completion
+    assert "1 medium suggestion — expand to read" in completion
+    assert "`baloo/processor.py:31`" in completion
+    assert full_body in completion
+
+
+@pytest.mark.asyncio
+async def test_completion_comment_tells_how_to_rerequest_a_review():
+    gc = _make_github_client()
+    agent = _make_agent(comments=[], approve=True)
+
+    await _run_review(gc, agent, notify_progress=True)
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "`@baloo review`" in completion
+    assert 're-run the "Baloo Code Quality" check' in completion
+
+
+@pytest.mark.asyncio
+async def test_unresolved_threads_are_persisted_as_review_blocker() -> None:
+    from baloo.review.orchestrator import process_pr_review
+
+    pr_context = _make_pr_context()
+    pr_context.awaiting_response_threads = 2
+    gc = _make_github_client(pr_context)
+    agent = _make_agent(approve=True)
+    mock_complete = AsyncMock()
+
+    with ExitStack() as stack:
+        for p in _base_patches(gc, agent):
+            stack.enter_context(p)
+        stack.enter_context(patch("baloo.review.orchestrator.settings.database_enabled", True))
+        stack.enter_context(patch("baloo.config.settings.settings.database_enabled", True))
+        stack.enter_context(
+            patch(
+                "baloo.review.orchestrator.ReviewService.start_review",
+                new=AsyncMock(return_value=78),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "baloo.review.orchestrator.ReviewService.is_review_cancelled",
+                new=AsyncMock(return_value=False),
+            )
+        )
+        stack.enter_context(
+            patch("baloo.review.orchestrator.ReviewService.complete_review", new=mock_complete)
+        )
+        await process_pr_review(
+            repo_full_name="org/repo",
+            pr_number=1,
+            installation_id=1,
+            trigger_reason="pull_request:opened",
+            notify_progress=True,
+            head_sha="abc123",
+        )
+
+    completion = gc.edit_comment.call_args.args[2]
+    assert "Still waiting on 2 existing thread(s)" in completion
+    data = mock_complete.call_args.kwargs["data"]
+    assert data.review_status == "changes_requested"
+    assert data.awaiting_thread_count == 2
+    assert data.findings == []
+
+
+# ---------------------------------------------------------------------------
+# Agent failure must never look like an approval
+# ---------------------------------------------------------------------------
+
+
+class TestAgentErrorSuppressesApproval:
+    @pytest.mark.asyncio
+    async def test_agent_error_posts_no_approval_and_flags_failure(self):
+        gc = _make_github_client()
+        agent = _make_agent(
+            comments=[],
+            approve=True,
+            request_changes=False,
+            metadata={"agent_error": True, "error_category": "no_output"},
+        )
+
+        with patch("baloo.config.settings.settings.review_auto_approve", True):
+            await _run_review(gc, agent, notify_progress=True)
+
+        for call in gc.post_review.call_args_list:
+            result_arg = call.args[2] if len(call.args) >= 3 else call.kwargs.get("review_result")
+            assert not (result_arg and result_arg.approve), "Must not approve a failed review"
+
+        body = gc.edit_comment.call_args.args[2]
+        assert "failed" in body and "not reviewed" in body
+
+
+def test_build_db_findings_keeps_findings_github_could_not_place_inline():
+    """A blocking finding GitHub refuses to place inline must still be persisted.
+
+    Regression: production review 7567 landed as `changes_requested` with zero
+    rows in `findings`, because the only finding was dropped for an invalid
+    diff line. The dashboard showed a blocked review with no reason.
+    """
+    from baloo.github.models import FindingCategory, ReviewComment, ReviewSeverity
+    from baloo.review.orchestrator import _build_db_findings
+
+    dropped = ReviewComment(
+        path="baloo/agent/config.py",
+        line=999,
+        body="Line is outside the diff hunk.",
+        severity=ReviewSeverity.HIGH,
+        category=FindingCategory.BUGS,
+    )
+    placed = ReviewComment(path="main.py", line=1, body="Placed fine.")
+
+    rows = _build_db_findings([dropped, placed])
+
+    assert [r["file_path"] for r in rows] == ["baloo/agent/config.py", "main.py"]
+    assert rows[0]["line_number"] == 999
+    assert rows[0]["severity"] == ReviewSeverity.HIGH
+
+
+def test_build_db_findings_includes_general_findings():
+    from baloo.github.models import GeneralFinding
+    from baloo.review.orchestrator import _build_db_findings
+
+    general = GeneralFinding(
+        body="No integration tests cover this workflow.",
+        severity=ReviewSeverity.HIGH,
+        category=FindingCategory.GUIDELINES,
+    )
+
+    rows = _build_db_findings([], [general])
+
+    assert rows == [
+        {
+            "finding_type": "general",
+            "file_path": None,
+            "line_number": None,
+            "severity": ReviewSeverity.HIGH,
+            "category": FindingCategory.GUIDELINES,
+            "body": general.body,
+        }
+    ]
+
+
+class TestReviewedCommitOnReports:
+    """The reviewed commit is stamped on the reports that describe a commit."""
+
+    def test_fidelity_report_gets_the_commit(self):
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        body = _fidelity_body_with_commit(
+            "## Fidelity Report\n\nEverything matches the plan.\n", "🔍 Reviewed commit `abc1234`"
+        )
+
+        assert body.endswith("🔍 Reviewed commit `abc1234`")
+        assert "Everything matches the plan." in body
+
+    def test_static_fidelity_report_is_left_alone(self):
+        from baloo.fidelity.fidelity_report import NO_TICKET_FIDELITY_SENTINEL
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        static = f"{NO_TICKET_FIDELITY_SENTINEL}\n\n**No ticket ID found in PR.**\n"
+
+        assert _fidelity_body_with_commit(static, "🔍 Reviewed commit `abc1234`") == static
+
+    def test_fidelity_report_unchanged_without_a_commit(self):
+        from baloo.review.orchestrator import _fidelity_body_with_commit
+
+        report = "## Fidelity Report\n\nAll good.\n"
+
+        assert _fidelity_body_with_commit(report, "") == report
+
+    async def test_posted_drift_report_carries_the_commit(self):
+        from baloo.documentation.models import DocumentationDriftFinding, DocumentationDriftResult
+        from baloo.review.orchestrator import _post_or_update_documentation_drift_report
+
+        gc = _make_github_client()
+        result = DocumentationDriftResult(
+            required_updates=[
+                DocumentationDriftFinding(
+                    doc_path="README.md",
+                    verdict="required",
+                    rationale="Behavior changed.",
+                )
+            ]
+        )
+
+        await _post_or_update_documentation_drift_report(
+            gc, "org/repo", 1, [], result, reviewed_commit="🔍 Reviewed commit `abc1234`"
+        )
+
+        assert gc.post_comment.call_args.args[2].endswith("🔍 Reviewed commit `abc1234`")
+
+    async def test_edited_drift_report_refreshes_the_commit(self):
+        from baloo.documentation.models import DocumentationDriftResult
+        from baloo.documentation.report import DOCUMENTATION_DRIFT_SENTINEL
+        from baloo.review.orchestrator import _post_or_update_documentation_drift_report
+
+        gc = _make_github_client()
+        existing = DiscussionComment(
+            id=99,
+            author="baloo-code-reviewer[bot]",
+            body=f"{DOCUMENTATION_DRIFT_SENTINEL}\nold\n\n🔍 Reviewed commit `0000000`",
+            created_at=_now(),
+            updated_at=_now(),
+            source="issue_comment",
+            is_baloo=True,
+        )
+
+        await _post_or_update_documentation_drift_report(
+            gc,
+            "org/repo",
+            1,
+            [existing],
+            DocumentationDriftResult(),
+            reviewed_commit="🔍 Reviewed commit `abc1234`",
+        )
+
+        edited = gc.edit_comment.call_args.args[2]
+        assert edited.endswith("🔍 Reviewed commit `abc1234`")
+        assert "0000000" not in edited

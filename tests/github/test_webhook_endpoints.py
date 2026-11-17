@@ -234,7 +234,10 @@ class TestPullRequestReviewCommentRouting:
         payload = self._make_review_comment_payload(author="developer", body="I fixed it")
         mock_settings = MagicMock()
         mock_settings.thread_agent_enabled = True
-        with patch("baloo.github.webhook_handler.settings", mock_settings):
+        with (
+            patch("baloo.github.webhook_handler.settings", mock_settings),
+            patch("baloo.github.webhook_handler.resolve_setting", return_value=True),
+        ):
             resp = _post_webhook(client, payload, event="pull_request_review_comment")
         assert resp.status_code == 200
         data = resp.json()
@@ -353,3 +356,157 @@ class TestLifespan:
 
         mock_init.assert_not_called()
         mock_close.assert_not_called()
+
+
+def _check_payload(event: str, action: str = "rerequested", pulls: bool = True) -> dict:
+    return {
+        "action": action,
+        event: {
+            "id": 42,
+            "head_sha": "abc123",
+            "name": "Baloo Code Quality",
+            "pull_requests": [{"number": 7}] if pulls else [],
+        },
+        "repository": {"id": 1, "full_name": "org/repo"},
+        "installation": {"id": 1},
+        "sender": {"login": "dev"},
+    }
+
+
+class TestCheckRerun:
+    @pytest.mark.parametrize("event", ["check_run", "check_suite"])
+    def test_rerequested_queues_review(self, client, event):
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(client, _check_payload(event), event=event)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
+        args = mock_review.call_args.args
+        assert args[:4] == ("org/repo", 7, 1, f"{event}:rerequested")
+        assert args[6] == "abc123"
+
+    def test_other_check_actions_are_ignored(self, client):
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(
+                client, _check_payload("check_run", action="completed"), event="check_run"
+            )
+
+        assert resp.json()["status"] == "ignored"
+        mock_review.assert_not_called()
+
+    def test_rerequest_without_pull_request_is_ignored(self, client):
+        with patch(
+            "baloo.github.webhook_handler.process_pr_review", new=AsyncMock()
+        ) as mock_review:
+            resp = _post_webhook(
+                client, _check_payload("check_run", pulls=False), event="check_run"
+            )
+
+        assert resp.json()["reason"] == "no pull request"
+        mock_review.assert_not_called()
+
+
+def _post_raw(client, payload: dict, event: str, validate):
+    import json
+
+    with (
+        patch("baloo.github.webhook_handler.verify_webhook_signature", return_value=True),
+        patch("baloo.github.webhook_handler._validate_webhook_security", new=validate),
+    ):
+        return client.post(
+            "/webhook",
+            content=json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "X-GitHub-Event": event,
+                "X-Hub-Signature-256": "sha256=skip",
+            },
+        )
+
+
+class TestEarlyEventFilter:
+    """Deliveries Baloo never acts on cost no GitHub verification round trip."""
+
+    def test_check_run_noise_is_dropped_before_verification(self, client):
+        validate = AsyncMock(return_value=None)
+
+        resp = _post_raw(client, _check_payload("check_run", "completed"), "check_run", validate)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ignored"
+        validate.assert_not_awaited()
+
+    def test_check_suite_noise_is_dropped_before_verification(self, client):
+        validate = AsyncMock(return_value=None)
+
+        resp = _post_raw(client, _check_payload("check_suite", "created"), "check_suite", validate)
+
+        assert resp.json()["status"] == "ignored"
+        validate.assert_not_awaited()
+
+    def test_unsupported_event_is_dropped_before_verification(self, client):
+        validate = AsyncMock(return_value=None)
+
+        resp = _post_raw(client, {"action": "created", "installation": {"id": 1}}, "star", validate)
+
+        assert resp.json()["reason"] == "event type not processed"
+        validate.assert_not_awaited()
+
+    def test_declined_event_keeps_its_own_reason(self, client):
+        # pull_request_review is dropped too, but stays distinguishable in the
+        # delivery logs from an event type Baloo simply does not recognise.
+        validate = AsyncMock(return_value=None)
+
+        resp = _post_raw(
+            client,
+            {"action": "submitted", "installation": {"id": 1}},
+            "pull_request_review",
+            validate,
+        )
+
+        assert resp.json()["reason"] == "comment events disabled"
+        validate.assert_not_awaited()
+
+    def test_rerequested_check_still_reaches_verification(self, client):
+        # The filter must not swallow the one action the re-review path depends on.
+        validate = AsyncMock(return_value={"status": "skipped", "reason": "stops here"})
+
+        resp = _post_raw(client, _check_payload("check_run"), "check_run", validate)
+
+        assert resp.json() == {"status": "skipped", "reason": "stops here"}
+        validate.assert_awaited_once()
+
+    def test_pull_request_synchronize_still_reaches_verification(self, client):
+        validate = AsyncMock(return_value={"status": "skipped", "reason": "stops here"})
+
+        resp = _post_raw(client, _pr_payload("synchronize"), "pull_request", validate)
+
+        assert resp.json() == {"status": "skipped", "reason": "stops here"}
+        validate.assert_awaited_once()
+
+
+class TestVerificationTransportFailure:
+    """A transport failure is not a security verdict."""
+
+    async def test_unreachable_github_returns_503_not_500(self):
+        import httpx
+        from fastapi import HTTPException
+
+        from baloo.github.webhook_handler import _validate_webhook_security
+
+        with (
+            patch("baloo.github.webhook_handler.GitHubAuth", create=True),
+            patch("baloo.github.auth.GitHubAuth"),
+            patch(
+                "baloo.github.webhook_handler.verify_repo_belongs_to_installation",
+                new=AsyncMock(side_effect=httpx.ConnectTimeout("boom")),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await _validate_webhook_security(1, "org/repo")
+
+        assert exc_info.value.status_code == 503

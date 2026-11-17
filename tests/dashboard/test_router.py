@@ -142,8 +142,9 @@ def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
     reset_runtime_settings_cache()
 
     by_role = {row["role"]: row for row in _models_in_use()}
+    assert "Fallback" not in by_role
     assert by_role["Primary review"]["configured"] == "sonnet"
-    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-4-6"
+    assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-5"
     assert by_role["FP verification"]["configured"] == "haiku"
     assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
     assert by_role["Thread agent"]["configured"] == "haiku"
@@ -169,6 +170,7 @@ def test_dashboard_settings_shows_models_in_use(monkeypatch) -> None:
     assert "Models in use" in response.text
     assert "FP verification" in response.text
     assert "Thread agent" in response.text
+    assert "AGENT_FALLBACK_MODEL" not in response.text
     assert "haiku" in response.text
     assert "claude-haiku-4-5-20251001" in response.text
 
@@ -181,6 +183,43 @@ def test_settings_rows_mark_mutable_keys() -> None:
     for key in MUTABLE_KEYS:
         assert by_name[key]["mutable"] is True
     assert by_name["database_url"]["mutable"] is False
+
+
+def test_agent_provider_row_has_labeled_selector_choices() -> None:
+    from baloo.dashboard.router import _settings_rows
+
+    provider = next(row for row in _settings_rows() if row["name"] == "agent_provider")
+    assert provider["choices"] == (
+        ("anthropic", "Anthropic (direct API)"),
+        ("amazon-bedrock", "Amazon Bedrock"),
+        ("google", "Google Gemini"),
+        ("openai", "OpenAI"),
+        ("databricks", "Databricks AI Gateway"),
+        ("openrouter", "OpenRouter (ZDR endpoints only)"),
+    )
+
+
+def test_dashboard_settings_renders_provider_selector(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        response = TestClient(app).get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "<select" in response.text
+    assert 'name="value"' in response.text
+    assert 'aria-label="AGENT_PROVIDER"' in response.text
+    assert '<option value="anthropic" selected>Anthropic (direct API)</option>' in response.text
+    assert '<option value="amazon-bedrock" >Amazon Bedrock</option>' in response.text
+    assert "Applies to all Baloo agents" in response.text
 
 
 def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
@@ -231,7 +270,7 @@ def test_dashboard_settings_post_sets_override(monkeypatch) -> None:
                 follow = client.get(location)
 
     assert resolve_setting("agent_provider") == "amazon-bedrock"
-    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Updated 1 setting" in follow.text
     assert "Smoke test passed" in follow.text
 
 
@@ -397,5 +436,97 @@ def test_dashboard_settings_save_runs_smoke_for_provider(monkeypatch) -> None:
                 assert location.startswith("/dashboard/settings?flash=")
                 follow = client.get(location)
 
-    assert "Updated AGENT_PROVIDER" in follow.text
+    assert "Updated 1 setting" in follow.text
     assert "Smoke test failed for amazon-bedrock" in follow.text
+
+
+def test_env_only_rows_explain_why_they_are_not_editable(monkeypatch) -> None:
+    # An empty, uneditable field with an em-dash source reads as a bug. Env-only
+    # settings must say so and name the variable to set.
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+        app = _build_app()
+        response = TestClient(app).get("/dashboard/settings")
+
+    assert response.status_code == 200
+    assert "env only" in response.text
+    assert "cannot be changed from this page" in response.text
+    # DATABRICKS_HOST is the row that prompted this: env-only and often empty.
+    assert "DATABRICKS_HOST" in response.text
+
+
+def test_dashboard_settings_save_skips_unchanged_booleans(monkeypatch) -> None:
+    # The toggle inputs submit "true"/"false", but ``str(True)`` is "True", so a
+    # raw string compare made every boolean look changed and a no-JS full-form
+    # save converted every env-sourced toggle into a permanent db override.
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("REVIEW_AUTO_APPROVE", "false")
+    monkeypatch.setenv("THREAD_AGENT_ENABLED", "true")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    with patch("baloo.dashboard.router.set_override", new=AsyncMock()) as set_mock:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={
+                    "key": ["review_auto_approve", "thread_agent_enabled"],
+                    "value": ["false", "true"],
+                    "action": "save",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            follow = client.get(response.headers["location"])
+
+    set_mock.assert_not_awaited()
+    assert "No changes to save" in follow.text
+
+
+def test_dashboard_settings_save_writes_flipped_boolean(monkeypatch) -> None:
+    from baloo.config.runtime_settings import reset_runtime_settings_cache
+    from baloo.config.settings import reset_settings
+
+    monkeypatch.setenv("DATABASE_ENABLED", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite://")
+    monkeypatch.setenv("REVIEW_AUTO_APPROVE", "false")
+    monkeypatch.setenv("THREAD_AGENT_ENABLED", "true")
+    reset_settings()
+    reset_runtime_settings_cache()
+
+    async def fake_set(key: str, value: str, *, updated_by: str | None = None) -> str:
+        return value
+
+    with patch("baloo.dashboard.router.set_override", side_effect=fake_set) as set_mock:
+        with patch("baloo.dashboard.router.ensure_fresh_cache", new=AsyncMock()):
+            app = _build_app()
+            client = TestClient(app)
+            response = client.post(
+                "/dashboard/settings",
+                data={
+                    "key": ["review_auto_approve", "thread_agent_enabled"],
+                    "value": ["true", "true"],
+                    "action": "save",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            follow = client.get(response.headers["location"])
+
+    assert set_mock.await_count == 1
+    assert set_mock.await_args.args[:2] == ("review_auto_approve", "true")
+    assert "Updated 1 setting" in follow.text

@@ -30,7 +30,9 @@ def main() -> None:
     logger.info(f"Version: {VERSION} | Commit: {commit_display} | Build Date: {BUILD_DATE}")
     logger.info("=" * 80)
     logger.info(f"Starting Baloo on {settings.app_host}:{settings.app_port}")
-    logger.info(f"Using model: {settings.agent_model}")
+    # Env value: this runs before the DB override cache is loaded, so say so
+    # rather than reporting a model a runtime override may already have changed.
+    logger.info(f"Configured model (env): {settings.agent_model}")
 
     uvicorn.run(
         app,

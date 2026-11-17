@@ -3,7 +3,7 @@
 import logging
 import os
 
-from baloo.config.settings import settings
+from baloo.config.runtime_settings import resolve_setting
 from baloo.github.api_client import GitHubAPIClient
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def fetch_plan_content(
         Plan file content as string, or None if not found
     """
     # Build the exact path using the configured pattern
-    exact_path = settings.fidelity_plan_path_pattern.format(ticket_id=ticket_id)
+    exact_path = resolve_setting("fidelity_plan_path_pattern").format(ticket_id=ticket_id)
     plans_dir = os.path.dirname(exact_path)
 
     logger.debug(f"Fetching plan file: {repo_full_name}/{exact_path} (ref={ref})")

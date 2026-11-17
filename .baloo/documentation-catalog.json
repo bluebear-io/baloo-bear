@@ -56,7 +56,6 @@
       "recommended_docs": [
         "README.md",
         "docs/README.md",
-        "docs/index.md",
         "docs/configuration.md",
         "docs/features/documentation-drift.md"
       ]

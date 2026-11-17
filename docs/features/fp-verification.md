@@ -58,7 +58,7 @@ Typical review with 5 findings: **$0.0005–$0.0015** extra. Negligible compared
 
 | Variable | Default | Description |
 |---|---|---|
-| `FP_VERIFICATION_ENABLED` | `false` | Enable the verification pass |
+| `FP_VERIFICATION_ENABLED` | `true` | Enable the verification pass |
 | `FP_VERIFICATION_MODEL` | `haiku` | Model for verification (short name or provider/model) |
 | `FP_VERIFICATION_MAX_CONCURRENT` | `5` | Max parallel verification calls |
 | `FP_AUDIT_LOG_PATH` | `/var/log/baloo/fp-audit.jsonl` | Audit log path. Empty to disable logging |

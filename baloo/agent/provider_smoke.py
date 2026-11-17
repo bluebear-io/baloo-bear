@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from baloo.agent.config import get_agent_options
 from baloo.agent.pi_runtime import PIAgentBase
+from baloo.agent.tiers import SINGLE_TURN
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ async def smoke_test_provider(
     options = get_agent_options(model)
     options.system_prompt = _SMOKE_SYSTEM_PROMPT
     options.thinking_level = "off"
-    options.max_turns = 1
+    options.max_turns = SINGLE_TURN
     options.no_tools = True
     options.name = "ProviderSmoke"
     # Never sandbox a connectivity probe — no cwd / no repo isolation needed.
@@ -100,8 +101,11 @@ async def smoke_test_provider(
 
     elapsed = time.monotonic() - start
     if metadata.get("is_error"):
-        err = "PI agent reported an error (check server logs for details)"
+        err = str(metadata.get("error_message") or "PI agent reported an error (see server logs)")[
+            :500
+        ]
         msg = f"Smoke test failed for {provider}/{model_id}: {err}"
+        logger.warning(msg)
         return SmokeResult(
             ok=False,
             provider=provider,

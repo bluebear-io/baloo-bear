@@ -107,6 +107,6 @@ results.
 
 ## No Spec? No Report
 
-If Baloo can't find a ticket ID, fidelity analysis is silently skipped. With a ticket ID but no
+If Baloo can't find a ticket ID, fidelity analysis is skipped, and Baloo posts a collapsed "Fidelity Report – Skipped" comment once per PR explaining how to add one. With a ticket ID but no
 plan file, fidelity can still run on the Linear ticket alone (when Linear integration is
 configured and the ticket has enough detail). It never blocks a review.

@@ -1,3 +1,9 @@
 """Baloo - AI-powered GitHub code review agent."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("baloo")
+except PackageNotFoundError:
+    # Package metadata is unavailable when importing directly from a source tree.
+    __version__ = "unknown"

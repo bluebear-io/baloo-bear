@@ -116,19 +116,19 @@ Run the same review pipeline locally with no GitHub comments:
 uv run python scripts/local_review.py --git-workdir /path/to/your-repo --base origin/main --head HEAD
 ```
 
-Use this to iterate on the change (and on the review brief) before Baloo posts publicly. See the [project README](https://github.com/Blue-Bear-Security/baloo-bear/blob/main/README.md#local-review-dry-run) for flags.
+Use this to iterate on the change (and on the review brief) before Baloo posts publicly. See the [project README](https://github.com/bluebear-io/baloo-bear/blob/main/README.md#local-review-dry-run) for flags.
 
 ## Engage the discussion threads
 
-Baloo tracks inline threads across pushes: it skips duplicates, follows up when feedback is addressed, and can continue the conversation when you reply. Treat findings like a human review — reply with a fix, a decline with reasoning, or a tradeoff. That history improves later reviews on the same PR. See [Discussion Tracking](features/discussions.md).
+Baloo tracks inline threads across pushes: it skips duplicates, follows up when feedback is addressed, and, with the [thread agent](features/thread-agent.md) enabled (off by default), answers when you reply. Treat findings like a human review — reply with a fix, a decline with reasoning, or a tradeoff. That history improves later reviews on the same PR. See [Discussion Tracking](features/discussions.md).
 
 ## Tune signal, not volume
 
 | Setting | Why it helps |
 | ------- | ------------ |
-| `FP_VERIFICATION_ENABLED=true` | Second LLM pass drops weak findings |
+| `FP_VERIFICATION_ENABLED` (on by default) | Second LLM pass drops weak findings |
 | `REVIEW_MIN_SEVERITY` | Keep noise out of the PR surface |
-| Severity routing | CRITICAL/HIGH block; MEDIUM can go to Checks |
+| Severity routing | CRITICAL/HIGH withhold Baloo's approval (never block merge); MEDIUM can go to Checks |
 
 Details: [Severity Routing](features/severity-routing.md), [FP Verification](features/fp-verification.md).
 

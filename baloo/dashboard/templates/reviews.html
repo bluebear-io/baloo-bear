@@ -1,41 +1,36 @@
 {% extends "base.html" %}
 {% set active_page = "reviews" %}
+{% set page_title = "Reviews" %}
+{% set page_subtitle = "Every review Baloo has run, newest first." %}
 
 {% block title %}Reviews - Baloo Dashboard{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-gray-900">Reviews</h1>
-
-  <!-- Filters -->
-  <form class="flex space-x-3" hx-get="/dashboard/reviews" hx-target="#reviews-table" hx-swap="innerHTML" hx-push-url="true">
-    <div class="relative">
-      <input type="text" name="search" value="{{ search or '' }}" placeholder="Search PR title or author..."
-             class="border rounded px-3 py-1.5 text-sm w-64 pr-10 focus:ring-indigo-500 focus:border-indigo-500">
-      {% if search %}
-      <a href="/dashboard/reviews?repo={{ repo or '' }}&status={{ status or '' }}"
-         class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
-        &times;
-      </a>
-      {% endif %}
-    </div>
-    <select name="status" class="border rounded px-3 py-1.5 text-sm">
+<div class="stack">
+  <form class="card card-body" style="display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center"
+        hx-get="/dashboard/reviews" hx-target="#reviews-table" hx-swap="innerHTML" hx-push-url="true">
+    <input class="field" type="search" name="search" value="{{ search or '' }}"
+           placeholder="Search repo, PR title, author" style="flex:1 1 16rem" aria-label="Search reviews">
+    <select class="field" name="status" aria-label="Filter by status">
       <option value="">All statuses</option>
-      {% for s in ["approved", "changes_requested", "commented", "error", "agent_error", "in_progress"] %}
-      <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+      {% for value in ["approved", "changes_requested", "commented", "error", "agent_error", "in_progress"] %}
+      <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ value.replace('_', ' ') }}</option>
       {% endfor %}
     </select>
-    <select name="repo" class="border rounded px-3 py-1.5 text-sm">
-      <option value="">All repos</option>
-      {% for rp in repos %}
-      <option value="{{ rp }}" {% if repo == rp %}selected{% endif %}>{{ rp }}</option>
+    <select class="field" name="repo" aria-label="Filter by repository">
+      <option value="">All repositories</option>
+      {% for name in repos %}
+      <option value="{{ name }}" {% if repo == name %}selected{% endif %}>{{ name }}</option>
       {% endfor %}
     </select>
-    <button type="submit" class="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm hover:bg-indigo-700">Filter</button>
+    <button type="submit" class="btn">Filter</button>
+    <span class="htmx-indicator badge">Loading…</span>
   </form>
-</div>
 
-<div id="reviews-table" class="bg-white rounded-lg shadow overflow-hidden">
-  {% include "partials/reviews_table.html" %}
+  <div class="card">
+    <div id="reviews-table">
+      {% include "partials/reviews_table.html" %}
+    </div>
+  </div>
 </div>
 {% endblock %}
