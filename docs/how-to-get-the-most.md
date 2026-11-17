@@ -16,7 +16,7 @@ Generic prompts produce generic reviews. Concrete, testable instructions produce
 
 ## Start with written conventions
 
-Baloo reads `AGENTS.md` and `CONTRIBUTING.md` from the PR head and flags violations. Vague guidance ("write clean code") is ignored; enforceable rules are not.
+Baloo reads `AGENTS.md` and `CONTRIBUTING.md` from the PR's base branch and flags violations. Vague guidance ("write clean code") is ignored; enforceable rules are not. Because they are read from the base branch, edits to those files apply to the PRs that come after them, not to the PR making the edit.
 
 Write rules that are:
 

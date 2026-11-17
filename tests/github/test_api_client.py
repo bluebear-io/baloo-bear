@@ -48,7 +48,7 @@ def _pr_data() -> dict:
         "title": "My PR",
         "body": "PR description",
         "user": {"login": "dev"},
-        "base": {"ref": "main"},
+        "base": {"ref": "main", "sha": "basesha"},
         "head": {"ref": "feature", "sha": "headsha"},
     }
 
@@ -533,11 +533,21 @@ class TestGetPRContext:
         assert result.metadata.author == "dev"
         assert result.metadata.base_branch == "main"
         assert result.metadata.head_sha == "headsha"
+        assert result.metadata.base_sha == "basesha"
         assert len(result.metadata.files_changed) == 1
         assert result.metadata.files_changed[0].filename == "src/foo.py"
         assert "new line" in result.diff
         assert result.metadata.repo_guidelines == "# AGENTS.md content"
         assert result.metadata.commit_messages == ["initial commit"]
+
+        # Guidelines are policy for the review, so they must come from the base
+        # commit — a fork PR controls everything at head.
+        guideline_refs = [
+            call.kwargs["params"]["ref"]
+            for call in mock_http.get.call_args_list
+            if "/contents/" in call.args[0]
+        ]
+        assert guideline_refs == ["basesha", "basesha"]
 
     @pytest.mark.asyncio
     async def test_handles_406_diff_by_constructing_from_patches(self):

@@ -37,8 +37,9 @@ def test_build_local_pr_context_from_git_diff():
             "diff",
             "origin/main...HEAD",
         ): "diff --git a/baloo/foo.py b/baloo/foo.py\n@@ -1 +1 @@\n-old\n+new\n",
-        ("show", "HEAD:AGENTS.md"): "Repo guidelines",
-        ("show", "HEAD:CONTRIBUTING.md"): "",
+        ("rev-parse", "origin/main"): "base123",
+        ("show", "origin/main:AGENTS.md"): "Repo guidelines",
+        ("show", "origin/main:CONTRIBUTING.md"): "",
     }
 
     def fake_git(args, cwd=None, check=True):
@@ -85,8 +86,9 @@ def test_build_local_pr_context_git_workdir_sets_initial_git_cwd(tmp_path):
         ("diff", "--numstat", "origin/main...HEAD"): "1\t0\tREADME.md\n",
         ("diff", "--name-status", "origin/main...HEAD"): "M\tREADME.md\n",
         ("diff", "origin/main...HEAD"): "diff --git a/README.md b/README.md\n",
-        ("show", "HEAD:AGENTS.md"): "",
-        ("show", "HEAD:CONTRIBUTING.md"): "",
+        ("rev-parse", "origin/main"): "base123",
+        ("show", "origin/main:AGENTS.md"): "",
+        ("show", "origin/main:CONTRIBUTING.md"): "",
     }
 
     def fake_git(args, cwd=None, check=True):

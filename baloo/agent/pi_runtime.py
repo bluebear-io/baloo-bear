@@ -14,13 +14,15 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from baloo.agent import openrouter
+from baloo.agent import openrouter, sandbox
 from baloo.agent.costs import normalize_usage
 from baloo.agent.databricks import DATABRICKS_PROVIDER, ensure_agent_dir
 from baloo.agent.tiers import (
@@ -38,6 +40,12 @@ def _settings_default(name: str) -> Any:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _remove_dir(path: str | None) -> None:
+    """Best-effort removal of a scratch directory created for one agent run."""
+    if path:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 @dataclass
@@ -479,23 +487,18 @@ class PIAgentBase:
             "max_turns_reached": result.max_turns_reached,
         }
 
-    def _subprocess_env(self, sandbox_active: bool) -> dict[str, str] | None:
+    def _subprocess_env(self) -> dict[str, str]:
         """Build the environment for a PI subprocess.
 
-        Every PI spawn must go through here. When the sandbox engages the env is
-        scrubbed to an allowlist so a prompt-injected agent (which keeps network
-        access for the model API) cannot read baloo's secrets from
-        /proc/self/environ and exfiltrate them. ``None`` means inherit, which
-        preserves the unsandboxed/dev behaviour.
+        Every PI spawn must go through here. The env is always scrubbed to an
+        allowlist so a prompt-injected agent (which keeps network access for the
+        model API) cannot read baloo's secrets from /proc/self/environ and
+        exfiltrate them. This must not be conditional on the sandbox: the
+        unsandboxed path is exactly where a leak is least contained.
         """
-        env: dict[str, str] | None = None
-        if sandbox_active:
-            from baloo.agent import sandbox
+        return self._with_provider_env(sandbox.build_subprocess_env(dict(os.environ)))
 
-            env = sandbox.build_subprocess_env(dict(os.environ))
-        return self._with_provider_env(env)
-
-    def _with_provider_env(self, base: dict[str, str] | None) -> dict[str, str] | None:
+    def _with_provider_env(self, base: dict[str, str]) -> dict[str, str]:
         """Add any provider-specific env the PI subprocess needs.
 
         Databricks is not a native PI provider: it is registered through a
@@ -504,9 +507,6 @@ class PIAgentBase:
         file. Every spawn site must go through here — a subprocess started
         without it fails with ``Unknown provider "databricks"``, or for
         OpenRouter silently sends requests without the ZDR constraint.
-
-        ``base`` of ``None`` means "inherit the parent env", which is preserved
-        for providers that need nothing extra.
         """
         if self.options.provider == DATABRICKS_PROVIDER:
             # Env-only by design — see MUTABLE_KEYS in baloo/config/runtime_settings.py.
@@ -515,16 +515,26 @@ class PIAgentBase:
             agent_dir = openrouter.ensure_agent_dir()
         else:
             return base
-        env = dict(base) if base is not None else dict(os.environ)
+        env = dict(base)
         env["PI_CODING_AGENT_DIR"] = str(agent_dir)
         return env
 
-    def _build_pi_command(self, sandbox_decision: tuple[str, bool] | None = None) -> list[str]:
+    def _build_pi_command(
+        self,
+        sandbox_decision: tuple[str, bool] | None = None,
+        sandbox_root: str | None = None,
+    ) -> list[str]:
         """Build the PI CLI command list.
 
         ``sandbox_decision`` lets ``run_query`` compute the (mode, active) tuple
-        once and reuse it for both the bwrap prefix here and the env scrub there,
-        avoiding a redundant settings/availability lookup per review.
+        once and reuse it here, avoiding a redundant settings/availability lookup
+        per review. ``sandbox_root`` is the directory bound into the sandbox;
+        it defaults to the agent's worktree.
+
+        Raises:
+            SandboxUnavailableError: a sandbox is configured, this agent can read
+                files, and bubblewrap is not usable. Running unisolated is not an
+                option — see ``_sandbox_decision``.
         """
         s = get_settings()
         pi_binary = s.pi_binary_path or "pi"
@@ -569,32 +579,37 @@ class PIAgentBase:
             sandbox_decision if sandbox_decision is not None else self._sandbox_decision()
         )
         if active:
-            from baloo.agent import sandbox
-
-            cmd = sandbox.build_sandbox_prefix(mode, self.options.cwd) + cmd
-        elif mode != "off" and self.options.cwd:
-            logger.warning(
-                "%s: sandbox mode %r requested but unavailable; "
-                "running WITHOUT filesystem isolation",
-                self.agent_name,
-                mode,
+            root = sandbox_root or self.options.cwd
+            if not root:
+                raise sandbox.SandboxUnavailableError(
+                    f"{self.agent_name}: sandbox mode {mode!r} is active but no directory "
+                    "was provided to bind into it"
+                )
+            cmd = sandbox.build_sandbox_prefix(mode, root) + cmd
+        elif mode != "off" and not self.options.no_tools:
+            raise sandbox.SandboxUnavailableError(
+                f"{self.agent_name}: repo_sandbox_mode={mode!r} is configured but the "
+                "sandbox is not usable here, and this agent has file-read tools. "
+                "Refusing to run the agent without filesystem isolation. Fix the host "
+                "so bubblewrap can run, or set REPO_SANDBOX_MODE=off to accept the risk."
             )
         return cmd
 
     def _sandbox_decision(self) -> tuple[str, bool]:
         """Return (mode, active) — the single source of truth for sandboxing.
 
-        ``active`` is True only when a non-off mode is configured, a worktree
-        ``cwd`` is set, and the sandbox is functionally available. Both the bwrap
-        argv prefix (``_build_pi_command``) and the env scrub (``run_query``) key
-        off this one decision so they can never diverge — a mismatch would either
-        expose secrets (prefix without scrub) or break tools (scrub without prefix).
+        ``active`` is True only when a non-off mode is configured, this agent can
+        read files, and the sandbox is functionally available. When a mode is
+        configured but unavailable, callers must refuse to run rather than fall
+        back to an unisolated agent (``_build_pi_command`` raises).
+
+        Agents launched with ``--no-tools`` have no filesystem access at all, so
+        there is nothing for bwrap to isolate and they are allowed to run without
+        it. Their environment is scrubbed like every other spawn.
         """
         mode = getattr(get_settings(), "repo_sandbox_mode", "off")
-        if mode == "off" or not self.options.cwd:
+        if mode == "off" or self.options.no_tools:
             return mode, False
-        from baloo.agent import sandbox
-
         return mode, sandbox.sandbox_available(mode)
 
     # -----------------------------------------------------------------
@@ -619,32 +634,54 @@ class PIAgentBase:
             model=self.options.model, thinking_level=self.options.thinking_level
         )
 
-        # Compute the sandbox decision once and reuse it for both the bwrap argv
-        # prefix and the env scrub, so they always engage together and we don't
-        # repeat the settings/availability lookup.
+        # Compute the sandbox decision once; _build_pi_command raises rather than
+        # degrading to an unisolated agent when a sandbox is configured but broken.
         sandbox_decision = self._sandbox_decision()
-        cmd = self._build_pi_command(sandbox_decision)
-        cwd = self.options.cwd or None
-
         _, sandbox_active = sandbox_decision
-        proc_env = self._subprocess_env(sandbox_active)
+        proc_env = self._subprocess_env()
+
+        # A tool-using agent with no worktree (repo provisioning off or failed)
+        # would otherwise run in baloo's own cwd, where `read .env` is a complete
+        # credential dump. Bind an empty scratch dir instead: the review degrades
+        # to diff-only exactly as it did before, minus the host filesystem.
+        ephemeral_root: str | None = None
+        if sandbox_active and not self.options.cwd:
+            ephemeral_root = tempfile.mkdtemp(prefix="baloo-sandbox-")
+            logger.warning(
+                "%s: no worktree provisioned; sandboxing against an empty directory "
+                "(file tools will find nothing)",
+                self.agent_name,
+            )
+
+        try:
+            cmd = self._build_pi_command(sandbox_decision, sandbox_root=ephemeral_root)
+        except BaseException:
+            _remove_dir(ephemeral_root)
+            raise
+
+        cwd = self.options.cwd or ephemeral_root
 
         logger.info(
-            "%s: spawning PI process (model=%s, thinking=%s)",
+            "%s: spawning PI process (model=%s, thinking=%s, sandbox=%s)",
             self.agent_name,
             self.options.model,
             self.options.thinking_level,
+            "on" if sandbox_active else "off",
         )
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
-            cwd=cwd,
-            env=proc_env,  # None = inherit (unsandboxed/dev); scrubbed when sandboxed
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
+                cwd=cwd,
+                env=proc_env,
+            )
+        except BaseException:
+            _remove_dir(ephemeral_root)
+            raise
 
         try:
             result = await self._drive_session(proc, query, start_time, review_logger)
@@ -683,6 +720,8 @@ class PIAgentBase:
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+
+            _remove_dir(ephemeral_root)
 
         elapsed = time.time() - start_time
         result.duration_seconds = elapsed
@@ -894,10 +933,7 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
-                # Mirror the main spawn's scrub. The retry runs --no-tools but
-                # keeps network access, so an unscrubbed env would hand baloo's
-                # secrets to a subprocess the sandbox was meant to contain.
-                env=self._subprocess_env(self._sandbox_decision()[1]),
+                env=self._subprocess_env(),
             )
 
             # Temporarily swap options for the retry

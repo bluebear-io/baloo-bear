@@ -2,7 +2,7 @@
 
 Documentation drift review is an optional PR-time side analysis that checks whether implementation changes make repository documentation stale.
 
-It runs during the normal Baloo review when enabled, reads a repo-owned catalog from the PR head, and posts at most one PR-level comment asking the author to update affected docs in the same PR.
+It runs during the normal Baloo review when enabled, reads a repo-owned catalog from the PR's base branch, and posts at most one PR-level comment asking the author to update affected docs in the same PR.
 
 ## Why PR-Time?
 
@@ -18,7 +18,7 @@ The MVP is non-blocking:
 ## How It Works
 
 1. Baloo provisions the PR checkout at the head SHA.
-2. Baloo loads the catalog from `.baloo/documentation-catalog.json` by default.
+2. Baloo fetches the catalog from `.baloo/documentation-catalog.json` (by default) **at the PR's base commit**, so a PR cannot delete its own documentation obligations in the commit that creates them. A catalog rule added by a PR takes effect once that PR merges.
 3. Changed implementation files are matched against catalog rules.
 4. Recommended docs are split into docs already changed in the PR and docs still to review.
 5. A read-only PI side agent inspects the changed files and mapped docs.
@@ -72,7 +72,7 @@ Good catalog rules are:
 - **Specific enough to avoid noise** — map an area to docs that actually describe that area.
 - **Broad enough to survive file moves** — prefer `app/billing/**` over every individual billing file.
 - **Owned by the repo** — the catalog lives in the reviewed repository, so each repo can choose its own docs contract.
-- **Kept in the same PR as code changes** — when a new feature area or doc page is added, update the catalog with it.
+- **Kept in the same PR as code changes** — when a new feature area or doc page is added, update the catalog with it. The new rule starts being enforced on the next PR, since the catalog is read from the base branch.
 
 Use `read_only: true` when a code area is useful context but should not cause Baloo to request documentation updates:
 
@@ -189,7 +189,7 @@ If a previous drift comment exists and the latest review finds no drift, Baloo e
 Check these first:
 
 - `DOCUMENTATION_DRIFT_ENABLED=true` is set in the running Baloo service.
-- The reviewed PR head contains the catalog file.
+- The PR's base branch contains the catalog file.
 - The changed files match at least one catalog rule, or there are meaningful unmapped implementation files that should be reported as catalog hygiene.
 - The PR only changed docs. Docs-only PRs skip analysis unless implementation files changed too.
 
