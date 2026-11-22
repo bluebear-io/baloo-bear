@@ -1625,6 +1625,11 @@ async def process_pr_review(
                 )
                 approve = False
                 request_changes = False
+            if agent_metadata.get("partial_review"):
+                # A recovered turn-capped review may report valid defects, but
+                # it cannot certify the rest of the PR as issue-free.
+                approve = False
+                request_changes = False
 
             decision_summary = DecisionEngine.get_decision_summary(approve, request_changes)
 
@@ -1636,6 +1641,12 @@ async def process_pr_review(
                 repo_full_name=repo_full_name,
             )
             summary_text = f"{summary_text}\n\n{decision_summary}"
+            if agent_metadata.get("partial_review"):
+                summary_text += (
+                    "\n\n**Partial review:** The agent exhausted its turn budget. "
+                    "The findings above were recovered from the available investigation, "
+                    "but remaining code was not fully reviewed. No approval was issued."
+                )
             if standards_report.summary_section():
                 summary_text += f"\n\n{standards_report.summary_section()}"
 
