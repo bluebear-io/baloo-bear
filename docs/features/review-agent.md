@@ -67,13 +67,9 @@ saying it was not reviewed, never an approval. See
 
 ### Turn-limit recovery
 
-If the primary reviewer runs out of turns without returning valid JSON, Baloo
-attempts to retrieve the PI conversation and runs one bounded, tool-free
-finalization using the recorded investigation. Only structured reports with
-concrete findings are recovered. Such reports are explicitly marked **partial**,
-and no approval is issued. If the transcript is unavailable, contains no tool
-evidence, or finalization fails, the review continues to fail closed. Other
-agents are unaffected.
+Never approve a review that exhausted its turn budget, because a valid JSON
+response or repaired output does not prove the entire PR was examined. Report
+confirmed findings as partial, and fail closed when usable evidence is absent.
 
 ## Configuration
 

@@ -1,6 +1,7 @@
 """Turn-limit recovery must retain evidence and never approve partial reviews."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,11 +9,11 @@ import pytest
 from baloo.agent.pi_runtime import PIAgentBase, PIAgentOptions, PIRunResult
 
 
-def agent():
+def agent() -> PIAgentBase:
     return PIAgentBase(PIAgentOptions(model="model", provider="anthropic", name="BalooAgent"))
 
 
-def transcript():
+def transcript() -> list[dict[str, Any]]:
     return [
         {
             "role": "assistant",
@@ -31,7 +32,7 @@ def transcript():
     ]
 
 
-def finding():
+def finding() -> dict[str, Any]:
     return {
         "findings": [
             {
@@ -47,7 +48,7 @@ def finding():
     }
 
 
-def fake_proc():
+def fake_proc() -> MagicMock:
     proc = MagicMock()
     proc.returncode = None
     proc.stdin.write = MagicMock()
@@ -171,7 +172,7 @@ async def test_non_review_agents_do_not_fetch_messages():
 
 
 @pytest.mark.asyncio
-async def test_primary_recovered_findings_never_autoapprove(sample_pr_context=None):
+async def test_primary_recovered_findings_never_autoapprove():
     from baloo.agent.client import BalooAgent
     from baloo.github.models import FileChange, PRContext, PRDiscussionContext, PRMetadata
 
@@ -210,3 +211,125 @@ async def test_primary_recovered_findings_never_autoapprove(sample_pr_context=No
     assert review.request_changes is False
     assert review.metadata["partial_review"] is True
     assert "Partial review" in review.summary
+
+
+@pytest.mark.asyncio
+async def test_capped_json_repair_is_partial_even_without_transcript_finalization():
+    reviewer = agent()
+    capped = PIRunResult(
+        assistant_text='{"findings": [',
+        all_assistant_texts=['{"findings": ['],
+        max_turns_reached=True,
+        num_turns=30,
+        model="model",
+    )
+    with (
+        patch(
+            "baloo.agent.pi_runtime.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=fake_proc()),
+        ),
+        patch.object(reviewer, "_drive_session", new=AsyncMock(return_value=capped)),
+        patch.object(
+            reviewer,
+            "_retry_json",
+            new=AsyncMock(return_value=(finding(), {"cost_usd": 0.01}, json.dumps(finding()))),
+        ) as retry,
+    ):
+        output, metadata = await reviewer.run_query("Review")
+    assert output == finding()
+    assert metadata["json_retry"] is True
+    assert metadata["partial_review"] is True
+    retry.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_valid_json_at_turn_cap_skips_unneeded_transcript_fetch():
+    reviewer = agent()
+    proc = fake_proc()
+    reviewer._read_event = AsyncMock(
+        side_effect=[
+            {"type": "response", "command": "set_thinking_level", "success": True},
+            {"type": "response", "command": "prompt", "success": True},
+        ]
+    )
+
+    async def dispatch(_proc, result, _logger):
+        result.max_turns_reached = True
+        result.assistant_text = json.dumps(finding())
+        result.all_assistant_texts = [result.assistant_text]
+
+    reviewer._dispatch_events = AsyncMock(side_effect=dispatch)
+    result = await reviewer._drive_session(proc, "Review", 0)
+    assert result.final_messages == []
+    assert len(proc.stdin.write.call_args_list) == 2
+
+
+@pytest.mark.asyncio
+async def test_previous_valid_response_skips_unneeded_transcript_fetch():
+    reviewer = agent()
+    proc = fake_proc()
+    reviewer._read_event = AsyncMock(
+        side_effect=[
+            {"type": "response", "command": "set_thinking_level", "success": True},
+            {"type": "response", "command": "prompt", "success": True},
+        ]
+    )
+
+    async def dispatch(_proc, result, _logger):
+        result.max_turns_reached = True
+        result.assistant_text = "late malformed message"
+        result.all_assistant_texts = [json.dumps(finding()), result.assistant_text]
+
+    reviewer._dispatch_events = AsyncMock(side_effect=dispatch)
+    result = await reviewer._drive_session(proc, "Review", 0)
+    assert result.final_messages == []
+    assert len(proc.stdin.write.call_args_list) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["finalizer", "json_retry"])
+async def test_followup_sessions_share_cli_builder_and_sandbox(operation, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("GITHUB_PRIVATE_KEY", "DO_NOT_PROPAGATE")
+    reviewer = agent()
+    proc = fake_proc()
+    result = PIRunResult(assistant_text=json.dumps(finding()), model="model")
+    settings = SimpleNamespace(pi_binary_path="pi", repo_sandbox_mode="bwrap")
+    with (
+        patch("baloo.agent.pi_runtime.get_settings", return_value=settings),
+        patch("baloo.agent.sandbox.sandbox_available", return_value=True),
+        patch(
+            "baloo.agent.pi_runtime.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ) as spawn,
+        patch.object(reviewer, "_drive_session", new=AsyncMock(return_value=result)),
+    ):
+        if operation == "finalizer":
+            await reviewer._finalize_from_transcript("Review", transcript(), "/work/tree")
+        else:
+            await reviewer._retry_json(raw_text="broken", proc_cwd="/work/tree")
+    args = spawn.await_args.args
+    assert args[0] == "bwrap"
+    assert "--" in args
+    pi_args = args[args.index("--") + 1 :]
+    assert pi_args[0] == "pi"
+    assert "--no-tools" in pi_args
+    assert "--no-context-files" in pi_args
+    assert "--no-skills" in pi_args
+    assert spawn.await_args.kwargs["env"] is not None
+    assert "GITHUB_PRIVATE_KEY" not in spawn.await_args.kwargs["env"]
+    assert reviewer.options.max_turns != 2
+
+
+@pytest.mark.asyncio
+async def test_json_retry_spawn_failure_restores_original_options():
+    reviewer = agent()
+    original_options = reviewer.options
+    with patch(
+        "baloo.agent.pi_runtime.asyncio.create_subprocess_exec",
+        new=AsyncMock(side_effect=OSError("spawn failed")),
+    ):
+        parsed, metadata, raw = await reviewer._retry_json(raw_text="broken", proc_cwd=None)
+    assert parsed is None and metadata is None and raw is None
+    assert reviewer.options is original_options

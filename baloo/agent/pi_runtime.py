@@ -793,6 +793,16 @@ class PIAgentBase:
                         raw_text=retry_raw_text or result.assistant_text
                     )
 
+        # An exhausted review is partial even when the usual JSON repair,
+        # rather than transcript finalization, supplied the usable output.
+        # A complete-looking JSON object is not proof that every file was reviewed.
+        if (
+            self.agent_name == "BalooAgent"
+            and result.max_turns_reached
+            and structured_output is not None
+        ):
+            metadata["partial_review"] = True
+
         if result.is_error:
             await review_logger.agent_error(
                 error_message=result.error_message,
@@ -950,28 +960,14 @@ Serialized payload:
             max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
             no_context_files=True,
+            cwd=proc_cwd,
         )
-        settings = get_settings()
-        cmd = [
-            settings.pi_binary_path or "pi",
-            "--mode",
-            "rpc",
-            "--no-session",
-            "--no-extensions",
-            "--no-approve",
-            "--no-context-files",
-            "--no-skills",
-            "--provider",
-            finalize_opts.provider,
-            "--model",
-            f"{finalize_opts.provider}/{finalize_opts.model}",
-            "--no-tools",
-            "--system-prompt",
-            finalize_opts.system_prompt,
-        ]
         start = time.time()
         original_opts = self.options
         try:
+            self.options = finalize_opts
+            sandbox_decision = self._sandbox_decision()
+            cmd = self._build_pi_command(sandbox_decision)
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -979,9 +975,8 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,
                 cwd=proc_cwd,
-                env=self._subprocess_env(self._sandbox_decision()[1]),
+                env=self._subprocess_env(sandbox_decision[1]),
             )
-            self.options = finalize_opts
             try:
                 result = await self._drive_session(proc, prompt, start)
             finally:
@@ -1020,9 +1015,6 @@ Serialized payload:
 
         Returns (parsed_json_or_None, metadata_or_None, raw_retry_text).
         """
-        settings = get_settings()
-        pi_binary = settings.pi_binary_path or "pi"
-
         retry_opts = PIAgentOptions(
             model=self.options.model,
             provider=self.options.provider,
@@ -1030,25 +1022,16 @@ Serialized payload:
             thinking_level="off",
             max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
+            no_context_files=True,
+            cwd=proc_cwd,
         )
 
-        cmd = [
-            pi_binary,
-            "--mode",
-            "rpc",
-            "--no-session",
-            "--no-extensions",
-            "--no-approve",
-            "--provider",
-            retry_opts.provider,
-            "--model",
-            f"{retry_opts.provider}/{retry_opts.model}",
-        ]
-        cmd.append("--no-tools")
-        cmd.extend(["--system-prompt", retry_opts.system_prompt])
-
         start = time.time()
+        original_opts = self.options
         try:
+            self.options = retry_opts
+            sandbox_decision = self._sandbox_decision()
+            cmd = self._build_pi_command(sandbox_decision)
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -1056,15 +1039,8 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
-                # Mirror the main spawn's scrub. The retry runs --no-tools but
-                # keeps network access, so an unscrubbed env would hand baloo's
-                # secrets to a subprocess the sandbox was meant to contain.
-                env=self._subprocess_env(self._sandbox_decision()[1]),
+                env=self._subprocess_env(sandbox_decision[1]),
             )
-
-            # Temporarily swap options for the retry
-            original_opts = self.options
-            self.options = retry_opts
             try:
                 retry_payload = json.dumps(
                     {"malformed_response": raw_text},
@@ -1110,6 +1086,7 @@ Serialized payload:
             return parsed, self._build_metadata(result), result.assistant_text
 
         except Exception as exc:
+            self.options = original_opts
             logger.warning("%s: JSON retry failed: %s", self.agent_name, exc)
             return None, None, None
 
@@ -1338,7 +1315,15 @@ Serialized payload:
 
         # Only the full reviewer fetches its transcript, and only when cut off.
         # The aborted session is still alive until the caller cleans it up.
-        if result.max_turns_reached and self.agent_name == "BalooAgent":
+        if (
+            result.max_turns_reached
+            and self.agent_name == "BalooAgent"
+            and _extract_json_from_text(result.assistant_text) is None
+            and not any(
+                _extract_json_from_text(text) is not None
+                for text in result.all_assistant_texts[:-1]
+            )
+        ):
             try:
                 await send(self._make_command("get_messages"))
                 response = await asyncio.wait_for(wait_response("get_messages"), timeout=30)
