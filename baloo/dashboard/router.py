@@ -94,6 +94,7 @@ SETTING_CATEGORIES = {
     "Agent": {
         "agent_provider",
         "agent_model",
+        "bedrock_service_tier",
         "pi_binary_path",
         "pi_thinking_level",
         "databricks_host",

@@ -6,6 +6,8 @@ This guide walks through configuring Baloo to run every agent through Amazon Bed
 
 Baloo runs the [PI](https://github.com/earendil-works/pi) coding agent as a sandboxed subprocess. PI has a native `amazon-bedrock` provider that uses the AWS SDK, so Baloo does not call Bedrock directly — it selects the provider and passes AWS credentials through to that subprocess.
 
+The optional `BEDROCK_SERVICE_TIER` setting is `default` unless explicitly changed to `flex` or `priority`. When enabled, a PI extension adds `serviceTier` to each Bedrock ConverseStream request, including JSON repair calls. This uses PI's `before_provider_request` hook rather than patching dependencies. Other providers are unaffected. Flex availability depends on the selected model and AWS region; unsupported tiers can produce a Bedrock API error (there is no automatic fallback to on-demand).
+
 Two consequences follow from the sandbox:
 
 - Only an allowlist of `AWS_*` environment variables is forwarded into the sandbox; everything else (including Baloo's own GitHub and database secrets) is stripped so a prompt-injected agent cannot read them.

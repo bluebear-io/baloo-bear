@@ -89,6 +89,19 @@ class Settings(BaseSettings):
         default="sonnet",
         description="Model for reviews: tier short name or provider/model / bare model ID",
     )
+    bedrock_service_tier: str = Field(
+        default="default",
+        description="Amazon Bedrock service tier: default, flex, or priority",
+    )
+
+    @field_validator("bedrock_service_tier")
+    @classmethod
+    def validate_bedrock_service_tier(cls, value: str) -> str:
+        tier = value.strip().lower()
+        if tier not in {"default", "flex", "priority"}:
+            raise ValueError("BEDROCK_SERVICE_TIER must be default, flex, or priority")
+        return tier
+
     pi_binary_path: str = Field(
         default="pi",
         description="Path to the pi binary (or just 'pi' if on PATH)",
