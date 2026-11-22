@@ -90,6 +90,13 @@ class PIRunResult:
     max_turns_reached: bool = False
 
 
+def _is_review_output(data: Any) -> bool:
+    """Distinguish the top-level review object from a nested JSON finding."""
+    return isinstance(data, dict) and (
+        isinstance(data.get("findings"), list) or isinstance(data.get("general_findings"), list)
+    )
+
+
 def _extract_json_from_text(text: str) -> dict | None:
     """
     Extract JSON object from assistant text.
@@ -712,8 +719,12 @@ class PIAgentBase:
                 result.cost_usd,
             )
 
-        # Parse structured JSON from assistant text
+        # Parse structured JSON from assistant text. Reverse-scanning a
+        # truncated review can locate an individual nested finding; do not
+        # mistake that inner object for the complete review response.
         structured_output = _extract_json_from_text(result.assistant_text)
+        if self.agent_name == "BalooAgent" and not _is_review_output(structured_output):
+            structured_output = None
 
         # If the last message didn't contain parseable JSON (common after an
         # error stop reason), try earlier assistant messages — the review JSON
@@ -721,7 +732,9 @@ class PIAgentBase:
         if structured_output is None and len(result.all_assistant_texts) > 1:
             for i, earlier_text in enumerate(reversed(result.all_assistant_texts[:-1])):
                 candidate = _extract_json_from_text(earlier_text)
-                if candidate is not None:
+                if candidate is not None and (
+                    self.agent_name != "BalooAgent" or _is_review_output(candidate)
+                ):
                     logger.info(
                         "%s: recovered structured output from assistant message %d/%d",
                         self.agent_name,
