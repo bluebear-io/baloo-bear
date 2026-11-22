@@ -65,6 +65,15 @@ in the database, and suppresses the approval decision — the PR gets a ⚠️ c
 saying it was not reviewed, never an approval. See
 [severity-routing](severity-routing.md#approval-decision-logic).
 
+### Malformed JSON recovery
+
+When a review response is malformed, Baloo may ask the model to repair its JSON.
+Before accepting that repair, the primary reviewer checks the original response
+for complete, valid finding objects. Those findings are preserved even if the
+retry inadvertently omits them. If any finding is incomplete, the review fails
+closed instead of treating an empty retry as a clean review. This recovery is
+bounded, requires no extra model calls, and does not affect other agent roles.
+
 ## Configuration
 
 | Variable | Default | Description |
