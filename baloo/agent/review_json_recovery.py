@@ -50,7 +50,7 @@ def _complete_object_slices(text: str, start: int):
             if depth:
                 depth -= 1
                 if depth == 0 and begin is not None:
-                    yield text[begin : i + 1]
+                    yield text[begin : i + 1], i + 1
                     begin = None
         elif ch == "]" and depth == 0:
             return
@@ -193,20 +193,15 @@ def _recover_complete_items(
         start = match.end()
         if re.match(r"\s*{", raw[start:]):
             claims_findings = True
-        fragments = list(_complete_object_slices(raw, start))
-        # Each section must reach its closing bracket. An unfinished second
-        # item must not be dropped merely because the first was recoverable.
-        if fragments:
-            last = fragments[-1]
-            last_offset = raw.find(last, start)
-            tail = raw[last_offset + len(last) :] if last_offset >= 0 else ""
-        else:
-            tail = raw[start:]
+        slices = list(_complete_object_slices(raw, start))
+        # Use the scanner's actual final offset: identical objects may appear
+        # more than once, and str.find would select the first occurrence.
+        tail = raw[slices[-1][1] :] if slices else raw[start:]
         if not re.match(r"\s*\]\s*(?:,|}|$)", tail):
             incomplete_section = True
-        if len(fragments) > _MAX_ITEMS:
+        if len(slices) > _MAX_ITEMS:
             incomplete_section = True
-        for fragment in fragments[:_MAX_ITEMS]:
+        for fragment, _end in slices[:_MAX_ITEMS]:
             try:
                 row = _decode_complete_finding(fragment, decode)
             except (ValueError, TypeError):

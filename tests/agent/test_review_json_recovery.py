@@ -1,11 +1,12 @@
 """Safety regressions for malformed terminal review JSON."""
 
 import json
+from typing import Any
 
 from baloo.agent.review_json_recovery import reconcile_review_json
 
 
-def finding(title="Missing authorization check", line=12):
+def finding(title: str = "Missing authorization check", line: int = 12) -> dict[str, Any]:
     return {
         "file": "app/auth.py",
         "line": line,
@@ -16,7 +17,7 @@ def finding(title="Missing authorization check", line=12):
     }
 
 
-def malformed(*items, tail='"summary": {} invalid'):
+def malformed(*items: dict[str, Any], tail: str = '"summary": {} invalid') -> str:
     return '{"findings": [' + ", ".join(json.dumps(item) for item in items) + "], " + tail
 
 
@@ -38,6 +39,19 @@ def test_repair_keeps_new_findings_without_duplicating_original():
     assert status == "preserved_source_findings"
     assert output["findings"] == [original, additional]
     assert output["summary"]["total_issues"] == 2
+
+
+def test_identical_source_findings_do_not_trigger_false_incomplete_result():
+    original = finding()
+    # The final object must be located by its actual byte offset, not the
+    # first matching occurrence of its JSON text.
+    output, status = reconcile_review_json(
+        malformed(original, original), {"findings": [], "summary": {}}
+    )
+    assert status == "preserved_source_findings"
+    assert output is not None
+    assert output["findings"] == [original]
+    assert output["summary"]["total_issues"] == 1
 
 
 def test_original_complete_finding_recovers_when_retry_fails():
