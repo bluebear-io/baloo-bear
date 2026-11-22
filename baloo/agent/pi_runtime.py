@@ -40,6 +40,16 @@ def _settings_default(name: str) -> Any:
 logger = logging.getLogger(__name__)
 
 
+def _bedrock_tier_extension_args(provider: str) -> list[str]:
+    """Load the opt-in Bedrock tier hook for any PI subprocess."""
+    if provider != "amazon-bedrock" or resolve_setting("bedrock_service_tier") == "default":
+        return []
+    extension = (
+        Path(__file__).resolve().parent.parent.parent / "extensions" / "bedrock-service-tier.ts"
+    )
+    return ["--extension", str(extension)]
+
+
 @dataclass
 class PIAgentOptions:
     """Configuration for a PI agent session."""
@@ -550,16 +560,7 @@ class PIAgentBase:
             "--model",
             f"{self.options.provider}/{self.options.model}",
         ]
-        if (
-            self.options.provider == "amazon-bedrock"
-            and resolve_setting("bedrock_service_tier") != "default"
-        ):
-            tier_extension = (
-                Path(__file__).resolve().parent.parent.parent
-                / "extensions"
-                / "bedrock-service-tier.ts"
-            )
-            cmd.extend(["--extension", str(tier_extension)])
+        cmd.extend(_bedrock_tier_extension_args(self.options.provider))
         if self.options.no_context_files:
             cmd.extend(["--no-context-files", "--no-skills"])
         if self.options.no_tools:
@@ -902,16 +903,7 @@ Serialized payload:
             f"{retry_opts.provider}/{retry_opts.model}",
         ]
         # Keep JSON repair requests on the same Bedrock service tier.
-        if (
-            retry_opts.provider == "amazon-bedrock"
-            and resolve_setting("bedrock_service_tier") != "default"
-        ):
-            tier_extension = (
-                Path(__file__).resolve().parent.parent.parent
-                / "extensions"
-                / "bedrock-service-tier.ts"
-            )
-            cmd.extend(["--extension", str(tier_extension)])
+        cmd.extend(_bedrock_tier_extension_args(retry_opts.provider))
         cmd.append("--no-tools")
         cmd.extend(["--system-prompt", retry_opts.system_prompt])
 

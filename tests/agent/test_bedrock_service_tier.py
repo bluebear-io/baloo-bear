@@ -6,7 +6,11 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from baloo.agent.pi_runtime import PIAgentBase, PIAgentOptions
+from baloo.agent.pi_runtime import (
+    PIAgentBase,
+    PIAgentOptions,
+    _bedrock_tier_extension_args,
+)
 from baloo.config.settings import Settings
 
 
@@ -60,3 +64,21 @@ def test_bedrock_tier_forwarded_to_scrubbed_subprocess():
 def test_default_tier_does_not_modify_env():
     with patch("baloo.agent.pi_runtime.resolve_setting", return_value="default"):
         assert _agent()._with_provider_env(None) is None
+
+
+@pytest.mark.parametrize(
+    "provider,tier,enabled",
+    [
+        ("amazon-bedrock", "default", False),
+        ("amazon-bedrock", "flex", True),
+        ("amazon-bedrock", "priority", True),
+        ("anthropic", "flex", False),
+    ],
+)
+def test_extension_args_are_shared_by_both_spawn_paths(provider, tier, enabled):
+    with patch("baloo.agent.pi_runtime.resolve_setting", return_value=tier):
+        args = _bedrock_tier_extension_args(provider)
+    assert bool(args) is enabled
+    if enabled:
+        assert args[0] == "--extension"
+        assert args[1].endswith("/extensions/bedrock-service-tier.ts")
