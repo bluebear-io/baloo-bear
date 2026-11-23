@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     container_name: baloo-postgres
     restart: unless-stopped
     environment:
