@@ -82,8 +82,8 @@ TIER_ALIASES: dict[str, str] = {
 # against pi 0.87.1.
 PROVIDER_TIER_MODELS: dict[str, dict[str, str]] = {
     "anthropic": {
-        # Haiku 4.5 is still the current Haiku; there is no Claude 5 Haiku.
-        "economy": "claude-haiku-4-5-20251001",
+        # Needs pi >= 1.3.0: earlier versions lack the model or ignore thinking "off".
+        "economy": "claude-haiku-5-5",
         "standard": "claude-sonnet-5",
         "premium": "claude-opus-5-5",
     },

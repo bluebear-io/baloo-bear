@@ -84,3 +84,22 @@ def test_falls_back_to_provider_reported_cost_for_unknown_pricing():
     )
 
     assert normalized.cost_usd == 0.10
+
+
+@pytest.mark.parametrize(
+    ("cache_read", "expected"),
+    [
+        # 100K prompt: still the base rate card.
+        (90_000, 0.0001 * 5 + 0.000000125 * 5_000 + 0.00000001 * 90_000 + 0.0000005 * 1_000),
+        # One token over: every token bills at the long-prompt rates.
+        (90_001, 0.0005 * 5 + 0.000000625 * 5_000 + 0.00000005 * 90_001 + 0.0000025 * 1_000),
+    ],
+)
+def test_haiku_5_5_rate_card_depends_on_prompt_length(cache_read, expected):
+    usage = normalize_usage(
+        {"input": 5_000, "output": 1_000, "cacheRead": cache_read, "cacheWrite": 5_000},
+        provider="anthropic",
+        model="claude-haiku-5-5",
+    )
+
+    assert usage.cost_usd == pytest.approx(expected)

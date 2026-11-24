@@ -18,14 +18,14 @@ Resolved model IDs depend on `AGENT_PROVIDER`:
 
 | Provider | Economy | Standard | Premium |
 |---|---|---|---|
-| `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-5` | `claude-opus-5-5` |
+| `anthropic` | `claude-haiku-5-5` | `claude-sonnet-5` | `claude-opus-5-5` |
 | `google` | `gemini-3.5-flash-lite` | `gemini-3.8-flash` | `gemini-3.1-pro-preview` |
 | `amazon-bedrock` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-sonnet-5` | `us.anthropic.claude-opus-5-5` |
 | `openai` | `gpt-6-luna` | `gpt-6-sol` | `gpt-6-astra` |
 | `databricks` | `system.ai.claude-haiku-4-5` | `system.ai.claude-sonnet-4-6` | `system.ai.claude-opus-4-6` |
 | `openrouter` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` | `moonshotai/kimi-k2.7-code` |
 
-Anthropic (and matching Bedrock Claude) tiers intentionally stay on Haiku 4.5 / Sonnet 4.6 / Opus 4.6 — a well-tested set. Newer Claude generations can be opted into later via bare model IDs or `provider/model` strings.
+The Anthropic economy tier is Haiku 5.5, billed at a higher rate for requests whose prompt exceeds 100K tokens. The Bedrock and Databricks economy tiers stay on Haiku 4.5. Other Claude models can be selected with bare model IDs or `provider/model` strings.
 
 ## Choosing a Model
 
