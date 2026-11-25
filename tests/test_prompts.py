@@ -91,6 +91,35 @@ def test_prompt_without_discussion_digest():
     assert "Prior Discussion Context" not in prompt
 
 
+def _guidelines_context(repo_guidelines: str | None) -> dict:
+    return {
+        "title": "Add feature",
+        "author": "dev",
+        "description": "New feature",
+        "base_branch": "main",
+        "head_branch": "feature/new",
+        "files_changed": [{"filename": "app.py"}],
+        "changed_file_paths": ["app.py"],
+        "diff": "--- a\n+++ b\n@@\n-old\n+new",
+        "repo_guidelines": repo_guidelines,
+    }
+
+
+def test_repo_guidelines_are_presented_as_base_branch_policy():
+    prompt = build_pr_review_prompt(_guidelines_context("Use semantic commit messages."))
+
+    assert "Use semantic commit messages." in prompt
+    assert "**base** branch" in prompt
+
+
+def test_repo_guidelines_violations_are_not_auto_elevated_to_high():
+    # Severity must follow impact. A blanket "guidelines violations are HIGH"
+    # rule hands the severity dial to whoever authors the guidelines file.
+    prompt = build_pr_review_prompt(_guidelines_context("Use semantic commit messages."))
+
+    assert "as **HIGH**" not in prompt
+
+
 def test_is_dependabot_pr_detects_dependabot_author():
     """Test detection via dependabot author."""
     pr = {"author": "dependabot[bot]", "title": "", "description": ""}

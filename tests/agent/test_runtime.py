@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -976,7 +978,9 @@ class TestSandboxWiring:
         assert "--" in cmd
         assert cmd[cmd.index("--") + 1] == "pi"
 
-    def test_degrades_with_warning_when_binary_missing(self, caplog):
+    def test_refuses_to_run_when_sandbox_unavailable(self):
+        from baloo.agent.sandbox import SandboxUnavailableError
+
         agent = PIAgentBase(PIAgentOptions(cwd="/work/tree"))
         with (
             patch(
@@ -984,13 +988,23 @@ class TestSandboxWiring:
                 return_value=self._settings(repo_sandbox_mode="bwrap"),
             ),
             patch("baloo.agent.sandbox.sandbox_available", return_value=False),
+            pytest.raises(SandboxUnavailableError),
         ):
-            with caplog.at_level("WARNING"):
-                cmd = agent._build_pi_command()
-        assert cmd[0] == "pi"
-        assert any("sandbox" in r.message.lower() for r in caplog.records)
+            agent._build_pi_command()
 
-    def test_no_sandbox_when_cwd_unset(self):
+    def test_no_tools_agent_runs_without_sandbox(self):
+        agent = PIAgentBase(PIAgentOptions(cwd=None, no_tools=True))
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="bwrap"),
+            ),
+            patch("baloo.agent.sandbox.sandbox_available", return_value=False),
+        ):
+            cmd = agent._build_pi_command()
+        assert cmd[0] == "pi"
+
+    def test_sandbox_binds_provided_root_when_cwd_unset(self):
         agent = PIAgentBase(PIAgentOptions(cwd=None))
         with (
             patch(
@@ -999,8 +1013,32 @@ class TestSandboxWiring:
             ),
             patch("baloo.agent.sandbox.sandbox_available", return_value=True),
         ):
-            cmd = agent._build_pi_command()
-        assert cmd[0] == "pi"
+            cmd = agent._build_pi_command(sandbox_root="/tmp/empty-root")
+        assert cmd[0] == "bwrap"
+        assert str(Path("/tmp/empty-root").resolve()) in cmd
+
+    @staticmethod
+    def _mock_proc():
+        events = iter([json.dumps({"type": "agent_end"}).encode("utf-8") + b"\n"])
+
+        proc = AsyncMock()
+        proc.returncode = 0
+        proc.stdin = AsyncMock()
+        proc.stdin.write = MagicMock()
+        proc.stdin.drain = AsyncMock()
+        proc.stdout = AsyncMock(spec=asyncio.StreamReader)
+
+        async def fake_readline():
+            try:
+                return next(events)
+            except StopIteration:
+                return b""
+
+        proc.stdout.readline = fake_readline
+        proc.stderr = AsyncMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        return proc
 
     @pytest.mark.asyncio
     async def test_spawn_uses_scrubbed_env_when_sandboxed(self, monkeypatch):
@@ -1008,10 +1046,6 @@ class TestSandboxWiring:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
 
         agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd="/work/tree"))
-
-        events = [
-            json.dumps({"type": "agent_end"}).encode("utf-8") + b"\n",
-        ]
 
         with (
             patch(
@@ -1021,27 +1055,7 @@ class TestSandboxWiring:
             patch("baloo.agent.sandbox.sandbox_available", return_value=True),
             patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
         ):
-            proc = AsyncMock()
-            proc.returncode = 0
-            proc.stdin = AsyncMock()
-            proc.stdin.write = MagicMock()
-            proc.stdin.drain = AsyncMock()
-            proc.stdout = AsyncMock(spec=asyncio.StreamReader)
-
-            event_iter = iter(events)
-
-            async def fake_readline():
-                try:
-                    return next(event_iter)
-                except StopIteration:
-                    return b""
-
-            proc.stdout.readline = fake_readline
-            proc.stderr = AsyncMock()
-            proc.kill = MagicMock()
-            proc.wait = AsyncMock()
-            mock_exec.return_value = proc
-
+            mock_exec.return_value = self._mock_proc()
             # env is computed and passed at spawn time, before the session is
             # driven; a truncated mock stream may raise afterwards — irrelevant here.
             try:
@@ -1053,6 +1067,79 @@ class TestSandboxWiring:
         assert env is not None
         assert "GITHUB_PRIVATE_KEY" not in env
         assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+    @pytest.mark.asyncio
+    async def test_spawn_scrubs_env_when_sandbox_is_off(self, monkeypatch):
+        # The unsandboxed path is exactly where an inherited env leaks the most.
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+        monkeypatch.setenv("DATABASE_URL", "postgres://SECRET")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
+
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd="/work/tree"))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="off"),
+            ),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            try:
+                await agent.run_query("review")
+            except Exception:
+                pass
+
+        env = mock_exec.call_args.kwargs["env"]
+        assert env is not None
+        assert "GITHUB_PRIVATE_KEY" not in env
+        assert "DATABASE_URL" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-keep"
+
+    @pytest.mark.asyncio
+    async def test_json_retry_spawn_scrubs_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_PRIVATE_KEY", "SECRET")
+
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6"))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="off"),
+            ),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            await agent._retry_json(raw_text="not json", proc_cwd=None)
+
+        env = mock_exec.call_args.kwargs["env"]
+        assert env is not None
+        assert "GITHUB_PRIVATE_KEY" not in env
+
+    @pytest.mark.asyncio
+    async def test_tool_agent_without_worktree_is_sandboxed_to_empty_dir(self):
+        agent = PIAgentBase(PIAgentOptions(model="claude-sonnet-4-6", cwd=None))
+
+        with (
+            patch(
+                "baloo.agent.pi_runtime.get_settings",
+                return_value=self._settings(repo_sandbox_mode="bwrap"),
+            ),
+            patch("baloo.agent.sandbox.sandbox_available", return_value=True),
+            patch("baloo.agent.pi_runtime.asyncio.create_subprocess_exec") as mock_exec,
+        ):
+            mock_exec.return_value = self._mock_proc()
+            try:
+                await agent.run_query("review")
+            except Exception:
+                pass
+
+        cmd = mock_exec.call_args.args
+        scratch = mock_exec.call_args.kwargs["cwd"]
+        assert cmd[0] == "bwrap"
+        assert scratch is not None and "baloo-sandbox-" in scratch
+        # The scratch dir exists only for the run.
+        assert not os.path.exists(scratch)
 
 
 class TestDatabricksWiring:
@@ -1122,10 +1209,9 @@ class TestDatabricksWiring:
         assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
 
     @pytest.mark.asyncio
-    async def test_other_providers_inherit_env_untouched(self, tmp_path):
-        # env=None preserves the inherit-everything behaviour on the
-        # unsandboxed path; only databricks needs an explicit env.
-        assert await self._env_for("anthropic", tmp_path) is None
+    async def test_other_providers_get_no_agent_dir(self, tmp_path):
+        env = await self._env_for("anthropic", tmp_path)
+        assert "PI_CODING_AGENT_DIR" not in env
 
     @pytest.mark.asyncio
     async def test_json_retry_spawn_also_gets_agent_dir(self, tmp_path):
@@ -1137,8 +1223,7 @@ class TestDatabricksWiring:
             "baloo.agent.pi_runtime.ensure_agent_dir",
             return_value=tmp_path / "pi-databricks",
         ):
-            env = agent._with_provider_env(None)
-        assert env is not None
+            env = agent._with_provider_env({"PATH": "/usr/bin"})
         assert env["PI_CODING_AGENT_DIR"] == str(tmp_path / "pi-databricks")
 
     def test_openrouter_sets_agent_dir(self, tmp_path):
@@ -1155,9 +1240,9 @@ class TestDatabricksWiring:
             "PI_CODING_AGENT_DIR": str(tmp_path / "pi-openrouter"),
         }
 
-    def test_with_provider_env_leaves_other_providers_inheriting(self):
+    def test_with_provider_env_leaves_other_providers_untouched(self):
         agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
-        assert agent._with_provider_env(None) is None
+        assert agent._with_provider_env({"PATH": "/usr/bin"}) == {"PATH": "/usr/bin"}
 
     def test_with_provider_env_preserves_scrubbed_sandbox_env(self, tmp_path):
         agent = PIAgentBase(PIAgentOptions(provider="databricks", model="m"))
@@ -1172,7 +1257,7 @@ class TestDatabricksWiring:
             "PI_CODING_AGENT_DIR": str(tmp_path / "pi-databricks"),
         }
 
-    def test_retry_spawn_env_is_scrubbed_when_sandboxed(self, monkeypatch):
+    def test_subprocess_env_is_scrubbed(self, monkeypatch):
         # The retry subprocess runs --no-tools but keeps network access. If it
         # inherited the full env it would hold baloo's secrets in
         # /proc/self/environ, which the sandbox scrub exists to prevent.
@@ -1180,15 +1265,10 @@ class TestDatabricksWiring:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-keep")
         agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
 
-        env = agent._subprocess_env(sandbox_active=True)
+        env = agent._subprocess_env()
 
-        assert env is not None
         assert "GITHUB_PRIVATE_KEY" not in env
         assert env["ANTHROPIC_API_KEY"] == "sk-keep"
-
-    def test_unsandboxed_spawn_still_inherits(self):
-        agent = PIAgentBase(PIAgentOptions(provider="anthropic", model="m"))
-        assert agent._subprocess_env(sandbox_active=False) is None
 
 
 class TestWrapUpSteer:

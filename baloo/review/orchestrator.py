@@ -18,7 +18,7 @@ from baloo.config.settings import settings
 from baloo.db.service import DuplicateReviewError, ReviewCompleteDTO, ReviewService
 from baloo.db.tenant import apply_tenant_filter
 from baloo.documentation.analyzer import analyze_documentation_drift
-from baloo.documentation.catalog import load_documentation_catalog
+from baloo.documentation.catalog import fetch_documentation_catalog
 from baloo.documentation.models import DocumentationDriftResult
 from baloo.documentation.report import (
     format_documentation_drift_report,
@@ -823,11 +823,14 @@ async def _run_fidelity_analysis(
             return format_fidelity_report(no_ticket=True), None
 
         plan_path = resolve_setting("fidelity_plan_path_pattern").format(ticket_id=ticket_id)
+        # Read the plan from the base branch: the PR is scored against it, so a
+        # plan fetched at head would let the PR author restate the spec to match
+        # whatever they wrote.
         plan_content = await fetch_plan_content(
             github_client,
             repo_full_name,
             ticket_id,
-            ref=pr_context.head_sha,
+            ref=pr_context.base_sha or None,
         )
 
         # Build the two-layer spec
@@ -930,9 +933,11 @@ async def _run_documentation_drift_analysis(
         if not resolve_setting("documentation_drift_enabled"):
             return "", None
 
-        catalog = load_documentation_catalog(
-            repo_path,
+        catalog = await fetch_documentation_catalog(
+            github_client,
+            repo_full_name,
             settings.documentation_drift_catalog_path,
+            ref=pr_context.base_sha or None,
         )
         if catalog is None:
             logger.info(

@@ -16,7 +16,7 @@ This is especially useful for teams that use ticket-linked plan files as part of
 
 1. **Extract ticket ID** — Baloo looks for a ticket ID in the PR branch name, title, or description (e.g., `PROJ-123` from branch `feat/PROJ-123-add-auth`)
 2. **Fetch ticket** — When `LINEAR_API_KEY` is set, the linked ticket is fetched from Linear and becomes the ticket layer of the spec
-3. **Fetch plan file** — Looks for a plan document at a configurable path (default: `docs/plans/{ticket_id}.md`) in the PR branch; this is the plan layer
+3. **Fetch plan file** — Looks for a plan document at a configurable path (default: `docs/plans/{ticket_id}.md`) at the PR's base commit, so the spec a PR is scored against cannot be rewritten by the PR itself; this is the plan layer
 4. **Analyze** — An LLM compares the two-layer spec (ticket and/or plan) against the PR diff, using the same model as the primary review agent (`AGENT_MODEL`)
 5. **Score** — Produces a fidelity score (0–100) and a breakdown of matched/missing/extra items
 6. **Report** — Posts the fidelity report as a separate PR comment
@@ -72,7 +72,7 @@ Plan files are freeform markdown. Baloo works best when the plan lists concrete 
 Fidelity works best when your team commits to writing plan files before coding. A common pattern:
 
 1. Create a ticket in your issue tracker (e.g., `PROJ-123`)
-2. Write `docs/plans/PROJ-123.md` with the planned deliverables
+2. Write `docs/plans/PROJ-123.md` with the planned deliverables and merge it to the base branch before opening the implementation PR — plan files are read from the base branch
 3. Open the PR from a branch that includes the ticket ID (e.g., `feat/PROJ-123/add-auth`)
 4. Baloo automatically finds the plan, scores the PR, and posts the report
 

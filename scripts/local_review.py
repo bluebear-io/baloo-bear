@@ -86,7 +86,10 @@ def build_local_pr_context(
         numstat=git(["diff", "--numstat", diff_range], repo_root, True),
         name_status=git(["diff", "--name-status", diff_range], repo_root, True),
     )
-    repo_guidelines = _load_repo_guidelines(head, repo_root, git)
+    base_sha = git(["rev-parse", base], repo_root, True)
+    # Guidelines come from the base ref, mirroring the webhook path: they are
+    # policy for the review, so the branch under review must not supply them.
+    repo_guidelines = _load_repo_guidelines(base, repo_root, git)
 
     return PRContext(
         metadata=PRMetadata(
@@ -98,6 +101,7 @@ def build_local_pr_context(
             base_branch=base,
             head_branch=head_branch,
             head_sha=head_sha,
+            base_sha=base_sha,
             files_changed=files_changed,
             repo_guidelines=repo_guidelines,
         ),
@@ -246,10 +250,10 @@ def _status_name(status_code: str) -> str:
     }.get(status, "modified")
 
 
-def _load_repo_guidelines(head: str, repo_root: str, git: GitRunner) -> str | None:
+def _load_repo_guidelines(ref: str, repo_root: str, git: GitRunner) -> str | None:
     guideline_parts: list[str] = []
     for path in ("AGENTS.md", "CONTRIBUTING.md"):
-        content = git(["show", f"{head}:{path}"], repo_root, False).strip()
+        content = git(["show", f"{ref}:{path}"], repo_root, False).strip()
         if content:
             guideline_parts.append(content)
     return "\n\n---\n\n".join(guideline_parts) if guideline_parts else None
