@@ -113,6 +113,13 @@ class BalooAgent(PIAgentBase):
             approve, request_changes = DecisionEngine.make_decision(
                 comments, general_findings=general_findings
             )
+            if metadata.get("partial_review"):
+                approve = False
+                request_changes = False
+                summary += (
+                    "\n\n**Partial review:** The agent exhausted its turn budget. "
+                    "Recovered findings are reported, but this is not an approval."
+                )
 
             return ReviewResult(
                 summary=summary,

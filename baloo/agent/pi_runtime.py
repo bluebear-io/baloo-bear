@@ -88,6 +88,8 @@ class PIRunResult:
     is_error: bool = False
     error_message: str = ""
     max_turns_reached: bool = False
+    # The conversation is fetched after an aborted full review, if available.
+    final_messages: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _extract_json_from_text(text: str) -> dict | None:
@@ -732,6 +734,34 @@ class PIAgentBase:
                     metadata["recovered_from_earlier_turn"] = True
                     break
 
+        # If a full PR review exhausted its turn budget, attempt to extract
+        # confirmed findings from its preserved investigation. This recovery is
+        # intentionally never treated as a complete, automatically clean review.
+        if (
+            structured_output is None
+            and result.max_turns_reached
+            and self.agent_name == "BalooAgent"
+            and result.final_messages
+            and not result.is_error
+        ):
+            structured_output, finalize_metadata = await self._finalize_from_transcript(
+                query, result.final_messages, cwd
+            )
+            if finalize_metadata:
+                for key in (
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_read_tokens",
+                    "cache_write_tokens",
+                    "thinking_tokens",
+                    "cost_usd",
+                    "num_turns",
+                ):
+                    metadata[key] += finalize_metadata.get(key, 0)
+            if structured_output is not None:
+                metadata["turn_limit_recovered"] = True
+                metadata["partial_review"] = True
+
         if structured_output is None and result.assistant_text:
             logger.warning(
                 "%s: could not parse JSON from assistant response (%d chars). Raw text: %s...",
@@ -762,6 +792,16 @@ class PIAgentBase:
                     await review_logger.json_retry_failed(
                         raw_text=retry_raw_text or result.assistant_text
                     )
+
+        # An exhausted review is partial even when the usual JSON repair,
+        # rather than transcript finalization, supplied the usable output.
+        # A complete-looking JSON object is not proof that every file was reviewed.
+        if (
+            self.agent_name == "BalooAgent"
+            and result.max_turns_reached
+            and structured_output is not None
+        ):
+            metadata["partial_review"] = True
 
         if result.is_error:
             await review_logger.agent_error(
@@ -844,6 +884,123 @@ Serialized payload:
 {payload}
 ```"""
 
+    # Transcript budget for the forced final answer; the newest part is kept.
+    _FINALIZE_TRANSCRIPT_CHARS = 80_000
+    _FINALIZE_TOOL_RESULT_CHARS = 1_500
+
+    @classmethod
+    def _transcript_text(cls, messages: list) -> str:
+        """Condense PI AgentMessages into readable evidence (calls + results)."""
+        parts: list[str] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "assistant" and isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text" and str(block.get("text", "")).strip():
+                        parts.append(f"[assistant] {block['text'].strip()}")
+                    elif block.get("type") == "toolCall":
+                        args = json.dumps(block.get("arguments") or {}, ensure_ascii=False)[:300]
+                        parts.append(f"[tool call] {block.get('name')} {args}")
+            elif role == "toolResult":
+                texts = [
+                    str(b.get("text", ""))
+                    for b in (content or [])
+                    if isinstance(b, dict) and b.get("type") == "text"
+                ]
+                text = "\n".join(texts)
+                if len(text) > cls._FINALIZE_TOOL_RESULT_CHARS:
+                    text = text[: cls._FINALIZE_TOOL_RESULT_CHARS] + "\n... (truncated)"
+                label = "tool error" if msg.get("isError") else "tool result"
+                parts.append(f"[{label}: {msg.get('toolName')}]\n{text}")
+        transcript = "\n\n".join(parts)
+        if len(transcript) > cls._FINALIZE_TRANSCRIPT_CHARS:
+            transcript = (
+                "... (earlier turns omitted)\n\n" + transcript[-cls._FINALIZE_TRANSCRIPT_CHARS :]
+            )
+        return transcript
+
+    async def _finalize_from_transcript(
+        self, query: str, messages: list, proc_cwd: str | None
+    ) -> tuple[Any, dict[str, Any] | None]:
+        """Force a final JSON answer from a session the turn cap cut off.
+
+        A tool-less session gets the original task plus the condensed
+        investigation (tool calls and results), so the evidence gathered so
+        far becomes a report instead of being discarded. Same idea as
+        LangChain's ``early_stopping_method="generate"``.
+        """
+        transcript = self._transcript_text(messages)
+        if (
+            not transcript.strip()
+            or "[tool result:" not in transcript
+            and "[tool error:" not in transcript
+        ):
+            # A mere transcript of tool calls gives no verified source evidence.
+            return None, None
+        prompt = (
+            f"{query}\n\n"
+            "## Investigation so far (your earlier turns; the session reached its turn limit)\n"
+            f"{transcript}\n\n"
+            "## Now\n"
+            "The investigation is over and no tools are available. Using only the evidence "
+            "above and the material in the task, return the final JSON now: every defect you "
+            "confirmed, without claiming that unexamined code was reviewed. "
+            "Return ONLY the JSON object."
+        )
+        finalize_opts = PIAgentOptions(
+            model=self.options.model,
+            provider=self.options.provider,
+            system_prompt=self.options.system_prompt,
+            thinking_level=self.options.thinking_level,
+            max_turns=RETRY_TURN_BUDGET,
+            no_tools=True,
+            no_context_files=True,
+            cwd=proc_cwd,
+        )
+        start = time.time()
+        original_opts = self.options
+        try:
+            self.options = finalize_opts
+            sandbox_decision = self._sandbox_decision()
+            cmd = self._build_pi_command(sandbox_decision)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                limit=10 * 1024 * 1024,
+                cwd=proc_cwd,
+                env=self._subprocess_env(sandbox_decision[1]),
+            )
+            try:
+                result = await self._drive_session(proc, prompt, start)
+            finally:
+                self.options = original_opts
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
+            parsed = _extract_json_from_text(result.assistant_text)
+            if result.is_error or not isinstance(parsed, dict):
+                return None, self._build_metadata(result)
+            # Do not reinterpret an exhausted, partial investigation as a clean
+            # review. Only preserve concrete findings from the finalizer.
+            if not isinstance(parsed.get("findings", []), list) or not isinstance(
+                parsed.get("general_findings", []), list
+            ):
+                return None, self._build_metadata(result)
+            if not parsed.get("findings") and not parsed.get("general_findings"):
+                return None, self._build_metadata(result)
+            return parsed, self._build_metadata(result)
+        except Exception as exc:
+            self.options = original_opts
+            logger.warning("%s: forced final answer failed: %s", self.agent_name, exc)
+            return None, None
+
     async def _retry_json(
         self, *, raw_text: str, proc_cwd: str | None
     ) -> tuple[Any, dict[str, Any] | None, str | None]:
@@ -858,9 +1015,6 @@ Serialized payload:
 
         Returns (parsed_json_or_None, metadata_or_None, raw_retry_text).
         """
-        settings = get_settings()
-        pi_binary = settings.pi_binary_path or "pi"
-
         retry_opts = PIAgentOptions(
             model=self.options.model,
             provider=self.options.provider,
@@ -868,25 +1022,16 @@ Serialized payload:
             thinking_level="off",
             max_turns=RETRY_TURN_BUDGET,
             no_tools=True,
+            no_context_files=True,
+            cwd=proc_cwd,
         )
 
-        cmd = [
-            pi_binary,
-            "--mode",
-            "rpc",
-            "--no-session",
-            "--no-extensions",
-            "--no-approve",
-            "--provider",
-            retry_opts.provider,
-            "--model",
-            f"{retry_opts.provider}/{retry_opts.model}",
-        ]
-        cmd.append("--no-tools")
-        cmd.extend(["--system-prompt", retry_opts.system_prompt])
-
         start = time.time()
+        original_opts = self.options
         try:
+            self.options = retry_opts
+            sandbox_decision = self._sandbox_decision()
+            cmd = self._build_pi_command(sandbox_decision)
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -894,15 +1039,8 @@ Serialized payload:
                 stderr=asyncio.subprocess.PIPE,
                 limit=10 * 1024 * 1024,  # 10 MB line buffer for large JSON-RPC responses
                 cwd=proc_cwd,
-                # Mirror the main spawn's scrub. The retry runs --no-tools but
-                # keeps network access, so an unscrubbed env would hand baloo's
-                # secrets to a subprocess the sandbox was meant to contain.
-                env=self._subprocess_env(self._sandbox_decision()[1]),
+                env=self._subprocess_env(sandbox_decision[1]),
             )
-
-            # Temporarily swap options for the retry
-            original_opts = self.options
-            self.options = retry_opts
             try:
                 retry_payload = json.dumps(
                     {"malformed_response": raw_text},
@@ -948,6 +1086,7 @@ Serialized payload:
             return parsed, self._build_metadata(result), result.assistant_text
 
         except Exception as exc:
+            self.options = original_opts
             logger.warning("%s: JSON retry failed: %s", self.agent_name, exc)
             return None, None, None
 
@@ -1173,5 +1312,23 @@ Serialized payload:
 
         # 3. Stream events until agent_end
         await self._dispatch_events(proc, result, review_logger)
+
+        # Only the full reviewer fetches its transcript, and only when cut off.
+        # The aborted session is still alive until the caller cleans it up.
+        if (
+            result.max_turns_reached
+            and self.agent_name == "BalooAgent"
+            and _extract_json_from_text(result.assistant_text) is None
+            and not any(
+                _extract_json_from_text(text) is not None
+                for text in result.all_assistant_texts[:-1]
+            )
+        ):
+            try:
+                await send(self._make_command("get_messages"))
+                response = await asyncio.wait_for(wait_response("get_messages"), timeout=30)
+                result.final_messages = list((response.get("data") or {}).get("messages") or [])
+            except Exception as exc:
+                logger.warning("%s: unable to retrieve capped transcript: %s", self.agent_name, exc)
 
         return result

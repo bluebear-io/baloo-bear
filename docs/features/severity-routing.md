@@ -54,6 +54,7 @@ The agent assigns severity based on these guidelines:
 
 ```
 Agent returned an error  →  Comment only (⚠️ warning posted; PR is NOT approved)
+Turn limit reached (partial review)  →  Comment only (partial-review warning; PR is NOT approved)
 CRITICAL or HIGH found (inline or general)  →  Comment only, summary marked "Changes Requested" (no approval)
 No blocking issues + high fidelity score  →  Approve
 No blocking issues + auto-approve enabled  →  Approve
@@ -63,4 +64,6 @@ Otherwise  →  Comment only (no approval or rejection)
 A failed agent run is never treated as a clean slate. A failing agent returns
 zero findings, which would otherwise satisfy the auto-approve branch above, so
 `agent_error` short-circuits the decision: Baloo approves nothing and edits its
-progress comment to say the PR was not reviewed.
+progress comment to say the PR was not reviewed. A turn-capped review with
+recovered findings also never earns approval, because the findings represent a
+partial investigation rather than verified coverage of the whole PR.

@@ -65,6 +65,12 @@ in the database, and suppresses the approval decision — the PR gets a ⚠️ c
 saying it was not reviewed, never an approval. See
 [severity-routing](severity-routing.md#approval-decision-logic).
 
+### Turn-limit recovery
+
+Never approve a review that exhausted its turn budget, because a valid JSON
+response or repaired output does not prove the entire PR was examined. Report
+confirmed findings as partial, and fail closed when usable evidence is absent.
+
 ## Configuration
 
 | Variable | Default | Description |
