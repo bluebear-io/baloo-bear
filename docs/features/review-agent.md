@@ -65,6 +65,12 @@ in the database, and suppresses the approval decision — the PR gets a ⚠️ c
 saying it was not reviewed, never an approval. See
 [severity-routing](severity-routing.md#approval-decision-logic).
 
+### Malformed JSON recovery
+
+Never discard complete, valid original findings during JSON repair, because a
+formatting retry can omit them. Reject incomplete original findings rather than
+accepting a misleading clean review.
+
 ## Configuration
 
 | Variable | Default | Description |

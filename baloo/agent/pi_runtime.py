@@ -90,6 +90,13 @@ class PIRunResult:
     max_turns_reached: bool = False
 
 
+def _is_review_output(data: Any) -> bool:
+    """Distinguish the top-level review object from a nested JSON finding."""
+    return isinstance(data, dict) and (
+        isinstance(data.get("findings"), list) or isinstance(data.get("general_findings"), list)
+    )
+
+
 def _extract_json_from_text(text: str) -> dict | None:
     """
     Extract JSON object from assistant text.
@@ -712,8 +719,12 @@ class PIAgentBase:
                 result.cost_usd,
             )
 
-        # Parse structured JSON from assistant text
+        # Parse structured JSON from assistant text. Reverse-scanning a
+        # truncated review can locate an individual nested finding; do not
+        # mistake that inner object for the complete review response.
         structured_output = _extract_json_from_text(result.assistant_text)
+        if self.agent_name == "BalooAgent" and not _is_review_output(structured_output):
+            structured_output = None
 
         # If the last message didn't contain parseable JSON (common after an
         # error stop reason), try earlier assistant messages — the review JSON
@@ -721,7 +732,9 @@ class PIAgentBase:
         if structured_output is None and len(result.all_assistant_texts) > 1:
             for i, earlier_text in enumerate(reversed(result.all_assistant_texts[:-1])):
                 candidate = _extract_json_from_text(earlier_text)
-                if candidate is not None:
+                if candidate is not None and (
+                    self.agent_name != "BalooAgent" or _is_review_output(candidate)
+                ):
                     logger.info(
                         "%s: recovered structured output from assistant message %d/%d",
                         self.agent_name,
@@ -732,7 +745,15 @@ class PIAgentBase:
                     metadata["recovered_from_earlier_turn"] = True
                     break
 
-        if structured_output is None and result.assistant_text:
+        # Whitespace-only answers contain nothing to repair. A reformatter
+        # might otherwise invent an empty (and misleadingly clean) review.
+        if (
+            structured_output is None
+            and result.assistant_text
+            and not result.assistant_text.strip()
+        ):
+            logger.warning("%s: empty JSON response; skipping retry", self.agent_name)
+        elif structured_output is None and result.assistant_text:
             logger.warning(
                 "%s: could not parse JSON from assistant response (%d chars). Raw text: %s...",
                 self.agent_name,
@@ -748,6 +769,7 @@ class PIAgentBase:
                 raw_text=result.assistant_text,
                 proc_cwd=cwd,
             )
+            metadata["json_retry"] = True
             if retry_metadata:
                 # Accumulate retry costs into the main metadata
                 metadata["input_tokens"] += retry_metadata.get("input_tokens", 0)
@@ -757,11 +779,24 @@ class PIAgentBase:
                 metadata["thinking_tokens"] += retry_metadata.get("thinking_tokens", 0)
                 metadata["cost_usd"] += retry_metadata.get("cost_usd", 0)
                 metadata["num_turns"] += retry_metadata.get("num_turns", 0)
-                metadata["json_retry"] = True
-                if structured_output is None:
-                    await review_logger.json_retry_failed(
-                        raw_text=retry_raw_text or result.assistant_text
-                    )
+
+            # A formatting retry may drop a valid finding (or invent a clean
+            # result). Reconcile against complete, validated objects from the
+            # original text; never turn uncertain partial output into success.
+            if self.agent_name == "BalooAgent" and not result.is_error:
+                from baloo.agent.review_json_recovery import reconcile_review_json
+
+                structured_output, recovery_status = reconcile_review_json(
+                    result.assistant_text,
+                    structured_output,
+                    decode=_load_json_with_repair,
+                )
+                metadata["json_recovery_status"] = recovery_status
+                logger.info("%s: JSON reconciliation: %s", self.agent_name, recovery_status)
+            if structured_output is None:
+                await review_logger.json_retry_failed(
+                    raw_text=retry_raw_text or result.assistant_text
+                )
 
         if result.is_error:
             await review_logger.agent_error(
