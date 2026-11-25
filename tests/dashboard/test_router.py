@@ -146,7 +146,7 @@ def test_models_in_use_includes_haiku_roles(monkeypatch) -> None:
     assert by_role["Primary review"]["configured"] == "sonnet"
     assert by_role["Primary review"]["resolved"] == "anthropic/claude-sonnet-5"
     assert by_role["FP verification"]["configured"] == "haiku"
-    assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-4-5-20251001"
+    assert by_role["FP verification"]["resolved"] == "anthropic/claude-haiku-5-5"
     assert by_role["Thread agent"]["configured"] == "haiku"
     assert by_role["Fidelity analysis"]["resolved"] == by_role["Primary review"]["resolved"]
     assert by_role["Documentation drift"]["configured"] == "sonnet"
@@ -172,7 +172,7 @@ def test_dashboard_settings_shows_models_in_use(monkeypatch) -> None:
     assert "Thread agent" in response.text
     assert "AGENT_FALLBACK_MODEL" not in response.text
     assert "haiku" in response.text
-    assert "claude-haiku-4-5-20251001" in response.text
+    assert "claude-haiku-5-5" in response.text
 
 
 def test_settings_rows_mark_mutable_keys() -> None:

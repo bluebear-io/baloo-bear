@@ -72,7 +72,7 @@ async def test_analyzer_sets_cwd_model_and_system_prompt():
 
     assert result is not None
     assert agent.options.cwd == "/tmp/repo"
-    assert agent.options.model == "claude-haiku-4-5-20251001"
+    assert agent.options.model == "claude-haiku-5-5"
     assert agent.options.system_prompt == DOCUMENTATION_DRIFT_SYSTEM_PROMPT
     assert agent.options.name == "DocumentationDriftAgent"
 

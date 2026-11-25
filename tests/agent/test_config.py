@@ -14,7 +14,7 @@ class TestGetAgentOptions:
 
     def test_get_options_with_haiku_short_name(self):
         options = get_agent_options("haiku")
-        assert options.model == "claude-haiku-4-5-20251001"
+        assert options.model == "claude-haiku-5-5"
         assert options.provider == "anthropic"
         assert options.max_turns == TIER_MAX_TURNS["economy"]
 
@@ -53,7 +53,7 @@ class TestGetAgentOptions:
         reset_settings()
         options = get_agent_options("flash")
         assert options.provider == "anthropic"
-        assert options.model == "claude-haiku-4-5-20251001"
+        assert options.model == "claude-haiku-5-5"
 
     # --- Explicit provider/model (must match AGENT_PROVIDER) ---
 

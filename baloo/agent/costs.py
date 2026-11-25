@@ -29,6 +29,9 @@ class ModelPricing:
     output_per_mtok: float
     cache_write_per_mtok: float
     cache_read_per_mtok: float
+    # Rates for the whole request once its prompt exceeds this many tokens.
+    long_prompt_threshold: int | None = None
+    long_prompt: ModelPricing | None = None
 
 
 # Anthropic public API prices per million tokens. Cache write uses the standard
@@ -36,10 +39,18 @@ class ModelPricing:
 # details that PI does not currently expose.
 ANTHROPIC_PRICING: dict[str, ModelPricing] = {
     # Current tier models.
-    "claude-haiku-4-5-20251001": ModelPricing(1.0, 5.0, 1.25, 0.10),
+    "claude-haiku-5-5": ModelPricing(
+        0.10,
+        0.50,
+        0.125,
+        0.01,
+        long_prompt_threshold=100_000,
+        long_prompt=ModelPricing(0.50, 2.50, 0.625, 0.05),
+    ),
     "claude-sonnet-5": ModelPricing(2.0, 10.0, 2.50, 0.20),
     "claude-opus-5-5": ModelPricing(4.0, 20.0, 5.00, 0.20),
     # Earlier models, kept so reviews pinned to them by AGENT_MODEL stay priced.
+    "claude-haiku-4-5-20251001": ModelPricing(1.0, 5.0, 1.25, 0.10),
     "claude-sonnet-4-6": ModelPricing(3.0, 15.0, 3.75, 0.30),
     "claude-opus-4-6": ModelPricing(5.0, 25.0, 6.25, 0.50),
     "claude-opus-4-7": ModelPricing(5.0, 25.0, 6.25, 0.50),
@@ -103,6 +114,14 @@ def _estimate_cost(
     pricing = ANTHROPIC_PRICING.get(model)
     if pricing is None:
         return None
+
+    prompt_tokens = input_tokens + cache_read_tokens + cache_write_tokens
+    if (
+        pricing.long_prompt is not None
+        and pricing.long_prompt_threshold is not None
+        and prompt_tokens > pricing.long_prompt_threshold
+    ):
+        pricing = pricing.long_prompt
 
     return (
         (input_tokens / 1_000_000) * pricing.input_per_mtok

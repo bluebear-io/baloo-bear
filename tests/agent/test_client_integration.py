@@ -298,7 +298,7 @@ class TestBalooAgentModelSelection:
             mock_exec.return_value = _mock_pi_process(events)
             await agent.review_pr(simple_context, model_override="haiku")
 
-            assert agent.options.model == "claude-haiku-4-5-20251001"
+            assert agent.options.model == "claude-haiku-5-5"
 
     @pytest.mark.asyncio
     async def test_uses_sonnet_for_complex_pr(self, sample_pr_context):
