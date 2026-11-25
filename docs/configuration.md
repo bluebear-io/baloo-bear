@@ -30,6 +30,7 @@ pi's provider token is `amazon-bedrock`. Baloo passes AWS credential env vars th
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
+| `BEDROCK_SERVICE_TIER` | — | `default` | Optional ConverseStream service tier: `default` (no override), `flex`, or `priority`. Requires model support for the selected tier. |
 | `AWS_ACCESS_KEY_ID` | —* | — | IAM access key |
 | `AWS_SECRET_ACCESS_KEY` | —* | — | IAM secret key |
 | `AWS_SESSION_TOKEN` | — | — | Session token for temporary credentials |

@@ -40,6 +40,16 @@ def _settings_default(name: str) -> Any:
 logger = logging.getLogger(__name__)
 
 
+def _bedrock_tier_extension_args(provider: str) -> list[str]:
+    """Load the opt-in Bedrock tier hook for any PI subprocess."""
+    if provider != "amazon-bedrock" or resolve_setting("bedrock_service_tier") == "default":
+        return []
+    extension = (
+        Path(__file__).resolve().parent.parent.parent / "extensions" / "bedrock-service-tier.ts"
+    )
+    return ["--extension", str(extension)]
+
+
 @dataclass
 class PIAgentOptions:
     """Configuration for a PI agent session."""
@@ -513,6 +523,15 @@ class PIAgentBase:
             agent_dir = ensure_agent_dir(get_settings().databricks_host)
         elif self.options.provider == openrouter.OPENROUTER_PROVIDER:
             agent_dir = openrouter.ensure_agent_dir()
+        elif self.options.provider == "amazon-bedrock":
+            # The PI extension is loaded only for explicit non-default tiers.
+            # Pass this non-secret setting through the sandbox env allowlist.
+            tier = resolve_setting("bedrock_service_tier")
+            if tier == "default":
+                return base
+            env = dict(base) if base is not None else dict(os.environ)
+            env["BEDROCK_SERVICE_TIER"] = tier
+            return env
         else:
             return base
         env = dict(base) if base is not None else dict(os.environ)
@@ -541,6 +560,7 @@ class PIAgentBase:
             "--model",
             f"{self.options.provider}/{self.options.model}",
         ]
+        cmd.extend(_bedrock_tier_extension_args(self.options.provider))
         if self.options.no_context_files:
             cmd.extend(["--no-context-files", "--no-skills"])
         if self.options.no_tools:
@@ -882,6 +902,8 @@ Serialized payload:
             "--model",
             f"{retry_opts.provider}/{retry_opts.model}",
         ]
+        # Keep JSON repair requests on the same Bedrock service tier.
+        cmd.extend(_bedrock_tier_extension_args(retry_opts.provider))
         cmd.append("--no-tools")
         cmd.extend(["--system-prompt", retry_opts.system_prompt])
 
